@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__/
+*.pyc
+.supergoal/
+.env
+*.log
+.pytest_cache/
+node_modules/
