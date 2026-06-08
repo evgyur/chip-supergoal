@@ -29,7 +29,7 @@ If a phase can't be measured, it isn't a phase. Rewrite it until it can.
 0. **Available context** — preload memory; detect available tools (Context7, WebSearch, MCPs, skills); resume any in-progress Chip Supergoal state
 1. **Intake** — restate, classify, ask enough questions to cover every material gap. Greenfield walks the full category checklist (platform, stack, design direction, integrations, scope, audience, perf, data model) in batches of up to 4 until everything material is filled in; brownfield asks 0–2 since recon answers most structural questions.
 2. **Recon** — parallel codebase + environment scan
-3. **Deep think** — research best practices with whatever tools exist (optional, not required); list top-3 risks + dependencies
+3. **Research-before-design** — if research is required, load/use skill `perplex` first when available; run fresh-docs and existing-solutions gates; then list top-3 risks + dependencies
 4. **Decompose** — derive phase count from the task itself; no fixed cap
 5. **Write phase specs** — one work-spec file per phase under `.supergoal/phases/phase-N.md` (any length, no char budget)
 6. **Embedded RPD plan review** — run RPD_PLAN_REVIEW, mutate weak specs in place, then show summary + concrete revision menu; wait for explicit go/no-go
@@ -199,14 +199,34 @@ This is the difference between a generic plan and a Chip Supergoal. Spend real c
 - Identify **non-obvious dependencies**: things that have to happen in a specific order or block other work.
 - Apply memory hits from `$SUPERGOAL_ROOT/applied-memories.md` — bake them into goals, constraints, or risk mitigations.
 
-**Optional, use if available** (check `$SUPERGOAL_ROOT/tools.md`):
-- **Context7** — if available, query current docs for any third-party SDK touched. Don't plan against stale APIs. If unavailable, lean on training-cutoff knowledge and call it out as an assumption ("planned against my training-cutoff understanding of Expo SDK — verify in phase 1").
-- **WebSearch** — if available, look up current consensus on patterns you're unsure about (auth flows, payment idempotency, accessibility standards). If unavailable, skip.
-- **Project skills** — if relevant skills are listed in `$SUPERGOAL_ROOT/applied-skills.md` (e.g. `clerk-auth`, `mobile-ios-design`), note them in THINKING.md as "consult the relevant skill during phase N" so the executor invokes them at the right moment.
+**Research-before-design gates** (use only when they materially shape the plan):
+
+- **Research trigger check** — required for greenfield products/systems, unfamiliar domains, current SDK/API/framework behavior, auth/payments/security/compliance, major migration/refactor, build-vs-buy uncertainty, or when the user asks for best practices / world practice / not reinventing the wheel.
+- **Skill-first Perplex gate** — if skill `perplex` exists in the available skills catalog, load/use that skill first for open-ended current web research. Do not treat generic `web_search` as equivalent just because a runtime backend might route through Perplexity.
+- **Fresh-docs gate** — use Context7 or official docs for SDK/API/framework-specific facts; if unavailable, record the version assumption and add a phase-1 verification criterion.
+- **Existing Solutions Gate** — search OSS, SaaS, package registries, libraries, and reference-code. Shortlist candidates, inspect top candidates statically only, and decide `buy | wrap | fork | copy_pattern | build_fresh | defer`.
+- **Fallback search** — use generic `web_search` / `web_extract` only when no dedicated research skill/tool is available or when fetching known source URLs.
+- **Fail-closed for critical facts** — if missing external facts materially affect architecture, security, compliance, payments, auth, SDK/API choice, or build-vs-buy, the plan is not approval-ready until research is completed or the user explicitly accepts the assumption.
 
 **Write `$SUPERGOAL_ROOT/THINKING.md`** with sections: Goals, Constraints, Risks, Dependencies, Open Questions (already-assumed), Memory hits applied, Tools/skills relied on, Best Practices Applied. Keep it tight — 1–2 pages. This is the substrate the roadmap derives from.
 
 See `references/planning-depth.md` for the bar to clear here.
+
+---
+
+## Research tool priority — skill-first
+
+When current research is required, prioritize the **`perplex` skill itself** if it exists in the available skills catalog. This means: load/use the `perplex` skill workflow first, before generic web search, because local installs may encode the operator's preferred Sonar routing, source mix, credentials, cost controls, and fallback rules.
+
+Priority order:
+
+1. **Skill `perplex`** — if available, load it and follow its workflow for open-ended web/current research.
+2. Context7 / official docs — for SDK, framework, API, and version-specific planning facts.
+3. GitHub/package/SaaS search — for existing solutions, libraries, products, and reference-code candidates.
+4. Generic `web_search` / `web_extract` — fallback only when no dedicated research skill/tool is available or when fetching known source URLs.
+5. If critical facts are unavailable, mark the plan `not approval-ready` unless the user explicitly accepts the assumption.
+
+Do not collapse this into “use any Perplexity backend.” The trigger is the installed `perplex` skill and its local workflow, not merely a search provider name.
 
 ---
 
@@ -590,6 +610,7 @@ Write the memory file under the detected MEM_DIR using the standard `name` / `de
 A successful `/chip-supergoal` planning run produces:
 
 - `.supergoal/THINKING.md` with goals, constraints, risks, dependencies, applied memory, available tools, and `RPD_PLAN_REVIEW`.
+- `.supergoal/RESEARCH.md` when research is required, recording skill `perplex` usage, queries, sources, existing-solution candidates, build-vs-buy verdict, planning implications, and unverified assumptions.
 - `.supergoal/ROADMAP.md` with phases, dependencies, assumptions, mandatory commands, and risky-phase/RPD gate summary.
 - `.supergoal/STATE.md` initialized for the future `/goal` session.
 - `.supergoal/phases/phase-N.md` files with falsifiable criteria, mandatory commands, evidence requirements, dependencies, and `RPD required` / `RPD focus` metadata.
@@ -602,6 +623,7 @@ The skill itself is plan-only. It must not claim that execution completed; only 
 
 - [ ] `skill_view("chip-supergoal")` loads this skill and shows `references/rpd-review-gates.md`.
 - [ ] A generated phase spec validates with `scripts/validate-phase.sh` and includes `RPD required:` plus `RPD focus:`.
+- [ ] Stage 3 loads/uses skill `perplex` first when available for current research; generic `web_search` is only fallback.
 - [ ] Stage 6 summary includes an `RPD_PLAN_REVIEW` block, not the old self-critique-only block.
 - [ ] `.supergoal/PROTOCOL.md` includes `RPD_PHASE_REVIEW` and `RPD_FINAL_REVIEW` without requiring any external `/rpd` skill.
 - [ ] Public package scan finds no secrets, credentials, chat IDs, local runtime state, or private infrastructure details.
@@ -620,6 +642,7 @@ The skill itself is plan-only. It must not claim that execution completed; only 
 
 ## Reference files
 
+- `references/research-before-design.md` — research-before-design gate with skill `perplex` priority, RESEARCH.md schema, and existing-solutions gate
 - `references/rpd-review-gates.md` — embedded RPD mutation-gate contract used by plan review and generated `/goal` protocol
 - `references/planning-depth.md` — what makes a plan deep enough to deserve "Super"
 - `references/phase-design.md` — how to slice phases that auto-chain cleanly
