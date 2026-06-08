@@ -1,6 +1,6 @@
 # Architect+ lite gate
 
-Use this gate for substantial, architecture-affecting, agent-native, security-sensitive, or production-facing Chip Supergoal plans.
+Use this gate for substantial, architecture-affecting, agent-native, security-sensitive, or production-facing chip-supergoal plans.
 
 Do not use it for tiny one-step tasks. If skipped, record a narrow reason in `THINKING.md` or `ROADMAP.md`.
 

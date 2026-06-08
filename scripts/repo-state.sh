@@ -1,45 +1,18 @@
 #!/usr/bin/env bash
 # repo-state.sh — evaluate the COMPLETE working-tree state relative to a baseline commit.
 #
-# Why this exists
-# ---------------
-# Supergoal's final audit and per-phase cleanliness checks must see every change an
-# autonomous run produced — whether it was committed or left sitting in the working
-# tree. A plain `git diff <baseline>..HEAD` only compares two commits, so a run that
-# never commits looks completely empty: deliverables read as "missing" and cleanliness
-# greps read as "0 debug prints" no matter what was actually written. This helper is the
-# single source of truth for the corrected comparison (see
-# references/repo-state-comparison.md).
-#
-# The strategy (complete state vs baseline)
-# -----------------------------------------
-#   tracked changes (committed + staged + unstaged + deleted)
-#       = git diff <baseline>            # single revision, NOT <baseline>..HEAD
-#         -> diffs the WORKING TREE against the baseline commit, so it already
-#            includes staged, unstaged, and any post-baseline commits.
-#   untracked deliverables (new files never `git add`-ed)
-#       = git ls-files --others --exclude-standard
-#         -> untracked files are diff-invisible, so they are detected separately.
-#   invalid / unavailable baseline ("no-git" sentinel, bogus sha, or non-repo)
-#       -> degrade gracefully to a filesystem existence test.
-#
-# This script never mutates the repository or the index. All output is for the audit
-# transcript. Paths containing spaces are handled (callers must quote the path argument).
-#
 # Usage:
 #   repo-state.sh deliverable   <baseline> <path>
-#       -> "present — <evidence>" (exit 0) | "missing" (exit 1)
+#       -> present (0) | missing/deleted (1) | invalid baseline (2) | unchanged pre-existing (3)
 #   repo-state.sh changed-files <baseline>
 #       -> newline-delimited paths changed since baseline (tracked + untracked + deleted)
 #   repo-state.sh added-lines   <baseline>
-#       -> every added/new line since baseline: tracked-diff '+' lines plus the full body
-#          of each untracked file (every line is "new"). Feed to grep for cleanliness counts.
+#       -> every added/new line since baseline: tracked-diff '+' lines plus untracked file bodies
 
 set -uo pipefail
 
 in_git_repo() { git rev-parse --is-inside-work-tree >/dev/null 2>&1; }
 
-# baseline_ok <ref> — true only when <ref> resolves to a real commit in this repo.
 baseline_ok() {
   local b="${1:-}"
   [ -n "$b" ] || return 1
@@ -47,41 +20,82 @@ baseline_ok() {
   git rev-parse --verify --quiet "${b}^{commit}" >/dev/null 2>&1
 }
 
+invalid_baseline() {
+  local baseline="${1:-}"
+  echo "repo-state.sh: invalid baseline: ${baseline:-<empty>}" >&2
+  return 2
+}
+
+name_status_for_path() {
+  local baseline="$1" path="$2"
+  git diff --name-status "$baseline" -- "$path" 2>/dev/null || true
+}
+
 cmd_deliverable() {
   local baseline="$1" path="$2"
 
-  if in_git_repo && baseline_ok "$baseline"; then
-    # 1) tracked change vs baseline: committed, staged, unstaged, or deleted.
-    local stat
-    stat="$(git diff --stat "$baseline" -- "$path" 2>/dev/null || true)"
-    if [ -n "$stat" ]; then
+  if in_git_repo; then
+    baseline_ok "$baseline" || invalid_baseline "$baseline" || return $?
+
+    local ns
+    ns="$(name_status_for_path "$baseline" "$path")"
+
+    # Tracked change vs baseline: committed, staged, unstaged, renamed, or copied.
+    # A glob/directory deliverable can have both deleted old files and added/modified
+    # new files; treat it as present if any matching non-deletion change exists.
+    if printf '%s\n' "$ns" | awk 'NF && $1 !~ /^D/ { found=1 } END { exit found ? 0 : 1 }'; then
+      local stat
+      stat="$(git diff --stat "$baseline" -- "$path" 2>/dev/null || true)"
       printf 'present — changed vs baseline (%s)\n' \
         "$(printf '%s' "$stat" | tail -1 | sed 's/^[[:space:]]*//')"
       return 0
     fi
-    # 2) brand-new untracked deliverable (diff-invisible).
-    local untracked
+
+    # Brand-new untracked deliverable (diff-invisible). Git pathspec matching does
+    # not reliably cover shell-style globs for untracked files, so also check
+    # compgen for glob paths and test each candidate against git's untracked list.
+    local untracked glob_match
     untracked="$(git ls-files --others --exclude-standard -- "$path" 2>/dev/null | head -1 || true)"
+    glob_match="$(compgen -G "$path" 2>/dev/null | head -1 || true)"
     if [ -n "$untracked" ]; then
       printf 'present — untracked new file (%s)\n' "$untracked"
       return 0
     fi
-    # 3) backward-compat net: the path exists / is tracked but is unchanged this run.
-    if [ -e "$path" ] || [ -n "$(git ls-files -- "$path" 2>/dev/null | head -1 || true)" ]; then
-      printf 'present — exists, unchanged since baseline\n'
-      return 0
+    if [ -n "$glob_match" ]; then
+      while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        if [ -n "$(git ls-files --others --exclude-standard -- "$candidate" 2>/dev/null | head -1 || true)" ]; then
+          printf 'present — untracked glob file (%s)\n' "$candidate"
+          return 0
+        fi
+      done < <(compgen -G "$path" 2>/dev/null || true)
+      if [ -n "$ns" ]; then
+        printf 'present — glob has current file (%s)\n' "$glob_match"
+        return 0
+      fi
     fi
+
+    # If the only matching diff entries are deletions, the deliverable is missing.
+    if printf '%s\n' "$ns" | awk 'NF && $1 ~ /^D/ { found=1 } END { exit found ? 0 : 1 }'; then
+      printf 'missing — deleted vs baseline\n'
+      return 1
+    fi
+
+    # Existing but unchanged files are not proof of delivery unless the roadmap
+    # explicitly says the deliverable was pre-existing / verification-only.
+    if [ -e "$path" ] || compgen -G "$path" >/dev/null 2>&1 || [ -n "$(git ls-files -- "$path" 2>/dev/null | head -1 || true)" ]; then
+      printf 'unchanged — existed before baseline\n'
+      return 3
+    fi
+
     printf 'missing\n'
     return 1
   fi
 
-  # Fallback: baseline missing/invalid or not a git repo — existence only.
-  if [ -e "$path" ]; then
-    printf 'present — exists on disk (baseline unavailable)\n'
-    return 0
-  fi
-  if in_git_repo && [ -n "$(git ls-files -- "$path" 2>/dev/null | head -1 || true)" ]; then
-    printf 'present — tracked (baseline unavailable)\n'
+  # Non-git fallback is existence-only. A git repo with an invalid baseline fails
+  # closed above; this branch is for explicit non-repo/no-git workspaces.
+  if [ -e "$path" ] || compgen -G "$path" >/dev/null 2>&1; then
+    printf 'present — exists on disk (no git baseline)\n'
     return 0
   fi
   printf 'missing\n'
@@ -90,25 +104,26 @@ cmd_deliverable() {
 
 cmd_changed_files() {
   local baseline="$1"
-  if in_git_repo && baseline_ok "$baseline"; then
+  if in_git_repo; then
+    baseline_ok "$baseline" || invalid_baseline "$baseline" || return $?
     {
-      git diff --name-only "$baseline" 2>/dev/null || true   # modified/staged/deleted
-      git ls-files --others --exclude-standard 2>/dev/null || true   # untracked
+      git diff --name-only "$baseline" 2>/dev/null || true
+      git ls-files --others --exclude-standard 2>/dev/null || true
     } | LC_ALL=C sort -u | sed '/^$/d'
+    return 0
   fi
   return 0
 }
 
 cmd_added_lines() {
   local baseline="$1"
-  if in_git_repo && baseline_ok "$baseline"; then
-    # Added lines from tracked changes (strip the leading '+', skip the '+++' file header).
+  if in_git_repo; then
+    baseline_ok "$baseline" || invalid_baseline "$baseline" || return $?
     git diff "$baseline" 2>/dev/null | grep '^+' | grep -v '^+++' | sed 's/^+//' || true
-    # Full body of every untracked file — each line counts as newly added.
-    # Skip binaries: added-lines feeds text greps, so binary bodies are only noise.
     git ls-files --others --exclude-standard -z 2>/dev/null | while IFS= read -r -d '' f; do
-      [ -f "$f" ] && LC_ALL=C grep -Iq . "$f" 2>/dev/null && cat -- "$f"
+      [ -f "$f" ] && LC_ALL=C grep -Iq . "$f" 2>/dev/null && sed 's/^//' -- "$f"
     done
+    return 0
   fi
   return 0
 }
@@ -130,15 +145,14 @@ case "$sub" in
     ;;
   ""|-h|--help|help)
     cat >&2 <<'EOF'
-repo-state.sh — evaluate the complete working-tree state vs a baseline commit.
+repo-state.sh — evaluate complete working-tree state vs a baseline commit.
 
-  repo-state.sh deliverable   <baseline> <path>   present|missing (+ evidence), exit 0|1
+  repo-state.sh deliverable   <baseline> <path>   present|missing|unchanged, exit 0|1|3
   repo-state.sh changed-files <baseline>          paths changed since baseline
   repo-state.sh added-lines   <baseline>          added/new lines since baseline
 
-<baseline> is a commit sha (or "no-git" / any invalid ref to force the filesystem
-fallback). Compares the working tree — not just HEAD — so uncommitted, staged, and
-untracked work is included. See references/repo-state-comparison.md.
+In a git repo, an invalid baseline fails closed with exit 2. Outside git, the
+script degrades to filesystem checks for deliverables and empty changed/added output.
 EOF
     exit 2
     ;;

@@ -28,19 +28,19 @@ RPD focus: {{RPD_FOCUS}}
 - {{WORK_BULLET_2}}
 - ...
 
-## Acceptance criteria (all must pass — verify each in transcript)
+## Acceptance criteria
 
 - {{CRITERION_1}}
 - {{CRITERION_2}}
 - ...
 
-## Mandatory commands (run each, surface last ~10 lines + exit code)
+## Mandatory commands
 
 - {{COMMAND_1}}
 - {{COMMAND_2}}
 - ...
 
-## Evidence required in transcript
+## Evidence required
 
 - {{EVIDENCE_1}}
 - {{EVIDENCE_2}}

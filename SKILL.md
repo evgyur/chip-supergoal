@@ -4,9 +4,9 @@ description: Plan-only autonomous software task planner that writes ROADMAP, pha
 argument-hint: <describe what you want built, fixed, or shipped>
 ---
 
-# Chip Supergoal
+# chip-supergoal
 
-You are running the Chip Supergoal workflow. The user's task is:
+You are running the chip-supergoal workflow. The user's task is:
 
 $ARGUMENTS
 
@@ -26,7 +26,7 @@ If a phase can't be measured, it isn't a phase. Rewrite it until it can.
 
 ## How this skill works (one-shot summary)
 
-0. **Available context** — preload memory; detect available tools (Context7, WebSearch, MCPs, skills); resume any in-progress Chip Supergoal state
+0. **Available context** — preload memory; detect available tools (Context7, WebSearch, MCPs, skills); resume any in-progress chip-supergoal state
 1. **Intake** — restate, classify, ask enough questions to cover every material gap. Greenfield walks the full category checklist (platform, stack, design direction, integrations, scope, audience, perf, data model) in batches of up to 4 until everything material is filled in; brownfield asks 0–2 since recon answers most structural questions.
 2. **Recon** — parallel codebase + environment scan
 3. **Research-before-design + Architect+ lite** — if research is required, load/use skill `perplex` first when available; run fresh-docs/existing-solutions gates; for substantial risky plans add source-of-truth, permissions, failure modes, and verification strategy; then list top-3 risks + dependencies
@@ -39,7 +39,7 @@ Two human gates only: **clarifying questions for true gaps (Stage 1)** and **pla
 
 ### Why one `/goal`, not a chain
 
-`/goal` in both Claude Code and Codex takes a **short end-state condition**, not a long task body. A fast evaluator checks the condition against the transcript after each turn and auto-continues until it holds. Chip Supergoal v3 leverages this directly: one `/goal` covers the whole run; phase work lives in files the agent reads from disk; the condition is "all phases done, `SUPERGOAL_RUN_COMPLETE` printed." No char budget, no inter-session chain dispatch, no fragility.
+`/goal` in both Claude Code and Codex takes a **short end-state condition**, not a long task body. A fast evaluator checks the condition against the transcript after each turn and auto-continues until it holds. chip-supergoal leverages this directly: one `/goal` covers the whole run; phase work lives in files the agent reads from disk; the condition is "all phases done, `SUPERGOAL_RUN_COMPLETE` printed." No char budget, no inter-session chain dispatch, no fragility.
 
 ## Locate the skill directory
 
@@ -95,13 +95,13 @@ Tools differ between sessions and hosts (Claude Code vs Codex, different MCP ser
 - **Context7** — available if `mcp__claude_ai_Context7__resolve-library-id` or similar is in the tool list. If absent, skip it; rely on training-cutoff knowledge + WebSearch if that's present.
 - **WebSearch / WebFetch** — available if listed. If neither, skip web research.
 - **Project skills** — check the available-skills list for domain-relevant skills (e.g. `mobile-ios-design`, `clerk-auth`, `expo-dev-client`) and note them in `$SUPERGOAL_ROOT/applied-skills.md` to invoke from inside phase goals if relevant.
-- **Prior Chip Supergoal state** — if `$SUPERGOAL_ROOT/STATE.md` exists from a previous run, read it; resume rather than restart.
+- **Prior chip-supergoal state** — if `$SUPERGOAL_ROOT/STATE.md` exists from a previous run, read it; resume rather than restart.
 
 Write detected tools to `$SUPERGOAL_ROOT/tools.md`. Stage 3 and the phase goals reference this file when deciding what to invoke.
 
 ### Resume detection
 
-If `STATE.md` exists and shows `Status: IN_PROGRESS` with a phase pending, **do not re-plan**. Print a one-line "Resuming Chip Supergoal from phase N" and jump straight to Stage 6 (plan review) with the existing artifacts, or directly to Stage 7 (dispatch) if the user confirms resume.
+If `STATE.md` exists and shows `Status: IN_PROGRESS` with a phase pending, **do not re-plan**. Print a one-line "Resuming chip-supergoal from phase N" and jump straight to Stage 6 (plan review) with the existing artifacts, or directly to Stage 7 (dispatch) if the user confirms resume.
 
 ---
 
@@ -192,7 +192,7 @@ Read the outputs. Then print a **5-line summary** to the user: stack, package ma
 
 ## Stage 3 — Deep think
 
-This is the difference between a generic plan and a Chip Supergoal. Spend real cycles here — but use only what's available.
+This is the difference between a generic plan and a strong chip-supergoal plan. Spend real cycles here — but use only what's available.
 
 **Required regardless of tools:**
 - Identify the **top 3 risks**: what's most likely to go wrong, what's hardest to undo, what's easy to miss until shipped.
@@ -208,7 +208,7 @@ This is the difference between a generic plan and a Chip Supergoal. Spend real c
 - **Fallback search** — use generic `web_search` / `web_extract` only when no dedicated research skill/tool is available or when fetching known source URLs.
 - **Fail-closed for critical facts** — if missing external facts materially affect architecture, security, compliance, payments, auth, SDK/API choice, or build-vs-buy, the plan is not approval-ready until research is completed or the user explicitly accepts the assumption.
 
-**Write `$SUPERGOAL_ROOT/THINKING.md`** with sections: Goals, Constraints, Risks, Dependencies, Open Questions (already-assumed), Memory hits applied, Tools/skills relied on, Best Practices Applied. Keep it tight — 1–2 pages. This is the substrate the roadmap derives from.
+**Write `$SUPERGOAL_ROOT/THINKING.md`** with sections: Goals, Constraints, Risks, Dependencies, Open Questions (already-assumed), Memory hits applied, Tools/skills relied on, Best Practices Applied. Keep it tight — 1–2 pages. This is the substrate the roadmap derives from. If any research gate ran, also write `$SUPERGOAL_ROOT/RESEARCH.md` from `$SUPERGOAL_DIR/templates/RESEARCH.md` and fill status, sources, existing-solution candidates, build-vs-buy verdict, planning implications, and unverified assumptions.
 
 See `references/planning-depth.md` for the bar to clear here.
 
@@ -247,7 +247,7 @@ Write the result into `THINKING.md` and summarize it in `ROADMAP.md` / Stage 6 w
 
 ## Embedded RPD review system
 
-Chip Supergoal is independent from any external `/rpd` skill. Do not load or invoke another RPD skill to run this workflow. Use the embedded contract in `references/rpd-review-gates.md`.
+chip-supergoal is independent from any external `/rpd` skill. Do not load or invoke another RPD skill to run this workflow. Use the embedded contract in `references/rpd-review-gates.md`.
 
 RPD is a mutation gate, not a commentary layer:
 
@@ -288,11 +288,12 @@ Each phase has:
 
 ## Stage 5 — Write the roadmap and phase specs
 
-Three files, all under `$SUPERGOAL_ROOT/`:
+Core files, all under `$SUPERGOAL_ROOT/`:
 
 1. **`ROADMAP.md`** — the plan (template at `$SUPERGOAL_DIR/templates/ROADMAP.md`).
 2. **`STATE.md`** — live progress file the executor updates per phase (template at `$SUPERGOAL_DIR/templates/STATE.md`).
-3. **`phases/phase-N.md`** — one work-spec file per phase (template at `$SUPERGOAL_DIR/templates/phase-goal.txt`, renamed conceptually to "phase spec"). **Any length** — these are read from disk by the executor, not passed to `/goal`, so no char budget.
+3. **`RESEARCH.md`** — required when Stage 3 research gates run (template at `$SUPERGOAL_DIR/templates/RESEARCH.md`); omit only with a narrow skipped reason in `THINKING.md` and `ROADMAP.md`.
+4. **`phases/phase-N.md`** — one work-spec file per phase (template at `$SUPERGOAL_DIR/templates/phase-goal.txt`, renamed conceptually to "phase spec"). **Any length** — these are read from disk by the executor, not passed to `/goal`, so no char budget.
 
 Each phase spec must include these markers and sections so the agent and evaluator both have stable anchors. `scripts/validate-phase.sh` also requires a `## Work` section, so include it explicitly in every generated phase file:
 
@@ -362,6 +363,9 @@ Integrator: <touchpoints + split-brain risk + mutation|checked-holds>
 Mutations applied: <list or none — checked-holds>
 Verdict: ready-for-review | revised-and-ready | blocked-needs-user-input
 ```
+
+
+If the verdict is `blocked-needs-user-input`, the plan is **not approval-ready**. Do not offer "Start now" and do not proceed to Stage 7. Ask the blocking question or ask the user to explicitly accept the material assumption, then rerun the affected research/RPD checks and re-show the summary.
 
 If files changed, re-run `validate-phase.sh` on every touched phase spec before showing the plan. Surface the post-RPD version, not the pre-RPD draft.
 
@@ -446,7 +450,7 @@ After Stage 6 returns "Start now" and **before** printing the `/goal` block, run
 **Procedure:**
 
 1. Read every `phase-N.md` spec and union their `Mandatory commands:` lines into a deduplicated set.
-2. Run each once. Capture exit code and last ~5 lines.
+2. Run only commands that are clearly safe pre-flight checks (build/test/lint/typecheck/static smoke). Do not run deploy, migration, write-heavy, network-mutating, payment, credential, destructive, or production commands in `/chip-supergoal`; move those to the future `/goal` phase or require explicit user approval. Capture exit code and last ~5 lines for every command that is run, and list skipped side-effectful commands separately.
 3. **If all green:**
    - Append a `Notable events` line to `.supergoal/STATE.md`: `<DATE> — Pre-flight green: <N> commands clean.`
    - Print `PREFLIGHT_GREEN` with the per-command summary.
@@ -476,36 +480,34 @@ When pre-flight is red on an owned baseline problem inside the requested surface
 
 Slash commands on both Claude Code and Codex fire **only from user input** — agent message text is never parsed as a command. So Stage 7 is not an automatic dispatch; it's an honest one-paste handoff. After explicit "Start now" in Stage 6:
 
-**Dispatch path discipline:** if `$SUPERGOAL_ROOT` is not the current working directory's `.supergoal` (common in Hermes Telegram sessions where planning happens under `$HOME/workspace/<project>` but the chat cwd is outside the project root), use absolute paths in the printed `/goal` line for `ROADMAP.md`, `PROTOCOL.md`, `repo-state.sh`, and `phases/phase-N.md`. Do not rely on relative `.supergoal/...` unless the user will paste from the project root. Before printing, verify the absolute root exists and every phase spec validates. A perfectly planned chain with a wrong relative root is a failed handoff.
+**Dispatch path discipline:** default to repo-relative `.supergoal/...` paths and tell the user to start `/goal` from the project root. Do not print absolute local paths by default because they can leak workstation or account details. If the current client cannot run from the project root and absolute paths are genuinely required, ask for explicit confirmation before emitting them, then verify the target root exists and every phase spec validates.
 
 **One confirmation means one confirmation:** if pre-flight is red and the user explicitly chooses "Skip pre-flight, dispatch anyway", do not ask the same question again. Log the bypass in `STATE.md`, prepare Stage 7 artifacts, and print the ready-to-paste `/goal` line immediately.
 
 1. Update `STATE.md`: `Status: READY_TO_DISPATCH`, `Current phase: <first phase number>`, and **capture the baseline ref** — set `Baseline ref:` to the output of `git rev-parse HEAD 2>/dev/null || echo "no-git"`. Use whatever numbering the phase files actually use (`phase-0.md` starts at 0; `phase-1.md` starts at 1). Do not hard-code `Current phase: 1` when the plan is zero-indexed. The audit reads the baseline to diff deliverables against the working tree.
 2. Copy `$SUPERGOAL_DIR/templates/PROTOCOL.md` to `.supergoal/PROTOCOL.md` (the operating manual the executing agent reads at the start of the `/goal` session), and copy `$SUPERGOAL_DIR/scripts/repo-state.sh` to `.supergoal/repo-state.sh` (the complete-working-tree comparison helper the cleanliness + deliverable checks invoke; strategy in `references/repo-state-comparison.md`).
 3. Verify each `.supergoal/phases/phase-N.md` exists; run `bash $SUPERGOAL_DIR/scripts/validate-phase.sh .supergoal/phases/phase-<N>.md` on each.
-4. **Telegram-safe dispatch UX:** do NOT put the `/goal` command in a fenced code block and do NOT make the user copy a giant quoted body when there is an easier reply shortcut. Prefer the gateway reply shortcut:
+4. **Client-safe dispatch UX:** do not put the `/goal` command in a fenced code block. Prefer this two-message shape when the client supports replies:
 
    a. Send the long goal body as a normal assistant message prefixed exactly with `SUPERGOAL_GOAL_BODY:` and no markdown fence.
 
    b. Immediately after it, send the instruction:
 
-   > Reply to the `SUPERGOAL_GOAL_BODY` message with exactly `/goal`. Do not copy the long text. The Telegram gateway will use the replied-to text as the goal.
+   > Reply to the `SUPERGOAL_GOAL_BODY` message with exactly `/goal`. Do not copy the long text.
 
-   c. Also include a fallback plain-text one-liner for non-reply clients, but keep it outside code fences and label it `Fallback plain-text line:`. The line must begin with `/goal "..."` and include absolute paths when needed.
+   c. Also include a fallback plain-text one-liner for non-reply clients, outside code fences and labeled `Fallback plain-text line:`. The line must begin with `/goal "..."` and use repo-relative paths unless the user explicitly approved absolute paths.
 
-5. If the user sends only the quoted body without `/goal`, treat it as a Chip Supergoal dispatch UX failure. Do not scold or make them copy the same long body again. Re-send the short reply method only: `Reply to the SUPERGOAL_GOAL_BODY message with /goal`. If the user asks to fix the workflow, patch this skill so future Chip Supergoal handoffs default to reply-`/goal`.
+5. If the user sends only the quoted body without `/goal`, treat it as a dispatch UX failure. Do not scold or make them copy the same long body again. Re-send the short reply method only: `Reply to the SUPERGOAL_GOAL_BODY message with /goal`.
 
 6. If the user later pastes only the quoted condition body without the leading `/goal`, treat that as a failed dispatch UX, not as an automatic command. Reply briefly that the leading slash is required and re-print the one-line command unless the current platform has already started a goal/continuation wrapper.
 
-7. **Telegram formatting pitfall:** Telegram users often tap copy on the wrong region or Telegram drops/omits the leading slash from long copied text. The primary mitigation is the reply shortcut: send `SUPERGOAL_GOAL_BODY: ...` as a normal message, then tell the user to reply to that exact message with `/goal`. Only use the long plain-text `/goal "..."` fallback when reply mode is impossible. If a goal-wrapper is already active despite the formatting, continue executing instead of looping on paste instructions.
+7. **Copy formatting pitfall:** chat clients can copy the wrong region or omit the leading slash from long copied text. The primary mitigation is the reply shortcut. Only use the long plain-text `/goal "..."` fallback when reply mode is impossible. If a goal-wrapper is already active despite the formatting, continue executing instead of looping on paste instructions.
 
 8. **Standing-goal continuation pitfall:** If the next user message arrives as a host-generated wrapper such as `[Continuing toward your standing goal]` or explicitly says `Continue working toward this goal`, the `/goal` wrapper is already active. Do not re-print paste instructions or ask for `/goal` again. Read `STATE.md`, continue from the current phase, run the mandatory commands, and emit the required `SUPERGOAL_PHASE_VERIFY`, `SUPERGOAL_PHASE_DONE`, `AUDIT_COMPLETE`, and `SUPERGOAL_RUN_COMPLETE` markers in the visible transcript when earned.
 
-9. **Gateway implementation contract:** Hermes gateway `/goal` must support bare `/goal` as a reply by extracting `event.reply_to_text`, stripping `SUPERGOAL_GOAL_BODY:`, rejecting prior `/goal` status lines such as `✓ Goal done (...)`, and forcing Chip Supergoal execution dispatches to session-scoped `high` reasoning. Planning may use `xhigh`; execution chains should run on `high`. The goal judge must not mark a Chip Supergoal complete unless the final response contains `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`. If this breaks again, patch gateway `/goal` handling and `hermes_cli/goals.py`, not this workflow text only.
+9. **Stop.** Do not generate any further output. The chip-supergoal invocation ends here. The user's paste begins the autonomous run under a fresh `/goal` session, which reads `PROTOCOL.md`, `ROADMAP.md`, `STATE.md`, and the phase specs from disk and runs the loop documented in the next sections.
 
-9. **Stop.** Do not generate any further output. The Chip Supergoal invocation ends here. The user's paste begins the autonomous run under a fresh `/goal` session, which reads `PROTOCOL.md`, `ROADMAP.md`, `STATE.md`, and the phase specs from disk and runs the loop documented in the next sections.
-
-Once `/goal` is active (you'll see the `◎ /goal active` indicator on Claude Code), the per-turn evaluator keeps the agent working until the end-state condition holds. On Codex, the auto-continuation loop does the same. The agent inside the `/goal` session has zero special context from the Chip Supergoal invocation; everything it needs is in the files on disk — by design.
+Once `/goal` is active (you'll see the `◎ /goal active` indicator on Claude Code), the per-turn evaluator keeps the agent working until the end-state condition holds. On Codex, the auto-continuation loop does the same. The agent inside the `/goal` session has zero special context from the chip-supergoal invocation; everything it needs is in the files on disk — by design.
 
 ---
 
@@ -540,7 +542,7 @@ The audit runs once after the final phase. If it finds gaps, it writes a focused
 5. **Spot-check verifiable criteria** — for each acceptance criterion across all phases:
    - "File X exists" / "Function Y exported" / "Config key Z set" / "No `console.log` in app code" → re-check via `ls`/`grep`/`cat`.
    - "Screenshot showed X" / "Manual smoke test passed" / other non-deterministic checks → mark `trust-prior-verify`, do not re-run.
-5b. **Deliverable check** — for each phase block in `ROADMAP.md`, parse the `**Deliverables:**` bullets. For each bullet that names a file path or glob, run `bash .supergoal/repo-state.sh deliverable <Baseline ref> "<path>"` — it checks the **complete working tree** (committed + staged + unstaged + deleted) against the baseline and detects untracked new files separately. `missing` (exit 1) → `AUDIT_GAP: phase <N> deliverable "<bullet>" not present`. Repository ground-truth — catches "agent said done but didn't ship," even when the run never committed. Strategy: `references/repo-state-comparison.md`.
+5b. **Deliverable check** — for each phase block in `ROADMAP.md`, parse the `**Deliverables:**` bullets. For each bullet that names a file path or glob, run `bash .supergoal/repo-state.sh deliverable <Baseline ref> "<path>"` — it checks the **complete working tree** (committed + staged + unstaged + deleted) against the baseline and detects untracked new files separately. `missing`/`deleted` (exit 1), invalid baseline (exit 2), or unchanged pre-existing (exit 3) → `AUDIT_GAP: phase <N> deliverable "<bullet>" not proven as delivered by this run`, unless the roadmap explicitly marks that deliverable as pre-existing / verification-only. Repository ground-truth — catches "agent said done but didn't ship," even when the run never committed. Strategy: `references/repo-state-comparison.md`.
 6. Print `AUDIT_VERIFY` block:
    - Per-phase status (DONE present or missing)
    - Each mandatory command's exit code
@@ -587,7 +589,7 @@ If the user sends any message during the `/goal` run, the agent pauses at the ne
 
 Memory is load-bearing. Future runs start smarter because past runs wrote down what they learned. The phase execution loop's step 6 references these rules.
 
-**At each phase boundary**, ask: "Did this phase surface anything a future Chip Supergoal run on a similar task would benefit from knowing?"
+**At each phase boundary**, ask: "Did this phase surface anything a future chip-supergoal run on a similar task would benefit from knowing?"
 
 Worth saving:
 - A library API quirk that wasn't in the docs
@@ -597,7 +599,7 @@ Worth saving:
 
 Write the memory file under the detected MEM_DIR using the standard `name` / `description` / `metadata.type` frontmatter. Link it from `MEMORY.md`. Print `MEMORY_SAVED: <name>` to the transcript. If nothing non-obvious this phase: print `MEMORY_SAVED: none`.
 
-**At the final phase**, always write a `project_<slug>.md` memory pointing at the new/changed project (location, stack, status, ROADMAP link). Guarantees future Chip Supergoal runs on the same project start from the latest state.
+**At the final phase**, always write a `project_<slug>.md` memory pointing at the new/changed project (location, stack, status, ROADMAP link). Guarantees future chip-supergoal runs on the same project start from the latest state.
 
 **Never save:** secrets, transient task details, ephemeral state. Bar is "useful to a future run." When in doubt, skip.
 
@@ -620,14 +622,13 @@ Write the memory file under the detected MEM_DIR using the standard `name` / `de
 
 ## Hermes compatibility notes
 
-- **Skill directory detection in Hermes:** if the standard Claude/Codex snippet cannot find the skill directory, include the Hermes-native path too: `$HOME/.hermes/skills/chip-supergoal/SKILL.md`. In Hermes gateway sessions the skill can be installed only under `~/.hermes/skills`, so a `.claude`-only lookup is brittle.
-- **Gateway slash command cache:** after installing Chip Supergoal during a live Hermes Telegram session, `/chip-supergoal` may still return `Unknown command` until `/reload-skills` is run. If command discovery sees `/chip-supergoal` but Telegram does not, reload skills first, then restart gateway only if needed.
-- **Pre-flight interpretation:** Chip Supergoal pre-flight can be red because a phase deliberately creates files referenced by later mandatory commands (for example a new `rentals-admin.test.ts` that Phase 1 will create). Classify these as expected phase-created-file failures, not baseline blockers. Separate them from unrelated baseline failures such as an existing TypeScript error elsewhere.
+- **Skill directory detection:** if the standard Claude/Codex snippet cannot find the skill directory, include the Hermes-native path too: `$HOME/.hermes/skills/chip-supergoal/SKILL.md`. The skill is multi-file; a single raw `SKILL.md` install is not enough.
+- **Pre-flight interpretation:** chip-supergoal pre-flight can be red because a phase deliberately creates files referenced by later mandatory commands (for example a new `rentals-admin.test.ts` that Phase 1 will create). Classify these as expected phase-created-file failures, not baseline blockers. Separate them from unrelated baseline failures such as an existing TypeScript error elsewhere.
 - **Baseline red handling:** if baseline is red on unrelated files, offer the user two concrete choices: add a Phase 0 to fix the baseline, or dispatch anyway and require later phases/final audit to prove the failure is pre-existing and unrelated. Do not silently start after a red pre-flight.
 
 ## When to deviate from the workflow
 
-- **Very small task** (< 1 hour of work, single file): tell the user this doesn't need Chip Supergoal, suggest just doing it. Don't force the machinery.
+- **Very small task** (< 1 hour of work, single file): tell the user this doesn't need chip-supergoal, suggest just doing it. Don't force the machinery.
 - **The user pushes back on a phase during intake**: collapse, re-plan, continue.
 - **Mid-run interruption**: if the user stops the run and asks for a change, update the affected `.supergoal/phases/phase-N.md` spec, run `validate-phase.sh` on it, then ask the user to resume (they can re-dispatch the same `/goal` or just say "continue"). No need to restart phase 1.
 
@@ -643,7 +644,7 @@ A successful `/chip-supergoal` planning run produces:
 - `.supergoal/STATE.md` initialized for the future `/goal` session.
 - `.supergoal/phases/phase-N.md` files with falsifiable criteria, mandatory commands, evidence requirements, dependencies, and `RPD required` / `RPD focus` metadata.
 - `.supergoal/PROTOCOL.md` copied from `templates/PROTOCOL.md`, including embedded `RPD_PHASE_REVIEW` and `RPD_FINAL_REVIEW` gates for the future `/goal` runner.
-- A Telegram/CLI-safe `/goal` handoff using the `SUPERGOAL_GOAL_BODY:` reply shortcut when available.
+- A CLI/client-safe `/goal` handoff using the `SUPERGOAL_GOAL_BODY:` reply shortcut when available.
 
 The skill itself is plan-only. It must not claim that execution completed; only the later `/goal` session can earn `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`.
 
@@ -677,19 +678,20 @@ The skill itself is plan-only. It must not claim that execution completed; only 
 - `references/rpd-review-gates.md` — embedded RPD mutation-gate contract used by plan review and generated `/goal` protocol
 - `references/planning-depth.md` — what makes a plan deep enough to deserve "Super"
 - `references/phase-design.md` — how to slice phases that auto-chain cleanly
-- `references/goal-format.md` — what `/goal` is on Claude Code + Codex, Chip Supergoal's single-`/goal` shape, required transcript blocks
-- `references/gateway-goal-dispatch-rail.md` — Hermes Telegram/gateway Chip Supergoal dispatch rail: reply shortcut, status-line rejection, execution reasoning `high`, terminal-marker judge guard, and focused regression tests
+- `references/goal-format.md` — what `/goal` is on Claude Code + Codex, chip-supergoal's single-`/goal` shape, required transcript blocks
 
 ## Scripts
 
 - `scripts/detect-stack.sh` — identifies language, package manager, framework, build/test/lint commands (brownfield)
 - `scripts/detect-env.sh` — greenfield environment recon
 - `scripts/summarize-repo.sh` — compressed repo map (brownfield)
-- `scripts/validate-phase.sh` — checks a phase spec has the required SUPERGOAL_PHASE_START marker and a non-empty acceptance criteria section
+- `scripts/validate-phase.sh` — checks a phase spec has exact required sections, metadata, RPD fields, and non-placeholder content
+- `scripts/test.sh` — public package regression suite for install layout, privacy scan, phase validation, and repo-state audit guards
 
 ## Templates
 
 - `templates/ROADMAP.md` — phase plan with dependencies
 - `templates/STATE.md` — live progress file
+- `templates/RESEARCH.md` — research-before-design record schema
 - `templates/phase-goal.txt` — phase spec skeleton (work, criteria, evidence, mandatory commands)
 - `templates/PROTOCOL.md` — phase execution loop, failure recovery, memory writeback (copied to `.supergoal/PROTOCOL.md` at dispatch)

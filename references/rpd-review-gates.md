@@ -1,6 +1,6 @@
 # Embedded RPD review gates
 
-Chip Supergoal is independent from any external `/rpd` skill. It embeds the review pattern directly so the planner and generated `/goal` protocol work after a plain skill install.
+chip-supergoal is independent from any external `/rpd` skill. It embeds the review pattern directly so the planner and generated `/goal` protocol work after a plain skill install.
 
 ## Core contract
 

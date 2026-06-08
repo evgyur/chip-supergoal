@@ -73,7 +73,7 @@ For each `**Deliverables:**` bullet that names a path/glob:
 bash .supergoal/repo-state.sh deliverable "$(baseline)" "<path>"
 ```
 
-`missing` (exit 1) → `AUDIT_GAP: phase <N> deliverable "<bullet>" not present in working tree or diff`.
+`missing`/`deleted` (exit 1), `invalid baseline` (exit 2), or `unchanged pre-existing` (exit 3) → `AUDIT_GAP: phase <N> deliverable "<bullet>" not proven as delivered by this run`, unless the roadmap explicitly marks that deliverable as pre-existing / verification-only.
 
 ### Per-phase cleanliness check
 
