@@ -29,7 +29,7 @@ If a phase can't be measured, it isn't a phase. Rewrite it until it can.
 0. **Available context** — preload memory; detect available tools (Context7, WebSearch, MCPs, skills); resume any in-progress Chip Supergoal state
 1. **Intake** — restate, classify, ask enough questions to cover every material gap. Greenfield walks the full category checklist (platform, stack, design direction, integrations, scope, audience, perf, data model) in batches of up to 4 until everything material is filled in; brownfield asks 0–2 since recon answers most structural questions.
 2. **Recon** — parallel codebase + environment scan
-3. **Research-before-design** — if research is required, load/use skill `perplex` first when available; run fresh-docs and existing-solutions gates; then list top-3 risks + dependencies
+3. **Research-before-design + Architect+ lite** — if research is required, load/use skill `perplex` first when available; run fresh-docs/existing-solutions gates; for substantial risky plans add source-of-truth, permissions, failure modes, and verification strategy; then list top-3 risks + dependencies
 4. **Decompose** — derive phase count from the task itself; no fixed cap
 5. **Write phase specs** — one work-spec file per phase under `.supergoal/phases/phase-N.md` (any length, no char budget)
 6. **Embedded RPD plan review** — run RPD_PLAN_REVIEW, mutate weak specs in place, then show summary + concrete revision menu; wait for explicit go/no-go
@@ -230,6 +230,21 @@ Do not collapse this into “use any Perplexity backend.” The trigger is the i
 
 ---
 
+## Architect+ lite gate
+
+For large, architecture-affecting, agent-native, security-sensitive, or production-facing plans, add an Architect+ lite block before decomposition. Do not drag in a full formal-contract system for small work; use this only when the plan would otherwise be easy to execute incorrectly.
+
+Architect+ lite requires:
+
+- **Source-of-truth boundary** — what owns truth, what is derived/cache/view state, and what must not become a second source of truth.
+- **Permission matrix** — human, service, admin, and agent roles; what each can read/write/execute.
+- **Failure-mode matrix** — top failure modes mapped to continue/degraded/fail-closed/human-gate behavior.
+- **Verification strategy** — commands, tests, probes, smoke checks, logs, screenshots, or API checks that prove the riskiest behavior before implementation is considered done.
+
+Write the result into `THINKING.md` and summarize it in `ROADMAP.md` / Stage 6 when applicable. If skipped, record a narrow reason.
+
+---
+
 ## Embedded RPD review system
 
 Chip Supergoal is independent from any external `/rpd` skill. Do not load or invoke another RPD skill to run this workflow. Use the embedded contract in `references/rpd-review-gates.md`.
@@ -358,6 +373,19 @@ Print a scannable summary in this exact shape:
 
 ```
 ✓ Plan ready for review. <N> phases.
+
+Decision:
+  - <selected direction>
+Why this path:
+  - <why this beats alternatives>
+Non-goals:
+  - <what is explicitly out of scope>
+Build-vs-buy:
+  - <buy|wrap|fork|copy_pattern|build_fresh|defer + rationale, or skipped with reason>
+Research evidence:
+  - <skill perplex / docs / GitHub / source evidence, or skipped with reason>
+Architect+ lite:
+  - <source-of-truth / permission / failure-mode / verification summary, or skipped with reason>
 
 Applied from memory:
   - <memory hit 1>
@@ -611,7 +639,7 @@ A successful `/chip-supergoal` planning run produces:
 
 - `.supergoal/THINKING.md` with goals, constraints, risks, dependencies, applied memory, available tools, and `RPD_PLAN_REVIEW`.
 - `.supergoal/RESEARCH.md` when research is required, recording skill `perplex` usage, queries, sources, existing-solution candidates, build-vs-buy verdict, planning implications, and unverified assumptions.
-- `.supergoal/ROADMAP.md` with phases, dependencies, assumptions, mandatory commands, and risky-phase/RPD gate summary.
+- `.supergoal/ROADMAP.md` with decision, why this path, non-goals, build-vs-buy verdict, research evidence, Architect+ lite summary when applicable, phases, dependencies, assumptions, mandatory commands, and risky-phase/RPD gate summary.
 - `.supergoal/STATE.md` initialized for the future `/goal` session.
 - `.supergoal/phases/phase-N.md` files with falsifiable criteria, mandatory commands, evidence requirements, dependencies, and `RPD required` / `RPD focus` metadata.
 - `.supergoal/PROTOCOL.md` copied from `templates/PROTOCOL.md`, including embedded `RPD_PHASE_REVIEW` and `RPD_FINAL_REVIEW` gates for the future `/goal` runner.
@@ -624,6 +652,7 @@ The skill itself is plan-only. It must not claim that execution completed; only 
 - [ ] `skill_view("chip-supergoal")` loads this skill and shows `references/rpd-review-gates.md`.
 - [ ] A generated phase spec validates with `scripts/validate-phase.sh` and includes `RPD required:` plus `RPD focus:`.
 - [ ] Stage 3 loads/uses skill `perplex` first when available for current research; generic `web_search` is only fallback.
+- [ ] Stage 6 summary includes Decision / Why this path / Non-goals / Build-vs-buy / Research evidence / Architect+ lite.
 - [ ] Stage 6 summary includes an `RPD_PLAN_REVIEW` block, not the old self-critique-only block.
 - [ ] `.supergoal/PROTOCOL.md` includes `RPD_PHASE_REVIEW` and `RPD_FINAL_REVIEW` without requiring any external `/rpd` skill.
 - [ ] Public package scan finds no secrets, credentials, chat IDs, local runtime state, or private infrastructure details.
@@ -635,6 +664,7 @@ The skill itself is plan-only. It must not claim that execution completed; only 
 - [ ] RPD behavior is embedded in this package via `references/rpd-review-gates.md` and `templates/PROTOCOL.md`.
 - [ ] `SKILL.md` does not require loading `chip/rpd`, `/rpd`, or any private operator skill.
 - [ ] All phase specs contain measurable acceptance criteria, mandatory commands, evidence requirements, and RPD metadata.
+- [ ] Substantial/risky plans include source-of-truth boundary, permission matrix, failure-mode matrix, and verification strategy, or a narrow skip reason.
 - [ ] Plan review mutates weak specs or records `checked-holds` with evidence.
 - [ ] Public repo contents are sanitized and installable as a standalone Hermes skill.
 
@@ -642,6 +672,7 @@ The skill itself is plan-only. It must not claim that execution completed; only 
 
 ## Reference files
 
+- `references/architect-plus-lite.md` — lightweight contract-first planning gate for substantial/risky plans
 - `references/research-before-design.md` — research-before-design gate with skill `perplex` priority, RESEARCH.md schema, and existing-solutions gate
 - `references/rpd-review-gates.md` — embedded RPD mutation-gate contract used by plan review and generated `/goal` protocol
 - `references/planning-depth.md` — what makes a plan deep enough to deserve "Super"

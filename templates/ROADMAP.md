@@ -1,4 +1,12 @@
 # Roadmap: {{TASK_TITLE}}
+## Decision package
+
+- **Decision:** <selected direction>
+- **Why this path:** <why this beats alternatives>
+- **Non-goals:** <explicit exclusions>
+- **Build-vs-buy:** <buy|wrap|fork|copy_pattern|build_fresh|defer + rationale, or skipped with reason>
+- **Research evidence:** <skill perplex / docs / GitHub / source evidence, or skipped with reason>
+- **Architect+ lite:** <source-of-truth / permission / failure-mode / verification summary, or skipped with reason>
 
 **Task:** {{ONE_LINE_TASK}}
 **Type:** {{TAGS}}
