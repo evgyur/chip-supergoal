@@ -1,6 +1,11 @@
 # chip-supergoal
 
-Public-safe Hermes skill for plan-only autonomous software delivery planning.
+Public-safe skill for plan-only autonomous software delivery planning.
+
+## Modes
+
+- **Hermes mode** is the original behavior: write `.supergoal/*`, then print a client-safe `/goal` handoff for a Hermes/Claude-style slash-command host.
+- **Codex mode** writes the same `.supergoal/*` artifacts, then starts or hands off to Codex's built-in goal mechanism. The Codex execution protocol requires coding phases to run through `shaw`.
 
 `chip-supergoal` writes:
 - `.supergoal/THINKING.md`
@@ -9,7 +14,7 @@ Public-safe Hermes skill for plan-only autonomous software delivery planning.
 - `.supergoal/STATE.md`
 - `.supergoal/phases/phase-N.md`
 - `.supergoal/PROTOCOL.md`
-- one CLI/client-safe `/goal` handoff
+- one mode-appropriate goal handoff
 
 The skill is independent from `/rpd`: the RPD review pattern is embedded directly in `references/rpd-review-gates.md` and in the generated execution protocol.
 
@@ -31,7 +36,7 @@ Then reload skills if your runtime caches slash commands.
 /chip-supergoal Build or refactor X end-to-end
 ```
 
-The skill does not execute the project work itself. It creates the plan and prints a `/goal` handoff. The future `/goal` session executes from the generated files.
+The skill does not execute the project work itself. It creates the plan and dispatches by mode: Hermes prints a `/goal` handoff; Codex uses the built-in goal path when explicitly authorized, with `shaw` governing coding work.
 
 ## Verify
 

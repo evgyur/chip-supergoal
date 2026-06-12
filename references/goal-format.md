@@ -1,8 +1,13 @@
-# `/goal` format reference
+# Goal format reference
 
-## What `/goal` actually is
+## Modes
 
-`/goal <end-state condition>` is a host slash command available in both Claude Code and Codex (Codex CLI). It is **not** a task description. It is a **measurable end-state condition** that a fast evaluator checks against the transcript after each agent turn. The agent keeps working — running tools, editing files — until the condition holds, at which point control returns to the user.
+- **Hermes mode:** the original behavior. The user starts a host slash-command goal with `/goal <end-state condition>`.
+- **Codex mode:** the Codex agent starts or receives an equivalent built-in goal objective. It does not require slash-command paste UX, and coding phases must use `shaw`.
+
+## What a goal condition actually is
+
+`/goal <end-state condition>` in Hermes mode, and Codex's built-in goal objective in Codex mode, are **not** task descriptions. They are **measurable end-state conditions** that a fast evaluator checks against the transcript after each agent turn. The agent keeps working — running tools, editing files — until the condition holds, at which point control returns to the user.
 
 Key implications:
 
@@ -12,9 +17,12 @@ Key implications:
    - **Claude Code**: a small fast model (Haiku) checks the condition each turn; "no" → continue with the reason as guidance; "yes" → clear goal, return control.
    - **Codex**: auto-continuation loop drives the goal to terminal status (complete / budget_limited / paused / cleared). Five subcommands: `/goal <objective>`, `/goal` (status), `/goal pause`, `/goal resume`, `/goal clear`.
 
-## Supergoal's single-`/goal` shape
+## Supergoal's single-goal shape
 
-Supergoal uses **one** `/goal` per run, dispatched by the **user** at the end of Stage 7. Slash commands fire only from user input on both Claude Code and Codex — the planner cannot fire `/goal` from its own message text. Stage 7's job is to write all phase specs to disk, then print a copy-paste-ready `/goal` block. The user pastes once; from there, the run is autonomous.
+Supergoal uses **one** goal per run. Stage 7 writes all phase specs to disk, then dispatches by mode:
+
+- Hermes mode prints a copy-paste-safe `/goal` handoff because slash commands fire only from user input.
+- Codex mode calls the built-in goal mechanism only after explicit user authorization. If the tool is unavailable or not authorized, it prints `CODEX_GOAL_OBJECTIVE:` instead of pretending the goal started.
 
 The condition is:
 
@@ -36,7 +44,7 @@ SUPERGOAL_RUN_COMPLETE, and no FAILURE_HANDOFF or AUDIT_HANDOFF
 this run.
 ```
 
-This works on both hosts. There is no per-phase `/goal` dispatch and no inter-session chain — once active, a single `/goal` session reads PROTOCOL.md, loops through every phase spec, runs the final audit, and only completes when the audit is clean.
+This works on both hosts. There is no per-phase goal dispatch and no inter-session chain — once active, a single goal session reads PROTOCOL.md, loops through every phase spec, runs the final audit, and only completes when the audit is clean.
 
 ## Required transcript blocks (Supergoal-specific)
 
@@ -209,7 +217,7 @@ STATE.md updated to BLOCKED. User intervention required.
 
 ## Anti-patterns
 
-- **Don't stuff long task content into the `/goal` argument.** Use a short condition; put work in files.
+- **Don't stuff long task content into the goal objective.** Use a short condition; put work in files.
 - **Don't make conditions the evaluator can't verify from the transcript.** "Tests pass" is wrong (evaluator can't run tests); "`SUPERGOAL_PHASE_DONE` printed for all phases" is right.
-- **Don't chain `/goal` commands across sessions.** One run = one `/goal`. The agent loops internally inside that session.
+- **Don't chain goal commands across sessions.** One run = one goal. The agent loops internally inside that session.
 - **Don't skip evidence to save space.** Files have no char budget — be exhaustive.

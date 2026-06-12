@@ -267,6 +267,14 @@ if grep -Eq '/(home|Users|tmp|opt|var|private|mnt|Volumes)/' /tmp/detect-env.out
 fi
 pass "detect-env minimal env"
 
+grep -q 'Hermes mode' README.md || fail "README missing Hermes mode"
+grep -q 'Codex mode' README.md || fail "README missing Codex mode"
+grep -q 'CODEX_GOAL_OBJECTIVE' SKILL.md || fail "SKILL missing Codex fallback objective"
+grep -q 'built-in goal mechanism' SKILL.md || fail "SKILL missing Codex built-in goal handoff"
+grep -q 'load/use the `shaw` skill' templates/PROTOCOL.md || fail "PROTOCOL missing Codex Shaw rule"
+grep -q 'Codex mode' references/goal-format.md || fail "goal-format missing Codex mode"
+pass "mode docs and Codex Shaw contract"
+
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git diff --check
   pass "git diff --check"

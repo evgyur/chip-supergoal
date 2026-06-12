@@ -1,6 +1,7 @@
 # State: {{TASK_TITLE}}
 
 **Status:** PLANNING → IN_PROGRESS → COMPLETE
+**Execution mode:** {{MODE}}
 **Current phase:** —
 **Started:** {{DATE}}
 **Last update:** {{DATE}}

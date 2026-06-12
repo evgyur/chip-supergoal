@@ -1,6 +1,13 @@
 # chip-supergoal execution protocol
 
-This file is read by the executing agent at the start of the single `/goal` session and followed throughout. It is the operating manual for the autonomous run.
+This file is read by the executing agent at the start of the single goal session and followed throughout. It is the operating manual for the autonomous run.
+
+## Execution mode
+
+Read `.supergoal/mode.md` if present; otherwise read `Execution mode:` from `.supergoal/STATE.md`. Default to `hermes` when neither exists.
+
+- **Hermes mode:** execute the phase loop directly inside the host `/goal` session.
+- **Codex mode:** execute the same phase loop inside Codex's built-in goal session. Before any coding, refactor, debugging, production verification, or behavior-changing phase, load/use the `shaw` skill. Apply Shaw Core at phase start: state `goal`, `assumptions`, `simplest_path`, and `verify`; then implement the smallest viable phase change and collect verification evidence before `SUPERGOAL_PHASE_VERIFY`.
 
 ## The loop
 
@@ -16,7 +23,7 @@ Repeat until `SUPERGOAL_RUN_COMPLETE` is printed:
 7. Print `SUPERGOAL_PHASE_DONE`. Update `STATE.md`: mark phase N completed; set `Current phase: N+1`; bump `Last update` timestamp; append a one-line event.
 8. **User-interrupt check.** If a user message has arrived since the last turn, pause; address the message; ask before resuming.
 9. If N < total phases: continue with phase N+1 (back to step 1).
-10. If N == total: do **not** print `SUPERGOAL_RUN_COMPLETE` yet. Run the **Final audit** below. Only after `AUDIT_COMPLETE`, print `SUPERGOAL_RUN_COMPLETE` with a 5-line summary. The `/goal` condition is satisfied at that point.
+10. If N == total: do **not** print `SUPERGOAL_RUN_COMPLETE` yet. Run the **Final audit** below. Only after `AUDIT_COMPLETE`, print `SUPERGOAL_RUN_COMPLETE` with a 5-line summary. The goal condition is satisfied at that point.
 
 ## Embedded RPD gates
 
@@ -86,7 +93,7 @@ Per-phase VERIFY blocks are self-reports. The audit closes that loophole by re-v
 
 1. Print `AUDIT_GAPS` with the list.
 2. Write `.supergoal/phases/audit-fix-<round>.md` — a focused fix spec that targets only the failing criteria. Forbid scope creep. Use the affected phases' original VERIFY as the success gate.
-3. Execute the fix spec inline (same agent, same `/goal`, same per-criterion 3-strike protocol from regular phases).
+3. Execute the fix spec inline (same agent, same goal session, same per-criterion 3-strike protocol from regular phases).
 4. On fix success: loop back to step 1 of the audit (round + 1).
 5. On 3rd round's audit failure: print `AUDIT_HANDOFF` (full gap history, suggested next move), update `STATE.md` to `BLOCKED`, stop. Do **not** print `SUPERGOAL_RUN_COMPLETE`.
 
@@ -111,7 +118,7 @@ Per-phase VERIFY blocks are self-reports. The audit closes that loophole by re-v
    - Targets only the failing criterion.
    - Forbids scope creep ("do not touch unrelated files").
    - Ends with the original phase's VERIFY block as the success gate.
-3. Execute the fix spec inline (same agent, same `/goal` — no new dispatch).
+3. Execute the fix spec inline (same agent, same goal session — no new dispatch).
 4. On fix success: re-run the original phase's VERIFY; on pass, advance to N+1.
 5. On fix failure: proceed to third-failure handling.
 
@@ -119,7 +126,7 @@ Per-phase VERIFY blocks are self-reports. The audit closes that loophole by re-v
 
 1. Print `FAILURE_HANDOFF`: failing criterion, full probe history (three attempts), suggested next move.
 2. Update `STATE.md`: `Status: BLOCKED`.
-3. Stop attempting. The user takes the wheel. The `/goal` condition will not be satisfied; surface the handoff clearly so the host evaluator and user both see it.
+3. Stop attempting. The user takes the wheel. The goal condition will not be satisfied; surface the handoff clearly so the host evaluator and user both see it.
 
 ## Mid-run interruption
 

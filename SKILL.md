@@ -1,6 +1,6 @@
 ---
 name: chip-supergoal
-description: Plan-only autonomous software task planner that writes ROADMAP, phase specs, protocol, and one `/goal` handoff. Embeds RPD review gates directly; does not depend on an external `/rpd` skill. Use for `/chip-supergoal`, “plan and ship X”, autonomous build planning, or non-trivial feature/refactor/redesign that should be handed off to `/goal` for execution.
+description: Use for `/chip-supergoal`, autonomous build planning, non-trivial feature/refactor/redesign work, or tasks that need a ROADMAP, phase specs, protocol, and a mode-aware goal handoff for Hermes or Codex.
 argument-hint: <describe what you want built, fixed, or shipped>
 ---
 
@@ -10,7 +10,7 @@ You are running the chip-supergoal workflow. The user's task is:
 
 $ARGUMENTS
 
-Your job: **plan deeply, write execution artifacts, and hand off one `/goal`**. `/chip-supergoal` is plan-only; the future `/goal` session performs execution from the generated files.
+Your job: **plan deeply, write execution artifacts, and hand off one goal run**. `/chip-supergoal` is plan-only; the future goal session performs execution from the generated files.
 
 ## What "every aspect is perfect" means here
 
@@ -33,13 +33,21 @@ If a phase can't be measured, it isn't a phase. Rewrite it until it can.
 4. **Decompose** — derive phase count from the task itself; no fixed cap
 5. **Write phase specs** — one work-spec file per phase under `.supergoal/phases/phase-N.md` (any length, no char budget)
 6. **Embedded RPD plan review** — run RPD_PLAN_REVIEW, mutate weak specs in place, then show summary + concrete revision menu; wait for explicit go/no-go
-7. **Hand off one ready-to-paste `/goal`** with a short end-state condition; the user pastes once, and the agent inside that fresh `/goal` session executes phases sequentially with retry + fix-spec recovery + per-phase memory writeback, then runs a **final audit** that re-verifies the work against the original ROADMAP and self-heals any gaps before completion holds
+7. **Hand off one mode-aware goal run** with a short end-state condition. Hermes mode prints a ready-to-paste `/goal`; Codex mode uses the built-in goal mechanism when explicitly authorized. The agent inside that goal session executes phases sequentially with retry + fix-spec recovery + per-phase memory writeback, then runs a **final audit** that re-verifies the work against the original ROADMAP and self-heals any gaps before completion holds.
 
 Two human gates only: **clarifying questions for true gaps (Stage 1)** and **plan review (Stage 6)**. Everything else runs autonomously.
 
-### Why one `/goal`, not a chain
+### Execution modes
 
-`/goal` in both Claude Code and Codex takes a **short end-state condition**, not a long task body. A fast evaluator checks the condition against the transcript after each turn and auto-continues until it holds. chip-supergoal leverages this directly: one `/goal` covers the whole run; phase work lives in files the agent reads from disk; the condition is "all phases done, `SUPERGOAL_RUN_COMPLETE` printed." No char budget, no inter-session chain dispatch, no fragility.
+**Hermes mode** is the current/original behavior. Use it when running under Hermes, Claude Code, or another slash-command host where only the user can trigger `/goal`. Stage 7 prints `SUPERGOAL_GOAL_BODY:` plus a `/goal "..."` fallback.
+
+**Codex mode** is for Codex agents with a built-in goal tool. Use it when the user asks for Codex mode, when the active runtime exposes a built-in goal mechanism, or when the operator explicitly says to run this through Codex goal. Codex mode must not ask the user to paste `/goal`; after explicit "Start Codex goal" approval, call the built-in goal mechanism with the same short objective. If policy or host capabilities prevent tool dispatch, print `CODEX_GOAL_OBJECTIVE:` and ask the user to authorize/start it.
+
+In Codex mode, every coding/refactor/debug phase must be executed through `shaw`: load/use the `shaw` skill at phase start, apply Shaw Core (`goal`, `assumptions`, `simplest_path`, `verify`), and run phase work as a Shaw implementation chunk before printing `SUPERGOAL_PHASE_VERIFY`.
+
+### Why one goal, not a chain
+
+Both host `/goal` commands and Codex's built-in goal mechanism take a **short end-state condition**, not a long task body. A fast evaluator checks the condition against the transcript after each turn and auto-continues until it holds. chip-supergoal leverages this directly: one goal covers the whole run; phase work lives in files the agent reads from disk; the condition is "all phases done, `SUPERGOAL_RUN_COMPLETE` printed." No char budget, no inter-session chain dispatch, no fragility.
 
 ## Locate the skill directory
 
@@ -95,6 +103,8 @@ Tools differ between sessions and hosts (Claude Code vs Codex, different MCP ser
 - **Context7** — available if `mcp__claude_ai_Context7__resolve-library-id` or similar is in the tool list. If absent, skip it; rely on training-cutoff knowledge + WebSearch if that's present.
 - **WebSearch / WebFetch** — available if listed. If neither, skip web research.
 - **Project skills** — check the available-skills list for domain-relevant skills (e.g. `mobile-ios-design`, `clerk-auth`, `expo-dev-client`) and note them in `$SUPERGOAL_ROOT/applied-skills.md` to invoke from inside phase goals if relevant.
+- **Execution mode** — record `hermes` or `codex` in `$SUPERGOAL_ROOT/mode.md`. Use `codex` when the user requested Codex mode or the built-in goal tool is available and the user explicitly authorizes goal startup. Otherwise use `hermes`.
+- **Shaw availability** — in Codex mode, confirm the `shaw` skill is available and write it to `$SUPERGOAL_ROOT/applied-skills.md` as required for coding phases. If absent, mark the plan `blocked-needs-user-input` unless the task has no coding phases.
 - **Prior chip-supergoal state** — if `$SUPERGOAL_ROOT/STATE.md` exists from a previous run, read it; resume rather than restart.
 
 Write detected tools to `$SUPERGOAL_ROOT/tools.md`. Stage 3 and the phase goals reference this file when deciding what to invoke.
@@ -476,9 +486,13 @@ When pre-flight is red on an owned baseline problem inside the requested surface
 
 ---
 
-## Stage 7 — Hand off the `/goal` dispatch (one paste)
+## Stage 7 — Hand off the goal dispatch
 
-Slash commands on both Claude Code and Codex fire **only from user input** — agent message text is never parsed as a command. So Stage 7 is not an automatic dispatch; it's an honest one-paste handoff. After explicit "Start now" in Stage 6:
+Read `$SUPERGOAL_ROOT/mode.md` first. Default to `hermes` if the file is missing.
+
+### Hermes mode
+
+Slash commands in Hermes/Claude-style hosts fire **only from user input** — agent message text is never parsed as a command. So Hermes Stage 7 is not an automatic dispatch; it's an honest one-paste handoff. After explicit "Start now" in Stage 6:
 
 **Dispatch path discipline:** default to repo-relative `.supergoal/...` paths and tell the user to start `/goal` from the project root. Do not print absolute local paths by default because they can leak workstation or account details. If the current client cannot run from the project root and absolute paths are genuinely required, ask for explicit confirmation before emitting them, then verify the target root exists and every phase spec validates.
 
@@ -507,11 +521,29 @@ Slash commands on both Claude Code and Codex fire **only from user input** — a
 
 9. **Stop.** Do not generate any further output. The chip-supergoal invocation ends here. The user's paste begins the autonomous run under a fresh `/goal` session, which reads `PROTOCOL.md`, `ROADMAP.md`, `STATE.md`, and the phase specs from disk and runs the loop documented in the next sections.
 
-Once `/goal` is active (you'll see the `◎ /goal active` indicator on Claude Code), the per-turn evaluator keeps the agent working until the end-state condition holds. On Codex, the auto-continuation loop does the same. The agent inside the `/goal` session has zero special context from the chip-supergoal invocation; everything it needs is in the files on disk — by design.
+Once `/goal` is active (you'll see the `◎ /goal active` indicator on Claude Code), the per-turn evaluator keeps the agent working until the end-state condition holds. The agent inside the `/goal` session has zero special context from the chip-supergoal invocation; everything it needs is in the files on disk — by design.
+
+### Codex mode
+
+Codex mode uses the same Stage 7 artifact preparation steps 1-3 above, then dispatches through the built-in goal mechanism instead of slash-command paste UX.
+
+4. Copy `templates/PROTOCOL.md` to `.supergoal/PROTOCOL.md` and ensure it contains the Codex/Shaw execution rule: coding phases use `shaw` before implementation.
+
+5. Build the goal objective from `references/goal-format.md` using repo-relative paths. The objective must end with the transcript-verifiable condition: `Done when SUPERGOAL_RUN_COMPLETE appears in the transcript with one SUPERGOAL_PHASE_DONE per phase, AUDIT_COMPLETE printed before SUPERGOAL_RUN_COMPLETE, and no FAILURE_HANDOFF or AUDIT_HANDOFF this run.`
+
+6. If the user explicitly approved starting the Codex goal in this turn or Stage 6 option text was exactly `Start Codex goal`, call the built-in goal tool with that objective. Do not print `/goal`.
+
+7. If the built-in goal tool is unavailable, blocked by host policy, or not explicitly authorized, print:
+
+   `CODEX_GOAL_OBJECTIVE: <objective>`
+
+   Then ask the user to authorize/start the Codex goal. Do not fall back to Hermes `/goal` unless the user requests Hermes mode.
+
+8. After the goal starts, continue in the active Codex goal session. Read `STATE.md`, use `shaw` for coding phases, and emit the required `SUPERGOAL_PHASE_VERIFY`, `SUPERGOAL_PHASE_DONE`, `AUDIT_COMPLETE`, and `SUPERGOAL_RUN_COMPLETE` markers when earned.
 
 ---
 
-## Phase execution loop (inside the single `/goal` session)
+## Phase execution loop (inside the single goal session)
 
 The agent's loop, repeated until `SUPERGOAL_RUN_COMPLETE`:
 
@@ -607,7 +639,7 @@ Write the memory file under the detected MEM_DIR using the standard `name` / `de
 
 ## Operating principles (read every run)
 
-- **One `/goal`, short condition.** `/goal` takes an end-state, not a task body. Long content lives in files the agent reads from disk. This is the natural shape on both Claude Code and Codex.
+- **One goal, short condition.** Hermes `/goal` and Codex's built-in goal mechanism both take an end-state, not a task body. Long content lives in files the agent reads from disk.
 - **Frictionless is the goal.** Memory + prompt + recon should answer most questions. Zero clarifying questions on well-described tasks is a win.
 - **Adapt to available tools.** Detect what's there (Context7, WebSearch, MCPs, skills). Use what's available; degrade gracefully without it. Never hard-require a tool that might not be present.
 - **Memory is load-bearing.** Preload at Stage 0, surface as "Applied from memory: …" in Stage 1, write back at every phase boundary.
@@ -620,11 +652,19 @@ Write the memory file under the detected MEM_DIR using the standard `name` / `de
 
 ---
 
-## Hermes compatibility notes
+## Mode Compatibility Notes
+
+### Hermes mode
 
 - **Skill directory detection:** if the standard Claude/Codex snippet cannot find the skill directory, include the Hermes-native path too: `$HOME/.hermes/skills/chip-supergoal/SKILL.md`. The skill is multi-file; a single raw `SKILL.md` install is not enough.
 - **Pre-flight interpretation:** chip-supergoal pre-flight can be red because a phase deliberately creates files referenced by later mandatory commands (for example a new `rentals-admin.test.ts` that Phase 1 will create). Classify these as expected phase-created-file failures, not baseline blockers. Separate them from unrelated baseline failures such as an existing TypeScript error elsewhere.
 - **Baseline red handling:** if baseline is red on unrelated files, offer the user two concrete choices: add a Phase 0 to fix the baseline, or dispatch anyway and require later phases/final audit to prove the failure is pre-existing and unrelated. Do not silently start after a red pre-flight.
+
+### Codex mode
+
+- **Built-in goal authorization:** Codex's goal tool may only be started when the user explicitly asks for it or approves it. If approval is unclear, print `CODEX_GOAL_OBJECTIVE:` and ask for authorization.
+- **No slash-command paste UX:** Codex mode must not tell the user to reply with `/goal`. Use the built-in goal path, or emit `CODEX_GOAL_OBJECTIVE:` when blocked.
+- **Shaw coding contract:** every phase that writes code, changes behavior, debugs, refactors, or verifies production behavior must load/use `shaw` before implementation. Documentation-only phases may use Shaw Core without the full staged machinery.
 
 ## When to deviate from the workflow
 
@@ -641,10 +681,11 @@ A successful `/chip-supergoal` planning run produces:
 - `.supergoal/THINKING.md` with goals, constraints, risks, dependencies, applied memory, available tools, and `RPD_PLAN_REVIEW`.
 - `.supergoal/RESEARCH.md` when research is required, recording skill `perplex` usage, queries, sources, existing-solution candidates, build-vs-buy verdict, planning implications, and unverified assumptions.
 - `.supergoal/ROADMAP.md` with decision, why this path, non-goals, build-vs-buy verdict, research evidence, Architect+ lite summary when applicable, phases, dependencies, assumptions, mandatory commands, and risky-phase/RPD gate summary.
-- `.supergoal/STATE.md` initialized for the future `/goal` session.
+- `.supergoal/mode.md` with `hermes` or `codex`.
+- `.supergoal/STATE.md` initialized for the future goal session, including the selected execution mode.
 - `.supergoal/phases/phase-N.md` files with falsifiable criteria, mandatory commands, evidence requirements, dependencies, and `RPD required` / `RPD focus` metadata.
-- `.supergoal/PROTOCOL.md` copied from `templates/PROTOCOL.md`, including embedded `RPD_PHASE_REVIEW` and `RPD_FINAL_REVIEW` gates for the future `/goal` runner.
-- A CLI/client-safe `/goal` handoff using the `SUPERGOAL_GOAL_BODY:` reply shortcut when available.
+- `.supergoal/PROTOCOL.md` copied from `templates/PROTOCOL.md`, including embedded `RPD_PHASE_REVIEW`, `RPD_FINAL_REVIEW`, and Codex/Shaw execution rules for the future goal runner.
+- A mode-appropriate goal handoff: Hermes prints `SUPERGOAL_GOAL_BODY:` / `/goal`; Codex starts the built-in goal when explicitly authorized or prints `CODEX_GOAL_OBJECTIVE:`.
 
 The skill itself is plan-only. It must not claim that execution completed; only the later `/goal` session can earn `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`.
 
@@ -655,9 +696,9 @@ The skill itself is plan-only. It must not claim that execution completed; only 
 - [ ] Stage 3 loads/uses skill `perplex` first when available for current research; generic `web_search` is only fallback.
 - [ ] Stage 6 summary includes Decision / Why this path / Non-goals / Build-vs-buy / Research evidence / Architect+ lite.
 - [ ] Stage 6 summary includes an `RPD_PLAN_REVIEW` block, not the old self-critique-only block.
-- [ ] `.supergoal/PROTOCOL.md` includes `RPD_PHASE_REVIEW` and `RPD_FINAL_REVIEW` without requiring any external `/rpd` skill.
+- [ ] `.supergoal/PROTOCOL.md` includes `RPD_PHASE_REVIEW`, `RPD_FINAL_REVIEW`, and the Codex/Shaw coding rule without requiring any external `/rpd` skill.
 - [ ] Public package scan finds no secrets, credentials, chat IDs, local runtime state, or private infrastructure details.
-- [ ] The handoff remains plan-only: `/chip-supergoal` prints a `/goal` body; it does not execute project phases itself.
+- [ ] The handoff remains plan-only: Hermes prints a `/goal` body; Codex starts only the built-in goal objective when explicitly authorized; neither mode executes project phases during planning.
 
 ## Done Criteria
 
@@ -667,7 +708,7 @@ The skill itself is plan-only. It must not claim that execution completed; only 
 - [ ] All phase specs contain measurable acceptance criteria, mandatory commands, evidence requirements, and RPD metadata.
 - [ ] Substantial/risky plans include source-of-truth boundary, permission matrix, failure-mode matrix, and verification strategy, or a narrow skip reason.
 - [ ] Plan review mutates weak specs or records `checked-holds` with evidence.
-- [ ] Public repo contents are sanitized and installable as a standalone Hermes skill.
+- [ ] Public repo contents are sanitized and installable as a standalone skill.
 
 ---
 
