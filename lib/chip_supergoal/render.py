@@ -127,13 +127,26 @@ Delivery state: not requested
 def render_launch_goal(contract: Contract) -> str:
     marker = "SUPERGOAL" + "_GOAL_BODY:"
     package_root = "this generated SuperGoal package root (the directory containing LAUNCH_GOAL.md)"
+    approval_scopes = "; ".join(
+        f"{a.class_name}: {a.scope}" for a in contract.approvals if a.required
+    )
+    approval_clause = (
+        f" Contract-required approval scopes: {approval_scopes}."
+        if approval_scopes
+        else ""
+    )
     body = (
         f"{marker} From the project root `{contract.goal.workspace_root}`, execute {package_root}. "
-        "Read `PROTOCOL.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and `phases/phase-*.md` from that package root. "
+        "Read `PROTOCOL.md`, `THINKING.md`, `RESEARCH.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and `phases/phase-*.md` from that package root. "
+        "Before phase 1, run available package preflight: `python scripts/sgctl.py validate-package <package-root>` when the source CLI is available, plus package-local validation scripts such as `scripts/validate-loop-design.sh` and `scripts/validate-phase.sh` when present. Fix preflight failures before implementation unless the user explicitly bypassed them. "
         f"Goal ID `{contract.goal.id}`. "
         "Start from STATE.md current phase, continue through numbered phases, run the final audit, and finish only after "
         "AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE appear in the same final response with Goal complete: yes. "
-        "Preserve the planner/compiler boundary: do not create a production runner or nested /goal; standard Hermes /goal remains the executor."
+        "If review-file delivery is required and no valid receipt exists, print `SUPERGOAL_REVIEW_FILES_BLOCKED` with the missing receipt/artifact and stop. "
+        "Do not mutate live production, DNS, secrets, grants, payment rails, destructive migrations, or public/mass-send channels without a bounded approval manifest naming the exact target, action, verification, and rollback. "
+        f"{approval_clause} "
+        "Preserve the planner/compiler boundary: do not create a production runner or nested /goal; standard Hermes /goal remains the executor. "
+        "Dispatch status: continue until final audit passes or a real safety/approval blocker is printed."
     )
     return f"# LAUNCH_GOAL — {contract.goal.title}\n\n{body}\n"
 
