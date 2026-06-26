@@ -22,6 +22,13 @@ REQUIRED_LOOP_SECTIONS = [
 REQUIRED_PHASE_SECTIONS = ["Work", "Acceptance criteria", "Mandatory commands", "Evidence required"]
 
 
+def _default_protocol_text() -> str:
+    candidate = Path(__file__).resolve().parents[2] / "templates" / "PROTOCOL.md"
+    if candidate.is_file():
+        return candidate.read_text(encoding="utf-8")
+    return "# PROTOCOL\n\nAUDIT_COMPLETE\nSUPERGOAL_RUN_COMPLETE\n"
+
+
 def _diag(code: str, invariant_id: str, artifact: str, pointer: str, message: str, remediation: str, *, severity: str = "error", stage: str = "preflight") -> Diagnostic:
     return Diagnostic(code=code, severity=severity, blocking_stage=stage, invariant_id=invariant_id, artifact=artifact, pointer=pointer, message=message, remediation=remediation)
 
@@ -195,6 +202,7 @@ def _expected_generated_files(root: Path) -> tuple[dict[str, bytes], list[Diagno
         "ROADMAP.md": render_roadmap(contract).encode("utf-8"),
         "STATE.md": render_state(contract).encode("utf-8"),
         "LAUNCH_GOAL.md": render_launch_goal(contract).encode("utf-8"),
+        "PROTOCOL.md": _default_protocol_text().replace("\r\n", "\n").encode("utf-8"),
     }
     if research_required(contract) or research_gate(contract):
         expected["RESEARCH.md"] = render_research_markdown(contract).encode("utf-8")
@@ -263,7 +271,15 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
 
     records, manifest_diags = _manifest_records(r)
     diagnostics.extend(manifest_diags)
-    actual_files = sorted(p.relative_to(r).as_posix() for p in r.rglob("*") if p.is_file() and p.name != "MANIFEST.json" and "out" not in p.relative_to(r).parts)
+    actual_files = sorted(
+        p.relative_to(r).as_posix()
+        for p in r.rglob("*")
+        if p.is_file()
+        and p.name != "MANIFEST.json"
+        and "out" not in p.relative_to(r).parts
+        and "__pycache__" not in p.relative_to(r).parts
+        and p.suffix != ".pyc"
+    )
     if records:
         record_files = sorted(records)
         if actual_files != record_files:

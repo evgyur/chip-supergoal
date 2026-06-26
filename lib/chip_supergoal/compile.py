@@ -32,9 +32,42 @@ class CompileSafetyError(ValueError):
     pass
 
 
+def _default_protocol_template() -> Path | None:
+    candidate = Path(__file__).resolve().parents[2] / "templates" / "PROTOCOL.md"
+    return candidate if candidate.is_file() else None
+
+
+def _copy_helper_scripts(out_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    source_dir = root / "scripts"
+    if not source_dir.is_dir():
+        return
+    target_dir = out_path / "scripts"
+    for name in ("repo-state.sh", "sgctl.py", "validate-loop-design.sh", "validate-phase.sh"):
+        source = source_dir / name
+        if source.is_file():
+            _write(target_dir / name, source.read_text(encoding="utf-8"))
+    lib_source = root / "lib" / "chip_supergoal"
+    lib_target = out_path / "lib" / "chip_supergoal"
+    if lib_source.is_dir():
+        lib_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            lib_source,
+            lib_target,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+    protocol_template = root / "templates" / "PROTOCOL.md"
+    if protocol_template.is_file():
+        _write(out_path / "templates" / "PROTOCOL.md", protocol_template.read_text(encoding="utf-8"))
+    risk_policy = root / "spec" / "risk-policy.json"
+    if risk_policy.is_file():
+        _write(out_path / "spec" / "risk-policy.json", risk_policy.read_text(encoding="utf-8"))
+
+
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content.replace("\r\n", "\n"), encoding="utf-8")
+    with path.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write(content.replace("\r\n", "\n"))
 
 
 def file_sha256(path: Path) -> str:
@@ -116,10 +149,18 @@ def _render_package(contract: Contract, out_path: Path, *, template_protocol: st
     _write(out_path / "ROADMAP.md", render_roadmap(contract))
     _write(out_path / "STATE.md", render_state(contract))
     _write(out_path / "LAUNCH_GOAL.md", render_launch_goal(contract))
-    protocol_text = Path(template_protocol).read_text(encoding="utf-8") if template_protocol else "# PROTOCOL\n\nAUDIT_COMPLETE\nSUPERGOAL_RUN_COMPLETE\n"
+    default_protocol = _default_protocol_template()
+    protocol_text = (
+        Path(template_protocol).read_text(encoding="utf-8")
+        if template_protocol
+        else default_protocol.read_text(encoding="utf-8")
+        if default_protocol
+        else "# PROTOCOL\n\nAUDIT_COMPLETE\nSUPERGOAL_RUN_COMPLETE\n"
+    )
     _write(out_path / "PROTOCOL.md", protocol_text)
     for i in range(len(contract.phases)):
         _write(phases_dir / f"phase-{i+1:02d}.md", render_phase(contract, i))
+    _copy_helper_scripts(out_path)
     if research_required(contract) or research_gate(contract):
         write_research_report(contract, out_path / "reports" / "research.json")
     manifest = build_manifest(out_path)

@@ -46,7 +46,7 @@ class CompileDeterminismTest(unittest.TestCase):
                 "ROADMAP.md",
                 "STATE.md",
                 "phases/phase-*.md",
-                "python scripts/sgctl.py validate-package <package-root>",
+                "python scripts/sgctl.py validate-package .",
                 "scripts/validate-loop-design.sh",
                 "scripts/validate-phase.sh",
                 "SUPERGOAL_REVIEW_FILES_BLOCKED",

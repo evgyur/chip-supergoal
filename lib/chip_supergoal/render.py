@@ -128,7 +128,7 @@ def render_launch_goal(contract: Contract) -> str:
     marker = "SUPERGOAL" + "_GOAL_BODY:"
     package_root = "this generated SuperGoal package root (the directory containing LAUNCH_GOAL.md)"
     approval_scopes = "; ".join(
-        f"{a.class_name}: {a.scope}" for a in contract.approvals if a.required
+        f"{a.class_name}: {a.scope.rstrip('.')}" for a in contract.approvals if a.required
     )
     approval_clause = (
         f" Contract-required approval scopes: {approval_scopes}."
@@ -138,7 +138,7 @@ def render_launch_goal(contract: Contract) -> str:
     body = (
         f"{marker} From the project root `{contract.goal.workspace_root}`, execute {package_root}. "
         "Read `PROTOCOL.md`, `THINKING.md`, `RESEARCH.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and `phases/phase-*.md` from that package root. "
-        "Before phase 1, run available package preflight: `python scripts/sgctl.py validate-package <package-root>` when the source CLI is available, plus package-local validation scripts such as `scripts/validate-loop-design.sh` and `scripts/validate-phase.sh` when present. Fix preflight failures before implementation unless the user explicitly bypassed them. "
+        "Before phase 1, run available package preflight from the package root: `python scripts/sgctl.py validate-package .` when package-local `scripts/sgctl.py` exists, plus `scripts/validate-loop-design.sh` and `scripts/validate-phase.sh` when present. Fix preflight failures before implementation unless the user explicitly bypassed them. "
         f"Goal ID `{contract.goal.id}`. "
         "Start from STATE.md current phase, continue through numbered phases, run the final audit, and finish only after "
         "AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE appear in the same final response with Goal complete: yes. "
