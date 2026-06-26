@@ -14,7 +14,7 @@ Use when modifying the `chip-supergoal` skill package itself and publishing the 
    - lightweight secret scan on changed/untracked files
    - run `bash scripts/test.sh` when its privacy gate is green on `origin/main`; if it fails on the clean baseline because the private repo intentionally contains operator/product words, record that baseline failure, run all non-privacy test sections, and prove the patch with a changed-file privacy/secret scan instead of weakening the test in-place.
 4. Sync both private distribution surfaces when applicable:
-   - `human20team/chip-supergoal`
+   - `evgyur/chip-supergoal`
    - `human20team/hermes-agent-powerpack` nested path `skills/chip-supergoal/...`
 5. Verify push with remote HEAD equality (`git ls-remote ... refs/heads/main`) and, for new support files, verify GitHub contents path exists.
 
@@ -24,7 +24,7 @@ Do not push the installed/live package to a public repo unless it has been expli
 
 ## Submodule / nested-package pitfall
 
-Powerpack may carry `skills/chip-supergoal` as a nested package/gitlink-style surface. Update the nested files directly in the powerpack checkout and commit from the powerpack root. Do not assume pushing `human20team/chip-supergoal` alone updates the powerpack distribution.
+Powerpack may carry `skills/chip-supergoal` as a nested package/gitlink-style surface. Update the nested files directly in the powerpack checkout and commit from the powerpack root. Do not assume pushing `evgyur/chip-supergoal` alone updates the powerpack distribution.
 
 ## Reporting shape
 
