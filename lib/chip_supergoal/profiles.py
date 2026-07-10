@@ -233,9 +233,15 @@ def _public_profile(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def _locator_pattern(locator: str) -> re.Pattern[str]:
-    return re.compile(
-        rf"(?<![A-Za-z0-9_]){re.escape(locator)}(?![A-Za-z0-9_])"
+    starts_with_word = locator[0].isascii() and (
+        locator[0].isalnum() or locator[0] == "_"
     )
+    ends_with_word = locator[-1].isascii() and (
+        locator[-1].isalnum() or locator[-1] == "_"
+    )
+    prefix = r"(?<![A-Za-z0-9_])" if starts_with_word else ""
+    suffix = r"(?![A-Za-z0-9_])" if ends_with_word else ""
+    return re.compile(f"{prefix}{re.escape(locator)}{suffix}")
 
 
 def _contains_locator_token(value: str, locator: str) -> bool:

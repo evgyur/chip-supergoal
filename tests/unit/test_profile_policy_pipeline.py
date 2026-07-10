@@ -699,6 +699,90 @@ class ProfilePolicyPipelineTest(unittest.TestCase):
         self.assertEqual(resolved.contract.approvals[0].scope, "token_group")
         self.assertEqual(resolved.contract.source_set[0].locator, "[redacted]")
 
+    def test_public_clean_rejects_trailing_slash_path_in_command(self):
+        locator = "C:/private/"
+        data = self.fixture_data()
+        data["profile"] = "public-clean"
+        data["source_set"] = [
+            {
+                "id": "SRC-001",
+                "kind": "directory",
+                "locator": locator,
+                "authority": "operator",
+                "freshness": "current",
+                "sensitivity": "private",
+            }
+        ]
+        data["phases"][0]["commands"][0][
+            "command"
+        ] = "python read.py C:/private/input.txt"
+
+        with tempfile.TemporaryDirectory() as temp:
+            profiles_dir = self.write_profiles(temp, self.public_profiles())
+            with self.assertRaisesRegex(ProfileError, "redaction.*ambiguous"):
+                resolve_contract(contract_from_dict(data), profiles_dir, b"source")
+
+    def test_public_clean_redacts_trailing_slash_url_containment(self):
+        locator = "https://private.example/"
+        data = self.fixture_data()
+        data["profile"] = "public-clean"
+        data["goal"]["objective"] = (
+            "Summarize https://private.example/article without leaking the source"
+        )
+        data["source_set"] = [
+            {
+                "id": "SRC-001",
+                "kind": "url",
+                "locator": locator,
+                "authority": "operator",
+                "freshness": "current",
+                "sensitivity": "private",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as temp:
+            resolved = resolve_contract(
+                contract_from_dict(data),
+                self.write_profiles(temp, self.public_profiles()),
+                b"source",
+            )
+
+        self.assertEqual(
+            resolved.contract.goal.objective,
+            "Summarize [redacted]article without leaking the source",
+        )
+        self.assertNotIn(locator.encode("utf-8"), resolved.canonical_bytes)
+
+    def test_public_clean_path_with_nonword_start_keeps_only_trailing_boundary(self):
+        locator = "/home/private"
+        data = self.fixture_data()
+        data["profile"] = "public-clean"
+        data["goal"]["objective"] = (
+            "Read prefix/home/private/file but leave /home/privately unchanged"
+        )
+        data["source_set"] = [
+            {
+                "id": "SRC-001",
+                "kind": "directory",
+                "locator": locator,
+                "authority": "operator",
+                "freshness": "current",
+                "sensitivity": "private",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as temp:
+            resolved = resolve_contract(
+                contract_from_dict(data),
+                self.write_profiles(temp, self.public_profiles()),
+                b"source",
+            )
+
+        self.assertEqual(
+            resolved.contract.goal.objective,
+            "Read prefix[redacted]/file but leave /home/privately unchanged",
+        )
+
     def test_public_clean_rejects_ambiguous_locator_references(self):
         locator = "C:/private/token.txt"
         cases = {
