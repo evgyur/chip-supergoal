@@ -566,6 +566,139 @@ class ProfilePolicyPipelineTest(unittest.TestCase):
             resolved.contract.phases[0].work_items[0]["text"], "Read [redacted]"
         )
 
+    def test_public_clean_short_locator_fails_on_structural_key_without_corruption(self):
+        data = self.fixture_data()
+        data["profile"] = "public-clean"
+        data["goal"]["objective"] = "Keep this valid identifier unchanged"
+        data["source_set"] = [
+            {
+                "id": "SRC-001",
+                "kind": "note",
+                "locator": "id",
+                "authority": "operator",
+                "freshness": "current",
+                "sensitivity": "private",
+            }
+        ]
+        source = contract_from_dict(data)
+        before = canonical_json(source)
+
+        with tempfile.TemporaryDirectory() as temp:
+            try:
+                resolve_contract(
+                    source,
+                    self.write_profiles(temp, self.public_profiles()),
+                    b"source",
+                )
+            except ProfileError as exc:
+                self.assertIn("dictionary key", str(exc))
+                self.assertIn("/goal/id", str(exc))
+            except Exception as exc:
+                self.fail(
+                    f"structural-key conflict must raise ProfileError, got {type(exc).__name__}: {exc}"
+                )
+            else:
+                self.fail("structural-key conflict must block public-clean resolution")
+
+        self.assertEqual(canonical_json(source), before)
+        self.assertIn("valid identifier", before)
+        self.assertNotIn("val[redacted]", before)
+
+    def test_public_clean_redacts_tokens_without_rewriting_incidental_substrings(self):
+        data = self.fixture_data()
+        data["profile"] = "public-clean"
+        data["goal"]["objective"] = "The secret is private; secretive is ordinary"
+        data["compatibility"]["secretive"] = "valid"
+        data["source_set"] = [
+            {
+                "id": "SRC-001",
+                "kind": "note",
+                "locator": "secret",
+                "authority": "operator",
+                "freshness": "current",
+                "sensitivity": "private",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as temp:
+            resolved = resolve_contract(
+                contract_from_dict(data),
+                self.write_profiles(temp, self.public_profiles()),
+                b"source",
+            )
+
+        self.assertEqual(
+            resolved.contract.goal.objective,
+            "The [redacted] is private; secretive is ordinary",
+        )
+        self.assertIn("secretive", resolved.contract.compatibility)
+        self.assertEqual(resolved.contract.compatibility["secretive"], "valid")
+        self.assertNotIn("[redacted]ive", canonical_json(resolved.contract))
+
+    def test_public_clean_rejects_locator_token_in_dictionary_key_with_path(self):
+        data = self.fixture_data()
+        data["profile"] = "public-clean"
+        data["compatibility"]["private-secret"] = "description"
+        data["source_set"] = [
+            {
+                "id": "SRC-001",
+                "kind": "note",
+                "locator": "secret",
+                "authority": "operator",
+                "freshness": "current",
+                "sensitivity": "private",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as temp:
+            profiles_dir = self.write_profiles(temp, self.public_profiles())
+            with self.assertRaisesRegex(
+                ProfileError, r"dictionary key.*?/compatibility/private-secret"
+            ):
+                resolve_contract(contract_from_dict(data), profiles_dir, b"source")
+
+    def test_public_clean_ambiguity_checks_ignore_incidental_substrings(self):
+        data = self.fixture_data()
+        data["profile"] = "public-clean"
+        data["source_set"] = [
+            {
+                "id": "SRC-001",
+                "kind": "note",
+                "locator": "token",
+                "authority": "operator",
+                "freshness": "current",
+                "sensitivity": "private",
+            }
+        ]
+        data["phases"][0]["commands"][0]["command"] = "python tokenize.py"
+        data["phases"][0]["deliverables"][0]["path"] = "tokenized.txt"
+        data["approvals"] = [
+            {
+                "id": "APP-001",
+                "class_name": "privacy",
+                "scope": "token_group",
+                "required": True,
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as temp:
+            try:
+                resolved = resolve_contract(
+                    contract_from_dict(data),
+                    self.write_profiles(temp, self.public_profiles()),
+                    b"source",
+                )
+            except Exception as exc:
+                self.fail(
+                    f"incidental substrings must not create redaction ambiguity: {exc}"
+                )
+
+        phase = resolved.contract.phases[0]
+        self.assertEqual(phase.commands[0].command, "python tokenize.py")
+        self.assertEqual(phase.deliverables[0].path, "tokenized.txt")
+        self.assertEqual(resolved.contract.approvals[0].scope, "token_group")
+        self.assertEqual(resolved.contract.source_set[0].locator, "[redacted]")
+
     def test_public_clean_rejects_ambiguous_locator_references(self):
         locator = "C:/private/token.txt"
         cases = {

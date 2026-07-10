@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 from .model import Contract, canonical_json, contract_from_dict, to_plain
@@ -231,6 +232,26 @@ def _public_profile(profile: dict[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
+def _locator_pattern(locator: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"(?<![A-Za-z0-9_]){re.escape(locator)}(?![A-Za-z0-9_])"
+    )
+
+
+def _contains_locator_token(value: str, locator: str) -> bool:
+    if not locator:
+        return False
+    if value == locator:
+        return True
+    return _locator_pattern(locator).search(value) is not None
+
+
+def _replace_locator_token(value: str, locator: str) -> str:
+    if not _contains_locator_token(value, locator):
+        return value
+    return _locator_pattern(locator).sub("[redacted]", value)
+
+
 def _ambiguous_redaction_reference(
     plain: dict[str, Any], locator: str
 ) -> str | None:
@@ -238,37 +259,59 @@ def _ambiguous_redaction_reference(
         phase_id = phase.get("id", "<unknown>")
         for command in phase.get("commands", []):
             value = command.get("command")
-            if isinstance(value, str) and locator in value:
+            if isinstance(value, str) and _contains_locator_token(value, locator):
                 return f"phase {phase_id} command {command.get('id', '<unknown>')}"
         for deliverable in phase.get("deliverables", []):
             value = deliverable.get("path")
-            if isinstance(value, str) and locator in value:
+            if isinstance(value, str) and _contains_locator_token(value, locator):
                 return (
                     f"phase {phase_id} deliverable "
                     f"{deliverable.get('id', '<unknown>')} path"
                 )
     for approval in plain.get("approvals", []):
         value = approval.get("scope")
-        if approval.get("required", True) and isinstance(value, str) and locator in value:
+        if (
+            approval.get("required", True)
+            and isinstance(value, str)
+            and _contains_locator_token(value, locator)
+        ):
             return f"required approval {approval.get('id', '<unknown>')} scope"
     return None
 
 
-def _replace_private_locators(value: Any, locators: tuple[str, ...]) -> Any:
+def _pointer_child(path: str, token: object) -> str:
+    escaped = str(token).replace("~", "~0").replace("/", "~1")
+    return f"{path}/{escaped}"
+
+
+def _replace_private_locators(
+    value: Any, locators: tuple[str, ...], path: str = ""
+) -> Any:
     if isinstance(value, str):
         redacted = value
         for locator in locators:
-            redacted = redacted.replace(locator, "[redacted]")
+            redacted = _replace_locator_token(redacted, locator)
         return redacted
     if isinstance(value, list):
-        return [_replace_private_locators(item, locators) for item in value]
+        return [
+            _replace_private_locators(item, locators, _pointer_child(path, index))
+            for index, item in enumerate(value)
+        ]
     if isinstance(value, dict):
-        return {
-            _replace_private_locators(key, locators): _replace_private_locators(
-                item, locators
+        redacted_dict: dict[Any, Any] = {}
+        for key, item in value.items():
+            child_path = _pointer_child(path, key)
+            if isinstance(key, str):
+                for locator in locators:
+                    if _contains_locator_token(key, locator):
+                        raise ProfileError(
+                            "public-clean redaction cannot rewrite dictionary key at "
+                            f"{child_path}: it contains private locator token {locator!r}"
+                        )
+            redacted_dict[key] = _replace_private_locators(
+                item, locators, child_path
             )
-            for key, item in value.items()
-        }
+        return redacted_dict
     return value
 
 
