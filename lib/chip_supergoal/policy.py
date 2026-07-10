@@ -10,13 +10,13 @@ def load_risk_policy(path: str | Path) -> dict:
 
 
 def _nonempty_declaration(value: object) -> bool:
-    if value is None:
-        return False
     if isinstance(value, str):
         return bool(value.strip())
-    if isinstance(value, (dict, list, tuple, set)):
-        return bool(value)
-    return bool(value)
+    if isinstance(value, list):
+        return any(_nonempty_declaration(item) for item in value)
+    if isinstance(value, dict):
+        return any(_nonempty_declaration(item) for item in value.values())
+    return False
 
 
 def risk_policy_errors(contract: Contract, policy: dict) -> list[str]:

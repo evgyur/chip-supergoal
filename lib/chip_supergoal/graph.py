@@ -11,10 +11,6 @@ def phase_graph_errors(contract: Contract) -> list[str]:
         if pid in seen:
             errors.append(f"duplicate phase id: {pid}")
         seen.add(pid)
-    ordinals = [p.ordinal for p in contract.phases]
-    expected = list(range(1, len(contract.phases) + 1))
-    if ordinals != expected:
-        errors.append(f"phase ordinals must be {expected}, got {ordinals}")
     valid = set(phase_ids)
     adjacency = {p.id: list(p.depends_on) for p in contract.phases}
     for p in contract.phases:
