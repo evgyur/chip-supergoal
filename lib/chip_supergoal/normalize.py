@@ -39,8 +39,37 @@ def stable_id_errors(contract: Contract) -> list[str]:
                 errors.append(f"{command.id} timeout must be positive")
     return errors
 
+
+def phase_ordinal_errors(contract: Contract) -> list[str]:
+    if not contract.phases:
+        return ["contract must define at least one phase"]
+
+    errors: list[str] = []
+    ordinals = [phase.ordinal for phase in contract.phases]
+    if any(ordinal <= 0 for ordinal in ordinals):
+        errors.append("phase ordinals must be positive")
+
+    seen: set[int] = set()
+    duplicates: set[int] = set()
+    for ordinal in ordinals:
+        if ordinal in seen:
+            duplicates.add(ordinal)
+        seen.add(ordinal)
+    if duplicates:
+        errors.append(
+            "duplicate phase ordinal(s): " + ", ".join(str(value) for value in sorted(duplicates))
+        )
+
+    expected = list(range(1, len(ordinals) + 1))
+    actual = sorted(ordinals)
+    if actual != expected:
+        errors.append(f"phase ordinals must be contiguous {expected}, got {actual}")
+    return errors
+
+
 def semantic_errors(contract: Contract, risk_policy: dict | None = None) -> list[str]:
     errors = []
+    errors.extend(phase_ordinal_errors(contract))
     errors.extend(stable_id_errors(contract))
     errors.extend(phase_graph_errors(contract))
     if risk_policy is not None:
