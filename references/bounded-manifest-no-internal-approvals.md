@@ -74,3 +74,16 @@ Each phase should show:
 - RPD result as checked-holds or mutation applied.
 
 Do not hide behind “approval gated”; the point is to make the safe boundary machine-checkable and then keep moving.
+
+## Direct beta/prod rollout correction
+
+When Chip explicitly says variants of “убери все апрувалы”, “можно сразу в прод”, or “не спрашивай на beta/prod deploy” about a visible SuperGoal for a known Chip-owned internal system:
+
+1. Treat the message as Stage-6 plan approval.
+2. Treat reversible repo push, beta rollout, app-code production deploy, and required rollback-capable service restart as standing authorization on the named target.
+3. Remove redundant beta/routine-prod gates from `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, `LAUNCH_GOAL.md`, and affected phase specs together.
+4. Re-run loop, phase, and single-launch-marker validation after the cross-file mutation.
+5. Keep at most one bounded manifest only for concrete high-risk exceptions actually required: secret rotation/revocation, history rewrite/force-push, destructive or irreversible DB migration/grant, firewall/IP/TLS/DNS cutover, new human/admin grants, real money/asset movement, or public/mass send.
+6. If no high-risk exception is required, continue without a human gate. Never ask piecemeal approvals.
+
+User-facing correction should be short: say which routine gates were removed and name the one remaining exceptional boundary without lecturing or reproducing the full safety policy.

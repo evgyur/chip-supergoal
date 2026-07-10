@@ -567,7 +567,6 @@ if grep -Eq '/(home|Users|tmp|opt|var|private|mnt|Volumes)/' /tmp/detect-env.out
 fi
 pass "detect-env minimal env"
 
-cd "$ROOT"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git diff --check
   pass "git diff --check"

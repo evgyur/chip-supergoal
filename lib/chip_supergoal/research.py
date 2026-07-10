@@ -124,8 +124,7 @@ def render_research_markdown(contract: Contract) -> str:
 def write_research_report(contract: Contract, path: str | Path) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("w", encoding="utf-8", newline="\n") as fh:
-        fh.write(json.dumps(research_report(contract), ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    p.write_text(json.dumps(research_report(contract), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _research_diag(code: str, artifact: str, pointer: str, message: str, remediation: str) -> Diagnostic:

@@ -13,13 +13,14 @@ argument-hint: <describe what must be built, fixed, shipped, or planned>
 Use this root as the controller. Heavy detail lives in references and templates.
 
 1. **Simple core, modular depth** — root owns triggers, invariants, stage order, artifact list, and reference dispatch. Incident lessons live in references.
-2. **Plan-only boundary** — this skill may inspect, research, and write planning artifacts. It must not execute numbered implementation phases.
+2. **Plan-only + honest-state boundary** — this skill may inspect, research, validate planning artifacts, and run preflight characterization, but it must not execute numbered implementation phases. When Chip says “make SuperGoal,” emit a canonical package with `PROTOCOL.md`, pending `STATE.md`, validated phase specs, and one launch handoff. Never manually implement first and then backfill completed phases, `FINAL_AUDIT`, `AUDIT_COMPLETE`, `SUPERGOAL_RUN_COMPLETE`, or a no-op `Current phase: COMPLETE`; use `references/planner-executor-state-hygiene.md`.
 3. **One launch surface** — create exactly one human-facing launch body in `LAUNCH_GOAL.md`. Do not hide alternate launch bodies in `ROADMAP.md` or `THINKING.md`.
 4. **One standard `/goal`, not a chain** — the executor reads `STATE.md` and continues until all phases plus audit complete.
 5. **No false done** — every phase needs real evidence; final completion requires re-reading the original `ROADMAP.md`, re-running aggregate checks, checking deliverables, `RPD_FINAL_REVIEW`, `AUDIT_COMPLETE`, then `SUPERGOAL_RUN_COMPLETE`.
 6. **Risky work gets Senior Gate** — auth, payments, secrets, production, migrations, gateways, cron/model routing, private data, destructive actions, public launches, and recurring bugs require evidence-tiered RPD/Senior review.
 7. **Telegram delivery is blocking when requested** — if Chip asks for files or final artifacts in Telegram, scripted send + receipt is part of done, not a promise.
 8. **Chip review files are always delivered** — for Chip-facing SuperGoal planning, send the review `.md` files into the current Telegram thread by default (`THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus `RESEARCH.md` when non-empty). A text-only summary is incomplete.
+9. **Normal speed by default** — generated SuperGoals must not enable Hermes `/fast` or persist `agent.service_tier: priority` unless Chip explicitly opts in for that run. Fast mode and reasoning effort are independent; keep the persistent default `agent.service_tier: normal`.
 
 ## Use when
 
@@ -30,6 +31,7 @@ Use for:
 - brownfield work where codebase reality, tests, deployment, or recovery matter
 - greenfield products/systems where stack, research, architecture, and phase boundaries matter
 - standing SuperGoal continuation/repair where `STATE.md` exists
+- repeated standing-goal continuations after `AUDIT_COMPLETE`: verify completion once from `STATE.md`/final audit artifacts if not already fresh in-session, then stop with `SUPERGOAL_RUN_COMPLETE`; do not re-run phase loops, keep re-testing, or repeat long identical completion reports on every auto-resume unless the user explicitly asks for a re-audit or new work. After one fresh completion proof in the same session, answer duplicate wrappers with one compact stop line and explicitly say the auto-continuation/standing goal should be closed. If the same wrapper repeats again in the same chat with no new instruction, do not call tools again, do not mention approval gates repeatedly, and emit only the compact complete/stop line.
 - skill/library hardening work that needs phases, review, and final audit
 
 Do **not** use for tiny edits, one factual answer, pure copywriting, or a task whose safest path is direct execution in the current session. For those, say it is too small for SuperGoal and use the direct workflow.
@@ -38,8 +40,8 @@ Do **not** use for tiny edits, one factual answer, pure copywriting, or a task w
 
 Only two gates are allowed by default:
 
-1. **Stage 1 clarifying questions** — only for true material gaps that tools cannot answer.
-2. **Stage 6 plan review** — show the reviewed package summary and wait for explicit go/no-go before launch.
+1. **Stage 1 clarifying questions** — only for true material gaps that tools cannot answer. Short pointer follow-ups like “вот это”, “это”, “читай сообщение”, “make supergoal”, or a voice/reply after a visible context block are not a reason to loop on clarification or invent a subject: use the current conversation/Telegram context first, and only ask if the subject is still unrecoverable. If Chip corrects that the wrong source was used, immediately recover the pointed message/reply/entities/media via gateway context or `telegram-chip` and regenerate the package around that source; do not defend the prior assumption. A SuperGoal compiled around the wrong class (for example a generic concierge-hook plan when the pointed source is a trading/copy task) is a planner failure. Include a scope check when the user's example could be mistaken for the whole mission: if Chip asks for a class-level system (“all future lessons and meetings”, “the whole publisher”, “make this reliable”), do not compile a narrow SuperGoal around the latest example (`lesson 4`, one bug, one artifact). Treat the example as a regression fixture inside a broader roadmap.
+2. **Stage 6 plan review** — show the reviewed package summary and wait for explicit go/no-go before launch. If Chip then says “убери все апрувалы”, “можно сразу в прод”, or equivalent about the visible package, treat it as Stage-6 approval plus standing authorization for rollback-safe beta/prod app rollout; remove redundant environment gates across all package artifacts and keep at most one bounded manifest for concrete high-risk exceptions. See `references/bounded-manifest-no-internal-approvals.md`.
 
 Everything else should be autonomous and evidence-backed.
 
@@ -109,12 +111,7 @@ RPD required: yes|no
 RPD focus: security|integration|ux|migration|data-loss|gateway|payments|none
 ```
 
-And exact headings:
-
-- `## Work`
-- `## Acceptance criteria`
-- `## Mandatory commands`
-- `## Evidence required`
+Exact headings: `## Work`, `## Acceptance criteria`, `## Mandatory commands`, `## Evidence required`.
 
 Run `bash "$SUPERGOAL_DIR/scripts/validate-phase.sh" <phase-file>` for every phase.
 
@@ -136,14 +133,17 @@ Load only the matching canonical reference. Start with `references/dispatch-map.
 Core active references:
 
 - Planning/controller: `references/core-planning-contract.md`
-- Artifact boundaries / review pack v2: `references/artifact-boundaries.md`
-- Generated schemas: `references/artifact-schemas.md`
-- Execution state machine / final audit: `references/execution-state-machine.md`
+- Stale findings, raw-log baselines, live applicability, and `already-fixed` phase outcomes: `references/stale-phase-route-verification.md`
+- Nested package paths, portable validators, Git-worktree/monorepo recon, stale-audit rebasing, and dirty-checkout isolation: `references/nested-package-preflight.md`
+- Artifact boundaries / review pack v2 and generated schemas: `references/artifact-boundaries.md`, `references/artifact-schemas.md`
+- Execution/final audit and completed/follow-on state hygiene: `references/execution-state-machine.md`, `references/completed-standing-goal-and-workdir-hygiene.md`, `references/planner-executor-state-hygiene.md`, `references/follow-on-supergoal-after-completion.md`
 - Standard `/goal` compatibility: `references/upstream-goal-compatibility.md`
+- Cross-file consistency after reviews/phase-count/cap edits: `references/cross-file-consistency-review-hardening.md`
+- Independent executable-contract review for roots, baselines, command interfaces, mutation-safe audits, ignored evidence, phase/audit ownership, approvals, and delivery semantics: `references/executable-contract-review.md`
 - Loop Design Gate: `references/loop-design-gate.md`
 - RPD/Senior review: `references/rpd-review-gates.md`
 - Telegram launch/delivery: `references/telegram-launch-and-delivery.md`
-- Production safety: `references/production-safety.md`
+- Production safety and no-internal-approval manifests: `references/production-safety.md`, `references/bounded-manifest-no-internal-approvals.md`
 - Skill maintenance: `references/skill-maintenance.md`
 
 Specialist refs and superseded incident clusters live in `references/dispatch-map.md` and `references/INDEX.md`. Incident refs are for forensics unless the dispatch map names them for the current trigger.
@@ -173,32 +173,29 @@ bash scripts/test.sh
 python3 <skills-dir>/create-skill/scripts/skill_workflow_guard.py <installed-skill-dir> || true
 ```
 
+When validating a generated `.supergoal/` package outside the installed skill directory, the copied `validate-phase.sh` / `validate-loop-design.sh` may call `scripts/sgctl.py`, which imports `chip_supergoal` from the skill's `lib/` tree. Set `PYTHONPATH=<installed-chip-supergoal>/lib` for those validation commands instead of treating `ModuleNotFoundError: chip_supergoal` as a package failure.
+
+Compiler/validator pitfalls:
+
+- A strict validator can prove package shape while the generated review files remain generic or omit contract semantics. Before dispatch, verify that `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and optional `RESEARCH.md` render the actual source set, decisions, assumptions, loop limits, approvals, RPD mutations, and honest pending state. Patch the renderer and recompile rather than hand-editing sealed output. Use `references/architect-plus-v3-upgrade-execution-lessons.md` for renderer-contract checks, current `sgctl` validation, validator-driven mutations, research fallback, and reference-catalog maintenance.
+- Full `sgctl validate-package` expects a compiler-shaped package with `CONTRACT.json` and `MANIFEST.json`; a hand-written markdown-only package may pass phase/loop validators but fail package validation. For strict packages, write a valid v3 `CONTRACT.json` and run `sgctl compile ... --out <root>`.
+- `sgctl compile` refuses to overwrite a package that already contains runtime/delivery artifacts such as `out/`. For planner regeneration, remove or move the package root first, then compile fresh; do not keep retrying the same compile command.
+- Contract `risk_tags` must come from `spec/risk-policy.json` (`private_data`, `gateway`, `migration`, etc.), not generic labels like `security`, `privacy`, or library-specific tags. Phase `RPD focus` must use the allowed enum (`security`, `integration`, `ux`, `migration`, `data-loss`, `gateway`, `payments`, `none`).
+- If you copy `scripts/validate-phase.sh` or `scripts/validate-loop-design.sh` into a portable manual package, also copy package-local `scripts/sgctl.py` **and** `lib/chip_supergoal/`. The wrappers resolve `$ROOT/scripts/sgctl.py`, and `sgctl.py` imports from `$ROOT/lib`; copying only the wrapper or only `sgctl.py` is incomplete. Alternatively run validators through the installed skill path with `PYTHONPATH=<installed-chip-supergoal>/lib` and label the package non-portable until dependencies are embedded.
+- For nested package roots such as `<repo>/.supergoal/<slug>`, never insert an absolute path containing `.supergoal/` and then globally replace `.supergoal/` in `PROTOCOL.md`; that self-rewrites the inserted path. Render placeholders or perform exact targeted replacements, then assert protocol/root/phase paths and exactly one launch body.
+- A clean-checkout preflight that needs stale ignored `.supergoal/out` files exposes a verifier defect. A seeded ignored artifact may be labeled compatibility evidence for planner preflight, but phase 1 must make the verifier self-contained and final acceptance must rerun it without preseeded residue.
+- If you add helper scripts/lib/spec files after compilation, rebuild or update `MANIFEST.json` before running `validate-package`, otherwise the package fingerprint/fileset check will fail.
+
 Then verify live loadability with `skill_view("chip-supergoal")` and, for critical refs, `skill_view("chip-supergoal", file_path="references/rpd-review-gates.md")`.
 
 ## Output Contract
 
-For Chip, final planning output is compact and evidence-first:
-
-1. what package was written
-2. key risks/assumptions
-3. which files were sent or where they are
-4. exact launch instruction/card
-5. what remains blocked, if anything
+For Chip, final planning output is compact and evidence-first: package path, risks/assumptions, sent files or disk paths, exact launch instruction/card, and any blocker.
 
 Do not claim execution success from this planner. Only the `/goal` executor can earn `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`.
 ## Quick Test Checklist
-
-- [ ] `skill_view("chip-supergoal")` loads this concise Principal+ root.
-- [ ] `bash scripts/test.sh` exits 0 from the skill directory.
-- [ ] `templates/LAUNCH_GOAL.md` is the only file with an actual line starting `SUPERGOAL_GOAL_BODY:`.
-- [ ] `templates/ROADMAP.md` has no launch-body line.
-- [ ] A filled `templates/phase-goal.txt` passes `scripts/validate-phase.sh`.
-- [ ] `templates/PROTOCOL.md` preserves continuous execution through phase boundaries, forced-yield semantics, weak-blocker guard, and final-audit markers.
-- [ ] New incident lessons update canonical references/tests instead of bloating root.
-- [ ] If `.supergoal/` is ignored by git, stale package cleanup and direct package verification are reported separately from tracked implementation git status.
-
+- [ ] `skill_view` loads; `scripts/test.sh` passes; launch-body, phase/PROTOCOL, incident-reference, and ignored `.supergoal` regressions hold.
 ## Done Criteria
-
 - [ ] Frontmatter has `name: chip-supergoal`, trigger-rich description, and `argument-hint`.
 - [ ] Root `SKILL.md` stays under the local architecture budget enforced by `scripts/test.sh`.
 - [ ] Planner writes `THINKING.md`, optional `RESEARCH.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, `PROTOCOL.md`, `LAUNCH_GOAL.md`, and strict phase specs.

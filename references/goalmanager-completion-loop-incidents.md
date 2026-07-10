@@ -26,7 +26,7 @@ Observed bad sequence:
 
 For Hermes `/goal` spam or `(empty)` incidents, plan a code-level fix in Hermes control-plane code rather than another prompt-only patch:
 
-- `hermes_cli/goals.py`: deterministic narrow terminal-completion fast path before flaky aux judge (`Goal complete`, `Goal already complete`, `AUDIT_COMPLETE` + `SUPERGOAL_RUN_COMPLETE`, explicit blocked/needs-user-input final).
+- `hermes_cli/goal_policies.py` + `hermes_cli/goals.py`: deterministic narrow terminal-completion fast path before flaky aux judge. Cover both final-response markers and disk state: nested package paths like `<repo>/.supergoal/<package>/STATE.md`, `Status: SUPERGOAL_RUN_COMPLETE`, `AUDIT_COMPLETE: yes`, `SUPERGOAL_RUN_COMPLETE: yes`, and explicit blocked/needs-user-input finals. Do not treat `SUPERGOAL_RUN_COMPLETE: no` / `Goal complete: no` as terminal.
 - `gateway/run.py`: stale synthetic continuation queue hygiene after `done`/`paused`; preserve real user pending messages.
 - `tui_gateway/server.py`: parity with gateway continuation behavior.
 - Tests: `tests/hermes_cli/test_goals.py`, `tests/gateway/test_goal_status_notice.py`, `tests/gateway/test_goal_verdict_send.py`, `tests/tui_gateway/test_goal_command.py`.

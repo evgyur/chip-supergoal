@@ -27,7 +27,7 @@ done
 
 # --- File counts by extension (top extensions only) ---
 echo "## File counts (top extensions)"
-if [[ -d .git ]]; then
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git ls-files 2>/dev/null | awk -F. 'NF>1 {ext=$NF; if(length(ext)<=6) c[ext]++} END {for(e in c) print c[e], e}' | sort -rn | head -10 | awk '{print "- `."$2"`: "$1" files"}'
 else
   find . -type f \( -not -path './node_modules/*' -not -path './.git/*' -not -path './dist/*' -not -path './build/*' \) 2>/dev/null | awk -F. 'NF>1 {ext=$NF; if(length(ext)<=6) c[ext]++} END {for(e in c) print c[e], e}' | sort -rn | head -10 | awk '{print "- `."$2"`: "$1" files"}'
@@ -36,8 +36,8 @@ echo
 
 # --- Largest source files (signal of complexity hotspots) ---
 echo "## Largest source files (top 15 by line count)"
-if [[ -d .git ]]; then
-  git ls-files 2>/dev/null | grep -Ev '\.(json|lock|yaml|yml|md|svg|png|jpg|jpeg|gif|webp|woff2?|ttf|otf|map|min\.js|min\.css)$' | while read -r f; do
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git ls-files 2>/dev/null | grep -Ev '\.(json|lock|yaml|yml|md|svg|png|jpg|jpeg|gif|webp|woff2?|ttf|otf|map|min\.js|min\.css|mp4|mov|m4a|mp3|wav|ogg|pdf|zip|db|sqlite3?|srt|vtt)$' | while read -r f; do
     [[ -f "$f" ]] && wc -l "$f" 2>/dev/null
   done | sort -rn | head -15 | awk '{print "- `"$2"` ("$1" lines)"}'
 fi
@@ -68,7 +68,7 @@ echo
 
 # --- Recent activity (signal of where things are in flux) ---
 echo "## Recent activity (last 10 commits)"
-if [[ -d .git ]]; then
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git log --no-merges --pretty=format:"- \`%h\` %ad %s" --date=short -10 2>/dev/null
   echo
   echo

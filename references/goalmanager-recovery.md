@@ -5,11 +5,12 @@ Use when a SuperGoal continuation, restart, stale wrapper, repeated complete mes
 ## Recovery order
 
 1. Locate `.supergoal/STATE.md` for the active goal.
-2. Trust `STATE.md` over chat memory.
-3. If `Current phase` is numeric, resume that phase.
-4. If `AUDIT`, run final audit.
-5. If `BLOCKED`, surface the blocker and stop.
-6. If `DONE`, do not re-run work; answer with the completion evidence or package location.
+2. Trust `STATE.md` over chat memory and over GoalManager's volatile session state.
+3. If `/goal resume` returns `No goal to resume` but a valid SuperGoal package/`STATE.md` exists, treat the command result as a missing volatile goal handle, not proof that the work is gone. Continue from `STATE.md` in ordinary task mode or re-seed `/goal` from `LAUNCH_GOAL.md`.
+4. If `Current phase` is numeric, resume that phase.
+5. If `AUDIT`, run final audit.
+6. If `BLOCKED`, surface the blocker and stop.
+7. If `DONE`, do not re-run work; answer with the completion evidence or package location.
 
 ## Wrong-goal guard
 

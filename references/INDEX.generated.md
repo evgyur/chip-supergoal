@@ -13,12 +13,17 @@ Generated from `spec/reference-catalog.json`.
 - `references/auth-ux-polish-phase.md` — specialist — no invariant owner
 - `references/bounded-manifest-no-internal-approvals.md` — specialist — no invariant owner
 - `references/category-backed-skill-path-validation.md` — specialist — no invariant owner
+- `references/completed-standing-goal-and-workdir-hygiene.md` — canonical — no invariant owner
 - `references/context-anchor-and-wrong-goal-recovery.md` — incident — no invariant owner
 - `references/core-planning-contract.md` — canonical — no invariant owner
+- `references/cross-file-consistency-review-hardening.md` — canonical — no invariant owner
 - `references/dev-history-hardening.md` — specialist — no invariant owner
 - `references/dispatch-map.md` — canonical — INV-REFERENCE-001
+- `references/executable-contract-review.md` — specialist — no invariant owner
 - `references/execution-state-machine.md` — canonical — INV-CONTINUE-001, INV-AUDIT-001, INV-RECOVERY-001, INV-BLOCKER-001
 - `references/final-audit-packaging.md` — specialist — no invariant owner
+- `references/follow-on-supergoal-after-completion.md` — canonical — no invariant owner
+- `references/full-suite-red-scope-boundary.md` — specialist — no invariant owner
 - `references/gateway-goal-startup-recovery.md` — private_profile_only — no invariant owner
 - `references/gateway-recovery-ledger.md` — private_profile_only — no invariant owner
 - `references/gateway-restart-live-proof.md` — private_profile_only — no invariant owner
@@ -38,12 +43,14 @@ Generated from `spec/reference-catalog.json`.
 - `references/markdown-report-shell-quoting.md` — specialist — no invariant owner
 - `references/model-gateway-supergoal-live-failure.md` — private_profile_only — no invariant owner
 - `references/money-skill-safe-lane-vs-live-rail.md` — private_profile_only — no invariant owner
+- `references/nested-package-preflight.md` — specialist — no invariant owner
 - `references/no-internal-approval-standing-goal.md` — specialist — no invariant owner
 - `references/old-server-decommission-drain.md` — specialist — no invariant owner
 - `references/phase-boundary-state-and-characterization.md` — specialist — no invariant owner
 - `references/phase-completion-ledger-discipline.md` — incident — no invariant owner
 - `references/phase-design.md` — specialist — no invariant owner
 - `references/phase-marker-bookkeeping.md` — specialist — no invariant owner
+- `references/planner-executor-state-hygiene.md` — canonical — no invariant owner
 - `references/planning-depth.md` — specialist — no invariant owner
 - `references/polymarket-live-activation-goal-correction.md` — private_profile_only — no invariant owner
 - `references/polymarket-privy-live-activation-goals.md` — private_profile_only — no invariant owner
@@ -74,6 +81,7 @@ Generated from `spec/reference-catalog.json`.
 - `references/standing-goal-disambiguation-and-audit-lookup.md` — specialist — no invariant owner
 - `references/standing-goal-final-audit-completion.md` — incident — no invariant owner
 - `references/supergoal-continuation-and-package-path-drift.md` — specialist — no invariant owner
+- `references/supergoal-execution-root-hygiene.md` — specialist — no invariant owner
 - `references/supergoal-git-cleanup-resume.md` — specialist — no invariant owner
 - `references/supergoal-goal-code-review-hardening.md` — specialist — no invariant owner
 - `references/supergoal-goal-pipeline-turn-yield.md` — specialist — no invariant owner

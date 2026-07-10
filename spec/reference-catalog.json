@@ -185,6 +185,24 @@
     },
     {
       "domain": [
+        "standing-goal",
+        "workdir"
+      ],
+      "id": "REF-COMPLETED-STANDING-GOAL-AND-WORKDIR-HYGIENE",
+      "last_reviewed": "2026-07-07",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/completed-standing-goal-and-workdir-hygiene.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "completed-standing-goal",
+        "workdir-hygiene"
+      ]
+    },
+    {
+      "domain": [
         "context"
       ],
       "id": "REF-CONTEXT-ANCHOR-AND-WRONG-GOAL-RECOVERY",
@@ -213,6 +231,24 @@
       "supersedes": [],
       "triggers": [
         "core-planning-contract"
+      ]
+    },
+    {
+      "domain": [
+        "consistency",
+        "review"
+      ],
+      "id": "REF-CROSS-FILE-CONSISTENCY-REVIEW-HARDENING",
+      "last_reviewed": "2026-07-07",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/cross-file-consistency-review-hardening.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "cross-file-consistency",
+        "review-hardening"
       ]
     },
     {
@@ -251,6 +287,27 @@
     },
     {
       "domain": [
+        "review",
+        "verification",
+        "execution"
+      ],
+      "id": "REF-EXECUTABLE-CONTRACT-REVIEW",
+      "last_reviewed": "2026-07-10",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/executable-contract-review.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "executable-contract-review",
+        "wrong-root",
+        "false-completion",
+        "audit-replay"
+      ]
+    },
+    {
+      "domain": [
         "execution"
       ],
       "id": "REF-EXECUTION-STATE-MACHINE",
@@ -284,6 +341,42 @@
       "supersedes": [],
       "triggers": [
         "final-audit-packaging"
+      ]
+    },
+    {
+      "domain": [
+        "standing-goal",
+        "follow-on"
+      ],
+      "id": "REF-FOLLOW-ON-SUPERGOAL-AFTER-COMPLETION",
+      "last_reviewed": "2026-07-07",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/follow-on-supergoal-after-completion.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "follow-on-supergoal",
+        "after-completion"
+      ]
+    },
+    {
+      "domain": [
+        "verification",
+        "scope"
+      ],
+      "id": "REF-FULL-SUITE-RED-SCOPE-BOUNDARY",
+      "last_reviewed": "2026-07-07",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/full-suite-red-scope-boundary.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "full-suite-red",
+        "scope-boundary"
       ]
     },
     {
@@ -592,6 +685,26 @@
     },
     {
       "domain": [
+        "package",
+        "preflight",
+        "worktree"
+      ],
+      "id": "REF-NESTED-PACKAGE-PREFLIGHT",
+      "last_reviewed": "2026-07-09",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/nested-package-preflight.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "nested-package",
+        "plan-first-package",
+        "worktree-preflight"
+      ]
+    },
+    {
+      "domain": [
         "no"
       ],
       "id": "REF-NO-INTERNAL-APPROVAL-STANDING-GOAL",
@@ -684,6 +797,26 @@
       "supersedes": [],
       "triggers": [
         "phase-marker-bookkeeping"
+      ]
+    },
+    {
+      "domain": [
+        "planning",
+        "execution",
+        "state"
+      ],
+      "id": "REF-PLANNER-EXECUTOR-STATE-HYGIENE",
+      "last_reviewed": "2026-07-10",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/planner-executor-state-hygiene.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "planner-state-hygiene",
+        "pre-execution-state",
+        "supergoal-planning"
       ]
     },
     {
@@ -1166,6 +1299,24 @@
       "supersedes": [],
       "triggers": [
         "supergoal-continuation-and-package-path-drift"
+      ]
+    },
+    {
+      "domain": [
+        "execution",
+        "root-hygiene"
+      ],
+      "id": "REF-SUPERGOAL-EXECUTION-ROOT-HYGIENE",
+      "last_reviewed": "2026-07-07",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/supergoal-execution-root-hygiene.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "execution-root",
+        "root-hygiene"
       ]
     },
     {

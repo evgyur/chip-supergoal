@@ -56,9 +56,15 @@ PY
 
 If the Python script itself is embedded in a shell heredoc, the outer heredoc must also be single-quoted (`<<'PY'`) unless deliberate shell interpolation is required. If interpolation is required, keep the Python report text free of shell-evaluated backticks or pass variables through environment variables/argv.
 
+## Long worker prompts
+
+The same quoting risk applies when an executor launches a coding worker with a long inline `-q "<prompt>"` argument. Natural prose eventually contains an apostrophe, quote, backtick, `$`, or shell metacharacter and can fail before the worker reads the repository.
+
+For phase workers, prefer a prompt file or a Python `subprocess.run([...])` argv list. A robust fallback is a short shell-safe bootstrap prompt that instructs the worker to read full phase instructions from `PROTOCOL.md`, the phase file, and a dedicated evidence/prompt file. Record `HEAD` and `git status --short` before launch; after any non-zero exit, compare the tree before dispatching a fallback so partial mutations are never overwritten blindly. Only one worker may mutate a worktree at a time; parallel workers must be read-only or isolated in separate worktrees.
+
 ## Verification
 
-After writing reports/state:
+After writing reports/state or launching a phase worker:
 
 1. Re-read the exact generated files.
 2. Grep for missing placeholders or empty backtick locations.

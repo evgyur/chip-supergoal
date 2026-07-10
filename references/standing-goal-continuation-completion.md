@@ -16,6 +16,7 @@ On each tick:
    - `AUDIT_COMPLETE` + `SUPERGOAL_RUN_COMPLETE` are written and verified;
    - a forbidden side effect would be required, then write `AUDIT_HANDOFF` and stop;
    - a real missing-context/tool blocker prevents safe progress.
+6. If the scoped work is beta/live-proven but a repository-wide full-suite gate remains red in unrelated areas, do not silently widen the SuperGoal or loop forever. Re-run the suite, classify exact failures, write `FAILURE_CLASSIFICATION.md`, update `STATE.md`/`AUDIT.md`, and stop at the product/scope decision. See `references/full-suite-red-scope-boundary.md`.
 
 ## Goal identity first
 
@@ -74,6 +75,8 @@ AUDIT_COMPLETE
 SUPERGOAL_RUN_COMPLETE
 Goal complete: yes
 ```
+
+If the continuation keeps repeating after a verified-complete goal and the current run has no access to the GoalManager/session-state write tools, keep the fallback marker pair in the reply instead of downgrading to a bare “Goal complete.” The marker pair is the only durable signal some structured standing-goal wrappers can parse.
 
 Do not spam artifacts or re-explain the full run.
 

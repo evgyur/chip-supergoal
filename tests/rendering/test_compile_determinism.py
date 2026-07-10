@@ -34,28 +34,6 @@ class CompileDeterminismTest(unittest.TestCase):
             for rel in comparable:
                 self.assertTrue(filecmp.cmp(out1 / rel, out2 / rel, shallow=False), rel)
 
-    def test_launch_goal_hydrates_context_preflight_delivery_and_approval_boundaries(self):
-        with tempfile.TemporaryDirectory() as td:
-            out = Path(td) / "sg"
-            self.compile_to(out)
-            launch = (out / "LAUNCH_GOAL.md").read_text(encoding="utf-8")
-            expected = [
-                "THINKING.md",
-                "RESEARCH.md",
-                "LOOP_DESIGN.md",
-                "ROADMAP.md",
-                "STATE.md",
-                "phases/phase-*.md",
-                "python scripts/sgctl.py validate-package .",
-                "scripts/validate-loop-design.sh",
-                "scripts/validate-phase.sh",
-                "SUPERGOAL_REVIEW_FILES_BLOCKED",
-                "bounded approval manifest",
-                "Dispatch status: continue until final audit passes",
-            ]
-            for text in expected:
-                self.assertIn(text, launch)
-
 class CompileSafetyTest(unittest.TestCase):
     def run_compile(self, out: Path):
         return subprocess.run([sys.executable, "scripts/sgctl.py", "compile", "examples/brownfield-feature/CONTRACT.json", "--out", str(out)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

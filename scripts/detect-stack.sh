@@ -66,7 +66,13 @@ elif [[ -f Cargo.lock ]]; then
 elif [[ -f go.sum ]]; then
   echo "- **go modules** (go.sum)"
 else
-  echo "- _none detected_"
+  nested_locks=$(find . -mindepth 2 -maxdepth 3 -type f \( -name package-lock.json -o -name pnpm-lock.yaml -o -name yarn.lock -o -name uv.lock -o -name poetry.lock -o -name requirements.txt \) -not -path './.git/*' 2>/dev/null | sort | head -20)
+  if [[ -n "$nested_locks" ]]; then
+    echo "- **monorepo / nested packages**"
+    while IFS= read -r lock; do echo "  - \`$lock\`"; done <<< "$nested_locks"
+  else
+    echo "- _none detected_"
+  fi
 fi
 echo
 
@@ -85,7 +91,7 @@ echo
 
 # --- Git ---
 echo "## Git"
-if [[ -d .git ]]; then
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
   dirty=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
   if git config --get remote.origin.url >/dev/null 2>&1; then remote_status="configured"; else remote_status="not configured"; fi

@@ -25,6 +25,18 @@ Use this reference when executing or repairing a SuperGoal that upgrades `chip-s
 7. **Final completion may be local-alpha when live GoalManager is unavailable.**
    A skipped `SUPERGOAL_HERMES_INTEGRATION=1` probe is a warning, not a blocker, if the hermetic GoalManager simulator, E2E, security, migration, deterministic build, and final audit all pass. Record the warning explicitly in final audit.
 
+8. **A sealed package can be structurally valid while its review views are semantically generic.**
+   Generated `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and optional `RESEARCH.md` must render the actual contract source set, assumptions, decisions, loop limits, approvals, RPD mutations, and honest pending state. If the renderer ignores contract fields, patch the renderer and tests, increment `contract_revision`, and recompile. Do not hand-edit sealed Markdown and merely rebuild manifest hashes.
+
+9. **Use the installed `sgctl` surface rather than stale standalone script names.**
+   Inspect `scripts/sgctl.py --help`, then run `validate-contract`, strict `validate-package`, instantiated `validate-loop-design`, and `validate-phase-markdown` for every phase. Re-read representative generated views and assert exactly one `SUPERGOAL_GOAL_BODY:` plus no runtime sentinels before dispatch. A validator failure should mutate the contract; for example, add explicit retry and no-progress stop wording rather than bypassing the loop check.
+
+10. **Keep compiler reference metadata synchronized.**
+    A new `references/*.md` file also requires an entry in `spec/reference-catalog.json`, regenerated `references/INDEX.generated.md` and `references/dispatch.generated.md`, then unit/rendering/semantic tests. Prefer extending this class-level reference when the lesson is another compiler-hardening case rather than creating a narrow uncataloged incident file.
+
+11. **Research fallback remains evidence-backed.**
+    If the preferred provider times out, record `provider_unavailable_reason`, fetch authoritative official docs directly, and keep the research gate satisfied only when findings mutate the plan. Capture the fallback sequence, never a durable claim that the provider is broken.
+
 ## Minimum final evidence shape
 
 - `python3 -m unittest discover -s tests`

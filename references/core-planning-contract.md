@@ -79,7 +79,9 @@ Write/update:
 - `PROTOCOL.md`
 - `LAUNCH_GOAL.md`
 - `phases/phase-N.md`
-- copied helper scripts
+- copied helper scripts **with their runtime dependencies**. In particular, `validate-phase.sh` and `validate-loop-design.sh` require package-local `scripts/sgctl.py` and `lib/chip_supergoal/`; a wrapper-only copy is incomplete.
+
+For nested roots such as `<repo>/.supergoal/<slug>/`, bind protocol paths without global self-replacement, distinguish compiler-built strict packages from manual plan-first packages, and handle ignored-artifact baseline dependencies honestly. Follow `references/nested-package-preflight.md`.
 
 Validate every phase with `scripts/validate-phase.sh`.
 

@@ -45,7 +45,7 @@ def script_has(rel, *words):
 
 CHECKS = {
 'SG-001': lambda: contains('SKILL.md','/chip-supergoal','standing SuperGoal continuation/repair','Do **not** use for tiny edits'),
-'SG-002': lambda: contains('SKILL.md','**Plan-only boundary**','must not execute numbered implementation phases'),
+'SG-002': lambda: contains('SKILL.md','**Plan-only + honest-state boundary**','must not execute numbered implementation phases'),
 'SG-003': lambda: only_launch_template_has_body(),
 'SG-004': lambda: contains('SKILL.md','One standard `/goal`','LAUNCH_GOAL.md') and ref_has('references/upstream-goal-compatibility.md','/goal'),
 'SG-005': lambda: all(contains('SKILL.md', x) for x in ['THINKING.md','LOOP_DESIGN.md','ROADMAP.md','STATE.md','PROTOCOL.md','LAUNCH_GOAL.md','phases/phase-N.md','scripts/repo-state.sh']),

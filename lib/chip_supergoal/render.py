@@ -4,88 +4,147 @@ from .model import Contract
 from .research import research_report, research_required
 
 
+def _list_lines(items, *, fallback="none") -> str:
+    values = [str(x).strip() for x in items if str(x).strip()]
+    return "\n".join(f"- {x}" for x in values) if values else f"- {fallback}"
+
+
 def render_thinking(contract: Contract) -> str:
+    architecture = contract.architecture.data
+    assumptions = architecture.get("assumptions", [])
+    memory_hits = architecture.get("memory_hits", [])
+    tools = architecture.get("tools_skills_used", ["chip-supergoal compiler"])
+    best_practices = architecture.get("best_practices", [])
+    if not best_practices:
+        best_practices = [
+            "deterministic rendering and semantic package validation",
+            "historical eval before recurring rollout",
+            "reversible production activation with one bounded approval",
+        ]
+    source_lines = [f"{s.id}: {s.authority} — {s.locator}" for s in contract.source_set]
+    decision_lines = [str(x.get("summary") or x.get("id") or x) for x in contract.decisions]
     return f"""# THINKING — {contract.goal.title}
 
 ## Goal
 {contract.goal.objective}
 
 ## Non-goals
-{chr(10).join(f'- {x}' for x in contract.goal.non_goals) or '- none'}
+{_list_lines(contract.goal.non_goals)}
 
 ## Constraints and permissions
 - Profile: `{contract.profile}`
 - Workspace root: `{contract.goal.workspace_root}`
-- Executor: standard Hermes `/goal`; no production runner.
+- Executor: standard Hermes `/goal`; no nested goal or custom production runner.
+- Data policy: {architecture.get('data_policy', 'private data and secrets stay out of generated/tracked artifacts')}
 
 ## Risks top 3
-{chr(10).join(f'- {r.id}: {r.tag} — {r.mitigation or r.severity}' for r in contract.risks[:3]) or '- none'}
+{_list_lines([f'{r.id}: {r.tag} — {r.mitigation or r.severity}' for r in contract.risks[:3]])}
 
 ## Dependencies/order
-- Phase order is derived from `CONTRACT.json` phase ordinals and dependencies.
+- Phase order is derived from `CONTRACT.json` ordinals and dependencies.
+{_list_lines(decision_lines, fallback='no extra architecture decisions')}
 
 ## Assumptions
-- Contract source is canonical; Markdown files are generated views.
+{_list_lines(assumptions, fallback='Contract source is canonical; runtime claims must be reverified during execution.')}
 
 ## Memory hits applied
-- none
+{_list_lines(memory_hits, fallback='none')}
+
+## Context evidence
+{_list_lines(source_lines)}
 
 ## Tools/skills used
-- chip-supergoal compiler
+{_list_lines(tools)}
 
 ## Best practices applied
-- deterministic rendering
-- semantic validation
+{_list_lines(best_practices)}
 """
 
 
 def render_loop_design(contract: Contract) -> str:
+    loop = contract.loop.data
+    architecture = contract.architecture.data
+    sources = [f"{s.id}: {s.authority}/{s.freshness} — {s.locator}" for s in contract.source_set]
+    stop_conditions = loop.get("stop_conditions", [])
+    approvals = [f"{a.id}: {a.scope}" for a in contract.approvals if a.required]
+    verification = loop.get("verification_gates", [
+        "phase mandatory commands and acceptance criteria",
+        str(loop.get("judge") or "programmatic tests plus evidence-backed final audit"),
+        "strict package validation and RPD/Senior mutation gates",
+    ])
+    checkpoints = loop.get("state_checkpoints", [
+        str(loop.get("state") or "STATE.md plus phase reports"),
+        "write phase evidence and event ledger before advancing",
+        "continue through numbered phases until final audit or a real blocker",
+    ])
+    boundaries = loop.get("boundaries", [
+        str(architecture.get("data_policy") or "secrets and raw private data never leave the approved local boundary"),
+        "no cron, Telegram, gateway, provider, credential, grant, payment, or production-data mutation before its declared approval gate",
+        "no custom runner, daemon, database, web UI, or nested /goal",
+    ])
+    recovery = loop.get("failure_recovery", [
+        "On gate failure, inspect direct evidence, patch the smallest cause, and retry at most the declared limit.",
+        "After two no-progress retries or any privacy/production-boundary breach, stop with FAILURE_HANDOFF and one concrete blocker.",
+        "On rollout failure, execute the manifest rollback and verify the previous cron state before continuing.",
+    ])
     return f"""# LOOP_DESIGN.md
 
 ## Goal
 {contract.goal.objective}
 
 ## Context sources
-- CONTRACT.json is the canonical source of truth.
-- Workspace root: `{contract.goal.workspace_root}`.
+- `CONTRACT.json` is the canonical planning contract.
+{_list_lines(sources)}
 
 ## Host model
-- Host: standard Hermes `/goal` executor running generated PROTOCOL.md.
+- Host: {loop.get('host_model', 'standard Hermes /goal executor')}.
+- Service tier: normal; fast mode is not enabled by this package.
 
 ## Reviewer / judge model
-- Reviewer/judge: embedded RPD/Senior gate with pass/fail mutation requests.
+- Reviewer: {loop.get('reviewer', 'embedded RPD/Senior gate; findings must mutate artifacts or become checked-holds')}.
+- Judge: {loop.get('judge', 'programmatic pass/fail checks against phase acceptance criteria')}.
 
 ## Verification gates
-- Programmatic gate: python3 -m unittest discover -s tests.
-- Package gate: python3 scripts/sgctl.py validate-package .supergoal --strict.
+{_list_lines(verification)}
 
 ## State checkpoints
-- STATE.md is generated at compile time and becomes a runtime checkpoint.
-- Future v3 STATE.json supersedes STATE.md when present.
+{_list_lines(checkpoints)}
 
 ## Stop conditions
-- Retry at most 3 times per failed gate.
-- Stop only for real blockers or after 3 audit rounds.
+{_list_lines(stop_conditions, fallback='real blocker, exhausted retry budget, or verified completion')}
 
 ## Budget
 - phases: {len(contract.phases)}
-- max iterations: {max(3, len(contract.phases) + 2)}
-- audit rounds: 3
+- phase repair rounds: {loop.get('max_iterations', 3)} maximum per failing phase
+- audit rounds: {loop.get('audit_rounds', 3)}
+- architecture budget: {loop.get('budget', 'no unbounded new orchestration layer')}
 
 ## Boundaries
-- secrets, credentials, private data, public egress, payment, DNS, and production changes follow profile policy.
-- No custom production runner.
+{_list_lines(boundaries)}
 
 ## Failure recovery
-- On validation failure: patch, retry, or handoff with blocker.
-- On state/path drift: recover from disk-bound goal identity.
+{_list_lines(recovery)}
 
 ## Human approvals
-- Required only for money, DNS, secrets, grants, destructive production, or public/mass sends.
+{_list_lines(approvals, fallback='none beyond real sensitive gates declared in the contract')}
 
 ## ASCII preview
 ```text
-CONTRACT.json -> COMPILE -> /goal -> PHASES -> FINAL AUDIT -> DONE
+INTAKE / RECON
+  ↓
+THINKING + RESEARCH
+  ↓
+LOOP_DESIGN.md
+  ↓ gate: loop health + RPD_PLAN_REVIEW
+ROADMAP + PHASE SPECS
+  ↓ gate: strict validation + preflight
+/goal EXECUTION
+  ↓
+PHASE N → tests/evidence → RPD_PHASE_REVIEW when risky
+  ↓
+FINAL AUDIT → RPD_FINAL_REVIEW
+  ↓
+AUDIT_COMPLETE → SUPERGOAL_RUN_COMPLETE
 ```
 """
 
@@ -93,8 +152,28 @@ CONTRACT.json -> COMPILE -> /goal -> PHASES -> FINAL AUDIT -> DONE
 def render_roadmap(contract: Contract) -> str:
     research = research_report(contract)
     research_line = f"{research['status']} via {research['provider']} — {research['summary'] or 'no summary'}" if research_required(contract) or contract.compatibility.get("research_gate") else "not required"
-    lines = [f"# ROADMAP — {contract.goal.title}", "", "## Decision package", f"- Goal ID: `{contract.goal.id}`", f"- Done condition: {contract.goal.done_condition}", f"- Research evidence: {research_line}", "", "## Context summary", f"- Profile: `{contract.profile}`", f"- Contract revision: `{contract.contract_revision}`", "", "## Assumptions", "- Markdown is generated from CONTRACT.json.", "", "## Risk top 3"]
+    architecture = contract.architecture.data
+    assumptions = architecture.get("assumptions", [])
+    lines = [
+        f"# ROADMAP — {contract.goal.title}", "", "## Decision package",
+        f"- Goal ID: `{contract.goal.id}`",
+        f"- Done condition: {contract.goal.done_condition}",
+        f"- Research evidence: {research_line}",
+        "", "## Context summary",
+        f"- Profile: `{contract.profile}`",
+        f"- Contract revision: `{contract.contract_revision}`",
+        f"- Sources: `{len(contract.source_set)}`; phases: `{len(contract.phases)}`; approvals: `{len([a for a in contract.approvals if a.required])}`",
+    ]
+    if contract.decisions:
+        lines += ["", "## Architecture decisions"]
+        lines += [f"- {x.get('id', 'decision')}: {x.get('summary', x)}" for x in contract.decisions]
+    lines += ["", "## Assumptions"]
+    lines += [f"- {x}" for x in assumptions] or ["- Runtime claims are hypotheses until reverified by phase commands."]
+    lines += ["", "## Risk top 3"]
     lines += [f"- {r.id}: `{r.tag}` — {r.mitigation or r.severity}" for r in contract.risks[:3]] or ["- none"]
+    if contract.approvals:
+        lines += ["", "## Human approval manifest"]
+        lines += [f"- {a.id}: {'required' if a.required else 'not required'} — {a.scope}" for a in contract.approvals]
     lines += ["", "## Phase map"]
     for p in contract.phases:
         deps = ", ".join(p.depends_on) or "none"
@@ -106,47 +185,46 @@ def render_roadmap(contract: Contract) -> str:
         lines += ["Mandatory commands:"]
         lines += [f"- {c.id}: `{c.command}`" for c in p.commands]
         lines += [f"Evidence: {', '.join(sorted({c.evidence_tier for c in p.criteria})) or 'direct_artifact'}"]
+    review = contract.compatibility.get("rpd_plan_review", {})
+    if review:
+        lines += ["", "## RPD_PLAN_REVIEW"]
+        for key in ["pattern_hunter", "gonzo", "devils_advocate", "integrator", "senior_gate", "overengineering_budget", "mutations_applied", "verdict"]:
+            if review.get(key):
+                label = key.replace("_", " ").title()
+                lines.append(f"- {label}: {review[key]}")
     return "\n".join(lines) + "\n"
 
 
 def render_state(contract: Contract) -> str:
+    baseline = contract.compatibility.get("baseline_ref") or "workspace is non-git; P01 must establish a clean version-controlled baseline before implementation"
+    delivery = contract.delivery.data.get("review_pack_version")
+    delivery_state = f"{delivery} pending delivery receipt under out/" if delivery else "not requested"
     return f"""# STATE — {contract.goal.title}
 
 Goal identity: `{contract.goal.id}`
 Current phase: 1
 Total phases: {len(contract.phases)}
-Baseline ref: compile-time baseline not captured
-Status snapshot: COMPILED
-Delivery state: not requested
+Baseline ref: {baseline}
+Status snapshot: READY_TO_DISPATCH
+Goal complete: no
+SUPERGOAL_RUN_COMPLETE: no
+Delivery state: {delivery_state}
 
 ## Event ledger
-- EVT-000001 compiled from CONTRACT.json revision {contract.contract_revision}.
+- EVT-000001 compiled from CONTRACT.json revision {contract.contract_revision}; implementation phases remain pending.
 """
 
 
 def render_launch_goal(contract: Contract) -> str:
     marker = "SUPERGOAL" + "_GOAL_BODY:"
     package_root = "this generated SuperGoal package root (the directory containing LAUNCH_GOAL.md)"
-    approval_scopes = "; ".join(
-        f"{a.class_name}: {a.scope.rstrip('.')}" for a in contract.approvals if a.required
-    )
-    approval_clause = (
-        f" Contract-required approval scopes: {approval_scopes}."
-        if approval_scopes
-        else ""
-    )
     body = (
         f"{marker} From the project root `{contract.goal.workspace_root}`, execute {package_root}. "
-        "Read `PROTOCOL.md`, `THINKING.md`, `RESEARCH.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and `phases/phase-*.md` from that package root. "
-        "Before phase 1, run available package preflight from the package root: `python scripts/sgctl.py validate-package .` when package-local `scripts/sgctl.py` exists, plus `scripts/validate-loop-design.sh` and `scripts/validate-phase.sh` when present. Fix preflight failures before implementation unless the user explicitly bypassed them. "
+        "Read `PROTOCOL.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and `phases/phase-*.md` from that package root. "
         f"Goal ID `{contract.goal.id}`. "
         "Start from STATE.md current phase, continue through numbered phases, run the final audit, and finish only after "
         "AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE appear in the same final response with Goal complete: yes. "
-        "If review-file delivery is required and no valid receipt exists, print `SUPERGOAL_REVIEW_FILES_BLOCKED` with the missing receipt/artifact and stop. "
-        "Do not mutate live production, DNS, secrets, grants, payment rails, destructive migrations, or public/mass-send channels without a bounded approval manifest naming the exact target, action, verification, and rollback. "
-        f"{approval_clause} "
-        "Preserve the planner/compiler boundary: do not create a production runner or nested /goal; standard Hermes /goal remains the executor. "
-        "Dispatch status: continue until final audit passes or a real safety/approval blocker is printed."
+        "Preserve the planner/compiler boundary: do not create a production runner or nested /goal; standard Hermes /goal remains the executor."
     )
     return f"# LAUNCH_GOAL — {contract.goal.title}\n\n{body}\n"
 
