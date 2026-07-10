@@ -4,14 +4,14 @@ import hashlib
 import json
 import os
 import shutil
-import stat
 import tempfile
 from pathlib import Path
 from typing import Iterable
 
 from .model import Contract, canonical_json, load_contract
+from .portable import logical_mode, write_utf8_lf
 from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_state, render_thinking
-from .research import render_research_markdown, research_required, research_gate, validate_research_gate, write_research_report
+from .research import render_research_markdown, research_report, research_required, research_gate, validate_research_gate
 
 
 REQUIRED_GENERATED = {"CONTRACT.json", "THINKING.md", "LOOP_DESIGN.md", "ROADMAP.md", "STATE.md", "PROTOCOL.md", "LAUNCH_GOAL.md"}
@@ -33,8 +33,7 @@ class CompileSafetyError(ValueError):
 
 
 def _write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content.replace("\r\n", "\n"), encoding="utf-8")
+    write_utf8_lf(path, content)
 
 
 def file_sha256(path: Path) -> str:
@@ -45,15 +44,15 @@ def _iter_package_files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*") if p.is_file() and p.name != "MANIFEST.json" and "out" not in p.relative_to(root).parts)
 
 
-def file_mode(path: Path) -> str:
-    return f"{stat.S_IMODE(path.stat().st_mode):04o}"
+def file_mode(relative_path: str | Path) -> str:
+    return logical_mode(relative_path)
 
 
 def build_manifest(root: Path) -> dict:
     artifacts = []
     for p in _iter_package_files(root):
         rel = p.relative_to(root).as_posix()
-        artifacts.append({"path": rel, "sha256": file_sha256(p), "bytes": p.stat().st_size, "mode": file_mode(p)})
+        artifacts.append({"path": rel, "sha256": file_sha256(p), "bytes": p.stat().st_size, "mode": file_mode(rel)})
     joined = "\n".join(f"{a['path']} {a['sha256']} {a['bytes']} {a['mode']}" for a in artifacts)
     return {"manifest_version": "1.0", "artifacts": artifacts, "package_fingerprint": hashlib.sha256(joined.encode()).hexdigest()}
 
@@ -121,7 +120,7 @@ def _render_package(contract: Contract, out_path: Path, *, template_protocol: st
     for i in range(len(contract.phases)):
         _write(phases_dir / f"phase-{i+1:02d}.md", render_phase(contract, i))
     if research_required(contract) or research_gate(contract):
-        write_research_report(contract, out_path / "reports" / "research.json")
+        _write(out_path / "reports" / "research.json", json.dumps(research_report(contract), ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     manifest = build_manifest(out_path)
     _write(out_path / "MANIFEST.json", json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 

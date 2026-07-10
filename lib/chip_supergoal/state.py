@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import fcntl
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 from .events import append_event, read_events, verify_event_chain
+from .portable import package_lock, write_utf8_lf
 
 ALLOWED_TRANSITIONS = {
     ("DRAFT", "COMPILED"), ("COMPILED", "PLAN_REVIEWED"), ("PLAN_REVIEWED", "PREFLIGHT_GREEN"),
@@ -67,14 +66,8 @@ def read_state(path: str | Path) -> State:
 
 
 def write_state_atomic(path: str | Path, state: State) -> None:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_name(p.name + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        json.dump(state.to_dict(), f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
-        f.flush(); os.fsync(f.fileno())
-    os.replace(tmp, p)
+    content = json.dumps(state.to_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    write_utf8_lf(path, content)
 
 
 def render_state_md(state: State) -> str:
@@ -92,19 +85,18 @@ class StateStore:
     def initialize(self, state: State) -> None:
         self.runtime.mkdir(parents=True, exist_ok=True)
         write_state_atomic(self.state_json, state)
-        self.state_md.write_text(render_state_md(state), encoding="utf-8")
+        write_utf8_lf(self.state_md, render_state_md(state))
         append_event(self.events, goal_id=state.goal_id, contract_sha256=state.contract_sha256, state_revision=state.state_revision, event_type="state_initialized", phase_id=state.current_phase_id)
 
     def transition(self, to_lifecycle: str, *, expected_revision: int, phase_id: str | None = None, phase_status: str | None = None, blocker: dict[str, Any] | None = None) -> State:
         self.runtime.mkdir(parents=True, exist_ok=True)
-        with self.lock.open("a+") as lock_file:
-            fcntl.flock(lock_file, fcntl.LOCK_EX)
+        with package_lock(self.lock):
             current = read_state(self.state_json)
             if current.state_revision != expected_revision:
                 raise ValueError("SGV-STATE-STALE-WRITER")
             new = current.transition(to_lifecycle, phase_id=phase_id, phase_status=phase_status, blocker=blocker)
             write_state_atomic(self.state_json, new)
-            self.state_md.write_text(render_state_md(new), encoding="utf-8")
+            write_utf8_lf(self.state_md, render_state_md(new))
             append_event(self.events, goal_id=new.goal_id, contract_sha256=new.contract_sha256, state_revision=new.state_revision, event_type=f"transition:{current.lifecycle}->{new.lifecycle}", phase_id=new.current_phase_id)
             reread = read_state(self.state_json)
             if reread.state_revision != new.state_revision:
