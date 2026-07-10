@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -65,13 +66,25 @@ class SgctlSemanticValidationTest(unittest.TestCase):
             self.assertIn("SGV-PACKAGE-MANIFEST-FILESET", {d["code"] for d in json.loads(result.stdout)})
 
     def test_validate_package_catches_mode_drift(self):
-        import os
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             package = Path(td) / "sg"
             compile_result = subprocess.run([sys.executable, "scripts/sgctl.py", "compile", "examples/brownfield-feature/CONTRACT.json", "--out", str(package)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.assertEqual(compile_result.returncode, 0, compile_result.stdout + compile_result.stderr)
-            os.chmod(package / "ROADMAP.md", 0o755)
+            manifest_path = package / "MANIFEST.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            roadmap = next(item for item in manifest["artifacts"] if item["path"] == "ROADMAP.md")
+            roadmap["mode"] = "0755"
+            joined = "\n".join(
+                f"{item['path']} {item['sha256']} {item['bytes']} {item['mode']}"
+                for item in manifest["artifacts"]
+            )
+            manifest["package_fingerprint"] = hashlib.sha256(joined.encode()).hexdigest()
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
             result = self.run_sgctl("validate-package", str(package), "--format", "json")
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("SGV-PACKAGE-MANIFEST-HASH", {d["code"] for d in json.loads(result.stdout)})

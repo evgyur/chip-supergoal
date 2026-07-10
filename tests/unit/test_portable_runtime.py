@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib"))
 
-from chip_supergoal.compile import build_manifest
+from chip_supergoal.compile import build_manifest, compile_contract_file
 from chip_supergoal.portable import (
     StateLockTimeout,
     canonical_text_bytes,
@@ -18,6 +18,7 @@ from chip_supergoal.portable import (
     write_utf8_lf,
 )
 from chip_supergoal.state import State, StateStore
+from chip_supergoal.validate import validate_package
 
 
 DIGEST = "a" * 64
@@ -78,6 +79,23 @@ class PortableRuntimeTest(unittest.TestCase):
 
             self.assertEqual(modes["scripts/validate-phase.sh"], "0755")
             self.assertEqual(modes["README.md"], "0644")
+
+    @unittest.skipUnless(os.name == "nt", "native Windows regression")
+    def test_validate_package_accepts_fresh_logical_modes_on_windows(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                Path(td) / "sg",
+                template_protocol=ROOT / "templates/PROTOCOL.md",
+            )
+
+            mode_diagnostics = [
+                diagnostic
+                for diagnostic in validate_package(package)
+                if diagnostic.code == "SGV-PACKAGE-MANIFEST-HASH"
+            ]
+
+            self.assertEqual(mode_diagnostics, [])
 
     def test_package_lock_creates_persistent_one_byte_file(self):
         with tempfile.TemporaryDirectory() as td:

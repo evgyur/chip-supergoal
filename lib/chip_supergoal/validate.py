@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import stat
 from pathlib import Path
 from typing import Iterable
 
@@ -11,6 +10,7 @@ from .diagnostics import Diagnostic
 from .model import canonical_json, load_contract
 from .normalize import semantic_errors
 from .policy import load_risk_policy
+from .portable import logical_mode
 from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_state, render_thinking
 from .research import render_research_markdown, research_gate, research_report, research_required, validate_research_gate
 
@@ -176,10 +176,6 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _file_mode(path: Path) -> str:
-    return f"{stat.S_IMODE(path.stat().st_mode):04o}"
-
-
 def _expected_generated_files(root: Path) -> tuple[dict[str, bytes], list[Diagnostic]]:
     diagnostics: list[Diagnostic] = []
     try:
@@ -273,6 +269,6 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
             if not p.is_file():
                 continue
             data = p.read_bytes()
-            if item.get("sha256") != _sha256_bytes(data) or item.get("bytes") != len(data) or item.get("mode") != _file_mode(p):
+            if item.get("sha256") != _sha256_bytes(data) or item.get("bytes") != len(data) or item.get("mode") != logical_mode(rel):
                 diagnostics.append(_diag("SGV-PACKAGE-MANIFEST-HASH", "INV-VALIDATOR-001", str(r), f"/MANIFEST.json/artifacts/{rel}", f"manifest record for {rel} does not match current bytes/mode", "Regenerate MANIFEST.json from current artifact bytes."))
     return diagnostics
