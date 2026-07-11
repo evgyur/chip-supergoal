@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Iterable
 
-from .diagnostics import Diagnostic
+from .diagnostics import Diagnostic, diagnostic_metadata
 from .model import canonical_json, load_contract
 from .pipeline import contract_diagnostics, repository_resource_root
 from .portable import logical_mode
@@ -22,7 +22,10 @@ REQUIRED_PHASE_SECTIONS = ["Work", "Acceptance criteria", "Mandatory commands", 
 
 
 def _diag(code: str, invariant_id: str, artifact: str, pointer: str, message: str, remediation: str, *, severity: str = "error", stage: str = "preflight") -> Diagnostic:
-    return Diagnostic(code=code, severity=severity, blocking_stage=stage, invariant_id=invariant_id, artifact=artifact, pointer=pointer, message=message, remediation=remediation)
+    metadata = diagnostic_metadata(code)
+    if (invariant_id, stage) != (metadata.invariant, metadata.stage):
+        raise ValueError(f"diagnostic metadata mismatch for {code}")
+    return Diagnostic(code=code, severity=severity, blocking_stage=metadata.stage, invariant_id=metadata.invariant, artifact=artifact, pointer=pointer, message=message, remediation=remediation)
 
 
 def section_text(text: str, heading: str) -> str | None:

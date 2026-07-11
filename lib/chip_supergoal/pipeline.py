@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import re
 
-from .diagnostics import Diagnostic
+from .diagnostics import Diagnostic, diagnostic_metadata
 from .model import Contract, canonical_json, contract_from_dict
 from .normalize import semantic_errors
 from .policy import load_risk_policy, risk_policy_errors
@@ -54,11 +54,14 @@ def _diagnostic(
     stage: str,
     invariant: str = "INV-VALIDATOR-001",
 ) -> Diagnostic:
+    metadata = diagnostic_metadata(code)
+    if (invariant, stage) != (metadata.invariant, metadata.stage):
+        raise ValueError(f"diagnostic metadata mismatch for {code}")
     return Diagnostic(
         code=code,
         severity="error",
-        blocking_stage=stage,
-        invariant_id=invariant,
+        blocking_stage=metadata.stage,
+        invariant_id=metadata.invariant,
         artifact=artifact,
         pointer=pointer,
         message=message,

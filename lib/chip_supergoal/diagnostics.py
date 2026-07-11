@@ -9,6 +9,53 @@ BLOCKING_SEVERITIES = {"error", "blocker", "corruption"}
 
 
 @dataclass(frozen=True)
+class DiagnosticMetadata:
+    invariant: str
+    stage: str
+
+
+_PACKAGE_SECURITY_CODES = {
+    "SGV-PACKAGE-CASE-COLLISION",
+    "SGV-PACKAGE-PATH-ESCAPE",
+    "SGV-PACKAGE-SECRET",
+    "SGV-PACKAGE-SPECIAL-FILE",
+    "SGV-PACKAGE-SYMLINK",
+    "SGV-PACKAGE-ZIP-HASH-MISMATCH",
+    "SGV-PACKAGE-ZIP-TRAVERSAL",
+}
+
+
+def diagnostic_metadata(code: str) -> DiagnosticMetadata:
+    parts = code.split("-")
+    family = parts[1] if len(parts) > 1 else ""
+    if code == "SGV-CONTRACT-MALFORMED":
+        return DiagnosticMetadata("INV-VALIDATOR-001", "model")
+    if code == "SGV-CONTRACT-SEMANTIC":
+        return DiagnosticMetadata("INV-VALIDATOR-001", "semantic")
+    if family == "PROFILE":
+        return DiagnosticMetadata("INV-VALIDATOR-001", "profile")
+    if family == "RESEARCH":
+        return DiagnosticMetadata("INV-RESEARCH-001", "preflight")
+    if family == "RISK":
+        invariant = "INV-RPD-001" if len(parts) > 2 and parts[2] == "RPD" else "INV-VALIDATOR-001"
+        return DiagnosticMetadata(invariant, "policy")
+    if family == "STATE":
+        invariant = "INV-AUDIT-001" if code == "SGV-STATE-TERMINAL-REOPEN" else "INV-RECOVERY-001"
+        return DiagnosticMetadata(invariant, "runtime")
+    if code in _PACKAGE_SECURITY_CODES:
+        return DiagnosticMetadata("INV-ARCHIVE-001", "archive")
+    if code == "SGV-PACKAGE-LAUNCH-MARKER":
+        return DiagnosticMetadata("INV-LAUNCH-001", "preflight")
+    if family == "PACKAGE":
+        return DiagnosticMetadata("INV-VALIDATOR-001", "preflight")
+    if code == "SGV-LOOP-LAUNCH-BODY":
+        return DiagnosticMetadata("INV-LAUNCH-001", "preflight")
+    if family == "PHASE" and len(parts) > 2 and parts[2] == "RPD":
+        return DiagnosticMetadata("INV-RPD-001", "preflight")
+    return DiagnosticMetadata("INV-VALIDATOR-001", "preflight")
+
+
+@dataclass(frozen=True)
 class Diagnostic:
     code: str
     severity: str

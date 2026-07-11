@@ -4,7 +4,7 @@
     {
       "code": "SGV-CONTRACT-MALFORMED",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "semantic",
+      "stage": "model",
       "remediation_class": "contract_edit"
     },
     {
@@ -88,67 +88,67 @@
     {
       "code": "SGV-PACKAGE-CONTRACT-MALFORMED",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-FINGERPRINT-MISMATCH",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-GENERATED-DRIFT",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-LAUNCH-MARKER",
       "invariant": "INV-LAUNCH-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-MANIFEST-FILESET",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-MANIFEST-HASH",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-MANIFEST-MALFORMED",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-MANIFEST-PATH",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-MANIFEST-SHAPE",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-MISSING-FILE",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
       "code": "SGV-PACKAGE-MISSING-MANIFEST",
       "invariant": "INV-VALIDATOR-001",
-      "stage": "package-validation",
+      "stage": "preflight",
       "remediation_class": "package_rebuild"
     },
     {
@@ -298,49 +298,49 @@
     {
       "code": "SGV-RESEARCH-PERPLEX-FIRST",
       "invariant": "INV-RESEARCH-001",
-      "stage": "research",
+      "stage": "preflight",
       "remediation_class": "research_completion"
     },
     {
       "code": "SGV-RESEARCH-PERPLEX-SOURCE",
       "invariant": "INV-RESEARCH-001",
-      "stage": "research",
+      "stage": "preflight",
       "remediation_class": "research_completion"
     },
     {
       "code": "SGV-RESEARCH-PROVIDER",
       "invariant": "INV-RESEARCH-001",
-      "stage": "research",
+      "stage": "preflight",
       "remediation_class": "research_completion"
     },
     {
       "code": "SGV-RESEARCH-REQUIRED",
       "invariant": "INV-RESEARCH-001",
-      "stage": "research",
+      "stage": "preflight",
       "remediation_class": "research_completion"
     },
     {
       "code": "SGV-RESEARCH-SOURCE-PROVIDER",
       "invariant": "INV-RESEARCH-001",
-      "stage": "research",
+      "stage": "preflight",
       "remediation_class": "research_completion"
     },
     {
       "code": "SGV-RESEARCH-SOURCE-SHAPE",
       "invariant": "INV-RESEARCH-001",
-      "stage": "research",
+      "stage": "preflight",
       "remediation_class": "research_completion"
     },
     {
       "code": "SGV-RESEARCH-SOURCES",
       "invariant": "INV-RESEARCH-001",
-      "stage": "research",
+      "stage": "preflight",
       "remediation_class": "research_completion"
     },
     {
       "code": "SGV-RESEARCH-SUMMARY",
       "invariant": "INV-RESEARCH-001",
-      "stage": "research",
+      "stage": "preflight",
       "remediation_class": "research_completion"
     },
     {

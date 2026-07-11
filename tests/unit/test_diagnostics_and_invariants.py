@@ -10,6 +10,8 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 from chip_supergoal.diagnostics import Diagnostic, has_blocking
 from chip_supergoal.invariants import load_catalog, validate_catalog, invariant_ids
+from chip_supergoal.pipeline import validate_contract_source
+import chip_supergoal.diagnostics as diagnostics_module
 
 class DiagnosticsAndInvariantsTest(unittest.TestCase):
     def test_diagnostic_renders_human_and_json(self):
@@ -84,6 +86,57 @@ class DiagnosticsAndInvariantsTest(unittest.TestCase):
                     emitted.update(pattern.findall(node.value))
 
         self.assertEqual(set(catalog_codes), emitted)
+
+    def test_pipeline_diagnostic_metadata_matches_catalog(self):
+        catalog = json.loads(
+            (ROOT / "spec/diagnostic-catalog.json").read_text(encoding="utf-8")
+        )
+        catalog_by_code = {item["code"]: item for item in catalog["diagnostics"]}
+        fixture = json.loads(
+            (ROOT / "examples/brownfield-feature/CONTRACT.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        cases = [("SGV-CONTRACT-MALFORMED", b"{}")]
+
+        semantic = json.loads(json.dumps(fixture))
+        semantic["phases"][0]["depends_on"] = ["P99"]
+        cases.append(("SGV-CONTRACT-SEMANTIC", json.dumps(semantic).encode()))
+
+        profile = json.loads(json.dumps(fixture))
+        profile["profile"] = "does-not-exist"
+        cases.append(("SGV-PROFILE-NOT-FOUND", json.dumps(profile).encode()))
+
+        risk = json.loads(json.dumps(fixture))
+        risk["risks"][0]["tag"] = "invented"
+        risk["phases"][0]["risk_tags"] = ["invented"]
+        cases.append(("SGV-RISK-UNKNOWN", json.dumps(risk).encode()))
+
+        research = json.loads(json.dumps(fixture))
+        research["compatibility"]["research_gate"]["status"] = "blocked"
+        cases.append(("SGV-RESEARCH-REQUIRED", json.dumps(research).encode()))
+
+        for code, source in cases:
+            with self.subTest(code=code):
+                result = validate_contract_source(source, resource_root=ROOT)
+                diagnostic = next(item for item in result.diagnostics if item.code == code)
+                expected = catalog_by_code[code]
+                self.assertEqual(diagnostic.invariant_id, expected["invariant"])
+                self.assertEqual(diagnostic.blocking_stage, expected["stage"])
+
+    def test_diagnostic_metadata_registry_matches_catalog(self):
+        self.assertTrue(
+            hasattr(diagnostics_module, "diagnostic_metadata"),
+            "diagnostic metadata registry is required",
+        )
+        catalog = json.loads(
+            (ROOT / "spec/diagnostic-catalog.json").read_text(encoding="utf-8")
+        )
+        for entry in catalog["diagnostics"]:
+            with self.subTest(code=entry["code"]):
+                metadata = diagnostics_module.diagnostic_metadata(entry["code"])
+                self.assertEqual(metadata.invariant, entry["invariant"])
+                self.assertEqual(metadata.stage, entry["stage"])
 
 if __name__ == "__main__":
     unittest.main()

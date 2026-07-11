@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .diagnostics import Diagnostic
+from .diagnostics import Diagnostic, diagnostic_metadata
 from .model import Contract
 
 RESEARCH_TRIGGER_TAGS = {
@@ -128,7 +128,8 @@ def write_research_report(contract: Contract, path: str | Path) -> None:
 
 
 def _research_diag(code: str, artifact: str, pointer: str, message: str, remediation: str) -> Diagnostic:
-    return Diagnostic(code=code, severity="error", blocking_stage="preflight", invariant_id="INV-RESEARCH-001", artifact=artifact, pointer=pointer, message=message, remediation=remediation)
+    metadata = diagnostic_metadata(code)
+    return Diagnostic(code=code, severity="error", blocking_stage=metadata.stage, invariant_id=metadata.invariant, artifact=artifact, pointer=pointer, message=message, remediation=remediation)
 
 
 def validate_research_gate(contract: Contract, *, artifact: str = "CONTRACT.json") -> list[Diagnostic]:
