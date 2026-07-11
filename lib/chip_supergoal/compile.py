@@ -270,6 +270,8 @@ def _compile_resolved(
 
     staging = Path(tempfile.mkdtemp(prefix=f".{out_path.name}.tmp-", dir=str(parent)))
     backup: Path | None = None
+    backup_created = False
+    swap_completed = False
     try:
         shutil.rmtree(staging)
         _render_package(
@@ -286,16 +288,29 @@ def _compile_resolved(
         if out_path.exists():
             backup = parent / f".{out_path.name}.backup-{os.getpid()}-{next(tempfile._get_candidate_names())}"
             out_path.rename(backup)
+            backup_created = True
         staging.rename(out_path)
-        if backup is not None:
-            shutil.rmtree(backup)
+        swap_completed = True
+        if backup_created and backup is not None:
+            try:
+                shutil.rmtree(backup)
+            except OSError:
+                pass
         return out_path
     except Exception:
-        if out_path.exists() and backup is not None:
-            shutil.rmtree(out_path, ignore_errors=True)
-        if backup is not None and backup.exists():
-            backup.rename(out_path)
-        shutil.rmtree(staging, ignore_errors=True)
+        if (
+            backup_created
+            and not swap_completed
+            and backup is not None
+            and backup.exists()
+            and not out_path.exists()
+        ):
+            try:
+                backup.rename(out_path)
+            except OSError:
+                pass
+        if not swap_completed:
+            shutil.rmtree(staging, ignore_errors=True)
         raise
 
 

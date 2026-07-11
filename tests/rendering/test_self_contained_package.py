@@ -402,6 +402,45 @@ class SelfContainedPackageTest(unittest.TestCase):
             }
             self.assertEqual(after, before)
 
+    def test_backup_rename_failure_preserves_existing_target_without_residue(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            package = self.compile_package(parent)
+            before = {
+                path.relative_to(package).as_posix(): path.read_bytes()
+                for path in package.rglob("*")
+                if path.is_file()
+            }
+            original_rename = Path.rename
+            injected = False
+
+            def fail_first_target_rename(path: Path, target: Path) -> Path:
+                nonlocal injected
+                if not injected and path == package:
+                    injected = True
+                    raise OSError("injected backup rename failure")
+                return original_rename(path, target)
+
+            with mock.patch.object(Path, "rename", fail_first_target_rename):
+                with self.assertRaisesRegex(OSError, "injected backup rename failure"):
+                    compile_contract_file(CONTRACT, package)
+
+            self.assertTrue(injected)
+            self.assertTrue(package.is_dir())
+            after = {
+                path.relative_to(package).as_posix(): path.read_bytes()
+                for path in package.rglob("*")
+                if path.is_file()
+            }
+            self.assertEqual(after, before)
+            residue = sorted(
+                path.name
+                for path in parent.iterdir()
+                if path.name.startswith(".package.backup-")
+                or path.name.startswith(".package.tmp-")
+            )
+            self.assertEqual(residue, [])
+
     def test_pristine_recompile_is_allowed_but_started_runtime_is_refused(self):
         with tempfile.TemporaryDirectory() as td:
             parent = Path(td)
