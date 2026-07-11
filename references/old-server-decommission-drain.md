@@ -96,6 +96,7 @@ State handling:
 - Mark the approval phase done.
 - Set `STATE.md` status to `READY_FOR_DELETE_APPROVAL` and current phase to final audit blocked/pending explicit Chip provider choice.
 - Do **not** print `AUDIT_COMPLETE` or `SUPERGOAL_RUN_COMPLETE` while only provider approval remains.
+- Do not run `finalize` or claim successful `python scripts/sgctl.py validate-terminal`; approval-blocked work cannot have an authoritative terminal record.
 - If Chip later chooses retain/delete/snapshot-then-delete, the final audit phase can execute only that approved provider path and then re-run DNS, public smoke, backup inspectability, and inventory/docs cleanup.
 
 ### Retained/off approval path

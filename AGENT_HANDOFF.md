@@ -15,10 +15,16 @@ Public source bundle for the `chip-supergoal` Hermes skill.
 6. `scripts/sgctl.py`
 
 ## Verify after cloning
-```bash
-python3 -m unittest discover -s tests
-bash scripts/test.sh
+Requires CPython 3.11.9 or newer.
+
+```text
+python -m pip install --disable-pip-version-check -r requirements-test.txt
+python scripts/test.py
 ```
 
+On Unix-only hosts, also run `bash scripts/test.sh` for shell syntax and style.
+
 ## Privacy boundary
-Runtime/cache state is intentionally excluded: `.git`, `.supergoal`, `__pycache__`, `.pytest_cache`, local DBs, credentials, receipts, and generated delivery artifacts.
+The privacy gate scans every tracked file plus bounded untracked files outside
+runtime/private state directories. Runtime caches and credentials remain outside
+git; force-tracked runtime fixtures are never exempt from the tracked-file scan.

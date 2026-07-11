@@ -4,18 +4,18 @@ Use when a SuperGoal continuation, restart, stale wrapper, repeated complete mes
 
 ## Recovery order
 
-1. Locate `.supergoal/STATE.md` for the active goal.
-2. Trust `STATE.md` over chat memory and over GoalManager's volatile session state.
-3. If `/goal resume` returns `No goal to resume` but a valid SuperGoal package/`STATE.md` exists, treat the command result as a missing volatile goal handle, not proof that the work is gone. Continue from `STATE.md` in ordinary task mode or re-seed `/goal` from `LAUNCH_GOAL.md`.
-4. If `Current phase` is numeric, resume that phase.
-5. If `AUDIT`, run final audit.
-6. If `BLOCKED`, surface the blocker and stop.
-7. If `DONE`, do not re-run work; answer with the completion evidence or package location.
+1. Locate the exact package root for the active goal and run strict package validation.
+2. Run `python scripts/sgctl.py state-show`; trust `runtime/STATE.json` and its event journal over chat memory, volatile GoalManager state, or `STATE.md` prose.
+3. If `/goal resume` returns `No goal to resume` but the package validates, treat it as a missing volatile goal handle, not proof that work is gone. Continue from authoritative state or re-seed official `/goal` from `LAUNCH_GOAL.md`.
+4. If authoritative state selects a numbered phase, resume it.
+5. If `AUDITING`, run final audit.
+6. If blocked, surface the exact blocker and stop.
+7. If `DONE`, require `python scripts/sgctl.py validate-terminal` against `reports/terminal-record.txt` before treating it as completed. A DONE label or markers alone mean continue/recover, not success.
 
 ## Wrong-goal guard
 
-If the visible chat wrapper points to a different goal than `STATE.md`, pause and ask for the correct package path or goal identity. Do not execute a stale/bogus goal.
+If the visible chat wrapper disagrees with the goal/contract identity returned by `state-show`, pause and resolve the exact package root. Do not execute a stale/bogus goal.
 
 ## Completion-loop guard
 
-Never print `SUPERGOAL_RUN_COMPLETE` again just to satisfy a repeated wrapper. Completion requires current package evidence; otherwise summarize that the goal is already complete or blocked.
+Never print `SUPERGOAL_RUN_COMPLETE` again just to satisfy a repeated wrapper. Completion requires the current exact terminal record and a fresh unchanged `validate-terminal` success; otherwise continue recovery or report the blocker.

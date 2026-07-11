@@ -17,13 +17,18 @@ English documentation: [`../README.md`](../README.md)
 - `reports/research.json` — machine-readable отчёт provider/status/sources, когда research gate активен.
 - `LOOP_DESIGN.md` — дизайн исполнительного цикла: host, reviewer/judge, проверки, stop conditions, recovery, boundaries.
 - `ROADMAP.md` — карта фаз, acceptance criteria, обязательные команды, требования к evidence.
-- `STATE.md` — стартовое состояние и текущая фаза.
+- `runtime/STATE.json` — authoritative execution state; `STATE.md` — его проверяемая human projection.
 - `PROTOCOL.md` — самодостаточный протокол для будущего `/goal` запуска.
 - `LAUNCH_GOAL.md` — единственный файл с launch body, начинающимся с `SUPERGOAL_GOAL_BODY:`.
 - `phases/phase-N.md` — строгие спецификации фаз.
 - helper scripts и delivery receipts, если workflow требует доставки файлов.
 
-После этого отдельная Hermes `/goal` сессия читает пакет и выполняет работу. Завершение считается валидным только после финального аудита и маркеров вроде `AUDIT_COMPLETE` и `SUPERGOAL_RUN_COMPLETE`.
+После этого отдельная Hermes `/goal` сессия читает пакет и выполняет работу.
+Завершение валидно только тогда, когда
+`python scripts/sgctl.py validate-terminal` принимает точный package-bound
+`reports/terminal-record.txt`. Маркеры `AUDIT_COMPLETE` и
+`SUPERGOAL_RUN_COMPLETE` нужны для совместимости host, но сами по себе не дают
+completion authority.
 
 ## Зачем это нужно
 
@@ -57,23 +62,30 @@ English documentation: [`../README.md`](../README.md)
 
 Проверить репозиторий локально:
 
-```bash
-python3 -m unittest discover -s tests
-bash scripts/test.sh
+Требуется CPython 3.11.9 or newer. CI проверяет 3.11.9 и 3.13.14 как в native
+Windows, так и в Ubuntu.
+
+```console
+python -m pip install --disable-pip-version-check -r requirements-test.txt
+python scripts/test.py
 ```
 
-Скомпилировать пример:
+Одна и та же команда работает в native Windows и Ubuntu. Unix-only entrypoint
+`bash scripts/test.sh` сначала проверяет shell-файлы, затем вызывает тот же
+Python runner.
 
-```bash
-python3 scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out /tmp/example-supergoal
-python3 scripts/sgctl.py validate-package /tmp/example-supergoal --strict
+Скомпилировать пример в новый sibling-каталог вне дерева skill (предыдущий
+target нужно сначала переместить или удалить):
+
+```console
+python scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out ../chip-supergoal-example
+python scripts/sgctl.py validate-package ../chip-supergoal-example --strict
 ```
 
 Посмотреть результат:
 
-```bash
-ls -la /tmp/example-supergoal
-sed -n '1,80p' /tmp/example-supergoal/LAUNCH_GOAL.md
+```console
+python -c "from pathlib import Path; print((Path('../chip-supergoal-example') / 'LAUNCH_GOAL.md').read_text(encoding='utf-8'))"
 ```
 
 ## CLI: `sgctl.py`
@@ -104,30 +116,55 @@ sed -n '1,80p' /tmp/example-supergoal/LAUNCH_GOAL.md
 
 Проверить gate:
 
-```bash
-python3 scripts/sgctl.py research-gate examples/brownfield-feature/CONTRACT.json --format json
-python3 scripts/sgctl.py validate-contract examples/brownfield-feature/CONTRACT.json --strict
+```console
+python scripts/sgctl.py research-gate examples/brownfield-feature/CONTRACT.json --format json
+python scripts/sgctl.py validate-contract examples/brownfield-feature/CONTRACT.json --strict
 ```
 
 Compile пишет `RESEARCH.md` и `reports/research.json`; `validate-package` ловит drift в обоих файлах.
 
 Основные команды:
 
-```bash
+```console
 # Проверить v3 contract
-python3 scripts/sgctl.py validate-contract examples/brownfield-feature/CONTRACT.json --strict
+python scripts/sgctl.py validate-contract examples/brownfield-feature/CONTRACT.json --strict
 
 # Скомпилировать contract в sealed SuperGoal package
-python3 scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out /tmp/example-supergoal
+python scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out ../chip-supergoal-example
 
 # Проверить generated package
-python3 scripts/sgctl.py validate-package /tmp/example-supergoal --strict
+python scripts/sgctl.py validate-package ../chip-supergoal-example --strict
 
 # Мигрировать старый v2-style package, если поддерживается
-python3 scripts/sgctl.py migrate-v2 <old-package-root> --out <new-contract-or-package>
+python scripts/sgctl.py migrate-v2 <old-package-root> --out <new-contract-or-package>
 ```
 
 ## Модель безопасности
+
+### Поддерживаемые runtime-плоскости
+
+Compiler, validator, state journal, audit, archive, delivery receipts и terminal
+authority работают через package-local Python authority — напрямую в native
+Windows и Ubuntu. Bash-файлы остаются только Unix compatibility wrappers и не
+дублируют security policy. Пакеты из предыдущих alpha нужно recompile, чтобы в
+них попали актуальные runtime и schemas.
+
+Только `python scripts/sgctl.py finalize` может создать
+`reports/terminal-record.txt`. Completion остаётся неавторизованным, пока
+`python scripts/sgctl.py validate-terminal` не проверит текущие sealed package,
+authoritative state, пересчитанный audit, inventory и delivery state.
+
+ZIP публикуется только как external archive за пределами package. Delivery
+передаёт проверенный reservation snapshot и удерживает read-only Windows handle
+или anonymous POSIX copy до запуска транспорта. Native delivery пишет
+многострочный JSON через `--authorization-out` и читает его через
+`--authorization-file`, не полагаясь на PowerShell array/string coercion.
+Privacy scan проверяет все
+tracked files, включая force-tracked runtime paths, и untracked files рабочего
+дерева вне runtime/private state directories, но не чужие пользовательские
+каталоги. Настоящий внешний Hermes GoalManager probe в репозитории не поставляется:
+reserved integration hook всегда skipped и не является release evidence.
+Hermetic GoalManager simulator всегда входит в aggregate suite.
 
 ### Граница planner/executor
 
@@ -186,41 +223,50 @@ Compiler отказывается писать в опасные targets:
 
 Полный локальный gate:
 
+```console
+python -m pip install --disable-pip-version-check -r requirements-test.txt
+python scripts/test.py
+```
+
+Дополнительный Unix-only shell gate:
+
 ```bash
 bash scripts/test.sh
 ```
 
 Python tests напрямую:
 
-```bash
-python3 -m unittest discover -s tests
+```console
+python -m unittest discover -s tests
 ```
 
 Полезные focused tests:
 
-```bash
-python3 -m unittest tests.rendering.test_compile_determinism
-python3 -m unittest tests.semantic.test_sgctl_semantic_validation
-python3 -m unittest tests.security.test_archive_symlink tests.security.test_forged_receipt
+```console
+python -m unittest tests.rendering.test_compile_determinism
+python -m unittest tests.semantic.test_sgctl_semantic_validation
+python -m unittest tests.security.test_archive_symlink tests.security.test_forged_receipt
 ```
 
 ## Workflow разработки
 
 1. Измените code/templates/references/tests.
 2. Запустите focused tests для изменённой зоны.
-3. Запустите `python3 -m unittest discover -s tests`.
-4. Запустите `bash scripts/test.sh`.
+3. Запустите `python scripts/test.py` в Windows или Ubuntu.
+4. В Unix-only окружении дополнительно запустите `bash scripts/test.sh`.
 5. Скомпилируйте example package и провалидируйте его strict mode.
 6. Проверьте, что реальный `SUPERGOAL_GOAL_BODY:` есть только в `templates/LAUNCH_GOAL.md`.
 
 Финальный gate:
 
-```bash
-python3 -m unittest discover -s tests
-bash scripts/test.sh
-python3 scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out /tmp/chip-supergoal-example
-python3 scripts/sgctl.py validate-package /tmp/chip-supergoal-example --strict
+```console
+python scripts/test.py
+python scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out ../chip-supergoal-final
+python scripts/sgctl.py validate-package ../chip-supergoal-final --strict
 ```
+
+На Unix-only хостах перед релизом дополнительно запустите
+`bash scripts/test.sh` как shell-quality gate.
 
 ## Public-use notes
 

@@ -131,20 +131,29 @@ cmd_added_lines() {
 sub="${1:-}"
 shift 2>/dev/null || true
 case "$sub" in
-  deliverable)
-    [ "$#" -ge 2 ] || { echo "usage: repo-state.sh deliverable <baseline> <path>" >&2; exit 2; }
-    cmd_deliverable "$1" "$2"
-    ;;
-  changed-files)
-    [ "$#" -ge 1 ] || { echo "usage: repo-state.sh changed-files <baseline>" >&2; exit 2; }
-    cmd_changed_files "$1"
-    ;;
-  added-lines)
-    [ "$#" -ge 1 ] || { echo "usage: repo-state.sh added-lines <baseline>" >&2; exit 2; }
-    cmd_added_lines "$1"
-    ;;
-  ""|-h|--help|help)
-    cat >&2 <<'EOF'
+deliverable)
+  [ "$#" -ge 2 ] || {
+    echo "usage: repo-state.sh deliverable <baseline> <path>" >&2
+    exit 2
+  }
+  cmd_deliverable "$1" "$2"
+  ;;
+changed-files)
+  [ "$#" -ge 1 ] || {
+    echo "usage: repo-state.sh changed-files <baseline>" >&2
+    exit 2
+  }
+  cmd_changed_files "$1"
+  ;;
+added-lines)
+  [ "$#" -ge 1 ] || {
+    echo "usage: repo-state.sh added-lines <baseline>" >&2
+    exit 2
+  }
+  cmd_added_lines "$1"
+  ;;
+"" | -h | --help | help)
+  cat >&2 <<'EOF'
 repo-state.sh — evaluate complete working-tree state vs a baseline commit.
 
   repo-state.sh deliverable   <baseline> <path>   present|missing|unchanged, exit 0|1|3
@@ -154,10 +163,10 @@ repo-state.sh — evaluate complete working-tree state vs a baseline commit.
 In a git repo, an invalid baseline fails closed with exit 2. Outside git, the
 script degrades to filesystem checks for deliverables and empty changed/added output.
 EOF
-    exit 2
-    ;;
-  *)
-    echo "repo-state.sh: unknown subcommand '$sub' (try deliverable|changed-files|added-lines)" >&2
-    exit 2
-    ;;
+  exit 2
+  ;;
+*)
+  echo "repo-state.sh: unknown subcommand '$sub' (try deliverable|changed-files|added-lines)" >&2
+  exit 2
+  ;;
 esac

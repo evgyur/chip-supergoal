@@ -1,6 +1,6 @@
 # Phase marker bookkeeping after interrupted SuperGoal turns
 
-Use this when a SuperGoal phase was actually verified on disk, `STATE.md` advanced, but the visible chat transcript missed one or more required markers because the assistant turn was interrupted, compacted, or delivered incompletely.
+Use this when a SuperGoal phase was actually verified on disk, authoritative state advanced through package-local commands, but the visible chat transcript missed one or more required markers because the assistant turn was interrupted, compacted, or delivered incompletely. `STATE.md` is only the checked projection.
 
 ## Contract
 
@@ -14,17 +14,17 @@ The `/goal` evaluator reads the visible transcript, not only files. A phase is n
 
 ## Recovery pattern
 
-1. Read `STATE.md` first.
-2. If `STATE.md` has already advanced past phase N and the report/evidence files exist, do not redo phase N work and do not start phase N+1 in the same turn.
-3. Print a bookkeeping-only marker block for phase N using real evidence from the report, command logs, and `STATE.md`.
+1. Run `python scripts/sgctl.py state-show` first.
+2. If authoritative state has already advanced past phase N and bound report/evidence files exist, do not redo phase N work.
+3. Print a bookkeeping-only marker block for phase N using real evidence from the report, command logs, and authoritative state.
 4. Include `MEMORY_SAVED: none` unless a real durable learning was saved.
-5. Print `SUPERGOAL_TURN_YIELD` and stop. The next continuation can start the next phase from `STATE.md`.
+5. Continue the authoritative next phase in the same run when safe. Use `SUPERGOAL_TURN_YIELD` only for a real blocker or host-forced cutoff.
 
 ## What not to do
 
-- Do not mark the phase complete a second time in `STATE.md` unless the missing bookkeeping needs an event line.
+- Do not transition the phase complete a second time merely to repair transcript bookkeeping.
 - Do not invent command output. Quote only evidence already captured in report/logs or rerun a safe verifier if evidence is missing.
-- Do not chain into the next numbered phase after emitting missing markers. One phase/bookkeeping unit per turn still holds.
+- Do not turn bookkeeping into a courtesy phase stop; continuous safe execution still applies.
 - Do not ask Chip to send `/goal` again if the standing-goal wrapper is active.
 
 ## Good visible wording

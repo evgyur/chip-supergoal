@@ -7,11 +7,11 @@ import errno
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import stat
 import tempfile
 import time
-from typing import BinaryIO, Iterator
+from typing import BinaryIO, Iterable, Iterator
 
 if os.name == "nt":
     import msvcrt
@@ -58,6 +58,7 @@ RUNTIME_MODULES = (
 )
 RUNTIME_SCRIPTS = (
     "sgctl.py",
+    "check-cross-file-consistency.py",
     "validate-phase.sh",
     "validate-loop-design.sh",
     "repo-state.sh",
@@ -137,36 +138,31 @@ def is_reparse_point(stat_result: os.stat_result) -> bool:
 
 
 def iter_tree_no_follow(
-    root: str | Path, *, max_entries: int | None = None
+    root: str | Path,
+    *,
+    max_entries: int | None = None,
+    prune_directory_names: Iterable[str] = (),
 ) -> Iterator[tuple[Path, os.stat_result]]:
+    """Yield a deterministic tree inventory without crossing filesystem links.
+
+    Pruned directories are yielded so callers can diagnose them, but their
+    contents are never enumerated.
+    """
+
     package_root = Path(root)
-    pending = [package_root]
-    observed = 0
-    while pending:
-        directory = pending.pop()
-        with os.scandir(directory) as iterator:
-            entries = []
-            for entry in iterator:
-                observed += 1
-                if max_entries is not None and observed > max_entries:
-                    raise UnsafeFileError(
-                        package_root,
-                        "tree entry count exceeds bounded enumeration limit",
-                        kind="limit",
-                    )
-                entries.append(entry)
-            entries.sort(key=lambda item: item.name)
-        child_directories: list[Path] = []
-        for entry in entries:
-            path = Path(entry.path)
-            stat_result = entry.stat(follow_symlinks=False)
-            yield path, stat_result
-            if stat.S_ISDIR(stat_result.st_mode) and not (
-                stat.S_ISLNK(stat_result.st_mode)
-                or is_reparse_point(stat_result)
-            ):
-                child_directories.append(path)
-        pending.extend(reversed(child_directories))
+    pruned_names = frozenset(prune_directory_names)
+    if os.name == "nt":
+        yield from _iter_tree_no_follow_windows(
+            package_root,
+            max_entries=max_entries,
+            pruned_names=pruned_names,
+        )
+        return
+    yield from _iter_tree_no_follow_posix(
+        package_root,
+        max_entries=max_entries,
+        pruned_names=pruned_names,
+    )
 
 
 class StateLockTimeout(TimeoutError):
@@ -179,6 +175,154 @@ class UnsafeFileError(OSError):
         self.reason = reason
         self.kind = kind
         super().__init__(f"unsafe package file {self.path}: {reason}")
+
+
+@dataclass
+class _TreeWalkFrame:
+    logical_path: Path
+    guard: object | None
+    scan_source: int | Path
+    children: tuple[
+        tuple[str, Path, os.stat_result, tuple[int, int]], ...
+    ] = ()
+    next_child: int = 0
+    scanned: bool = False
+
+
+def _tree_directory(stat_result: os.stat_result) -> bool:
+    return (
+        stat.S_ISDIR(stat_result.st_mode)
+        and not stat.S_ISLNK(stat_result.st_mode)
+        and not is_reparse_point(stat_result)
+    )
+
+
+def _tree_directory_identity(stat_result: os.stat_result) -> tuple[int, int]:
+    return int(stat_result.st_dev), int(stat_result.st_ino)
+
+
+def _scan_tree_directory(
+    source: int | Path,
+    package_root: Path,
+    *,
+    observed: int,
+    max_entries: int | None,
+) -> tuple[list[tuple[str, os.stat_result]], int]:
+    entries: list[tuple[str, os.stat_result]] = []
+    with os.scandir(source) as iterator:
+        for entry in iterator:
+            observed += 1
+            if max_entries is not None and observed > max_entries:
+                raise UnsafeFileError(
+                    package_root,
+                    "tree entry count exceeds bounded enumeration limit",
+                    kind="limit",
+                )
+            entries.append((entry.name, entry.stat(follow_symlinks=False)))
+    entries.sort(key=lambda item: item[0])
+    return entries, observed
+
+
+def _iter_tree_no_follow_posix(
+    package_root: Path,
+    *,
+    max_entries: int | None,
+    pruned_names: frozenset[str],
+    root_descriptor: int | None = None,
+) -> Iterator[tuple[Path, os.stat_result]]:
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+    if root_descriptor is None:
+        try:
+            owned_root_descriptor = os.open(package_root, directory_flags)
+        except OSError as exc:
+            raise _unsafe_open_error(package_root, exc) from exc
+    else:
+        owned_root_descriptor = os.dup(root_descriptor)
+        if not stat.S_ISDIR(os.fstat(owned_root_descriptor).st_mode):
+            os.close(owned_root_descriptor)
+            raise UnsafeFileError(package_root, "tree root is not a directory")
+    stack = [
+        _TreeWalkFrame(
+            package_root,
+            owned_root_descriptor,
+            owned_root_descriptor,
+        )
+    ]
+    observed = 0
+    try:
+        while stack:
+            frame = stack[-1]
+            if not frame.scanned:
+                entries, observed = _scan_tree_directory(
+                    int(frame.scan_source),
+                    package_root,
+                    observed=observed,
+                    max_entries=max_entries,
+                )
+                children: list[
+                    tuple[str, Path, os.stat_result, tuple[int, int]]
+                ] = []
+                for name, stat_result in entries:
+                    path = frame.logical_path / name
+                    if _tree_directory(stat_result) and name not in pruned_names:
+                        children.append(
+                            (
+                                name,
+                                path,
+                                stat_result,
+                                _tree_directory_identity(stat_result),
+                            )
+                        )
+                    yield path, stat_result
+                frame.children = tuple(children)
+                frame.scanned = True
+                continue
+            if frame.next_child < len(frame.children):
+                name, path, _, expected_identity = frame.children[
+                    frame.next_child
+                ]
+                frame.next_child += 1
+                child_descriptor: int | None = None
+                try:
+                    child_descriptor = os.open(
+                        name,
+                        directory_flags,
+                        dir_fd=int(frame.guard),
+                    )
+                    opened_stat = os.fstat(child_descriptor)
+                    if (
+                        not _tree_directory(opened_stat)
+                        or _tree_directory_identity(opened_stat)
+                        != expected_identity
+                    ):
+                        raise UnsafeFileError(
+                            path,
+                            "directory identity changed before traversal",
+                            kind="escape",
+                        )
+                    stack.append(
+                        _TreeWalkFrame(path, child_descriptor, child_descriptor)
+                    )
+                    child_descriptor = None
+                except UnsafeFileError:
+                    raise
+                except OSError as exc:
+                    raise _unsafe_open_error(path, exc) from exc
+                finally:
+                    if child_descriptor is not None:
+                        os.close(child_descriptor)
+                continue
+            descriptor = int(frame.guard)
+            frame.guard = None
+            stack.pop()
+            os.close(descriptor)
+    finally:
+        for frame in reversed(stack):
+            if frame.guard is not None:
+                os.close(int(frame.guard))
+                frame.guard = None
 
 
 @dataclass(frozen=True)
@@ -647,6 +791,116 @@ def _windows_file_identity(handle: object) -> tuple[int, int]:
     return information.dwVolumeSerialNumber, index
 
 
+def _iter_tree_no_follow_windows(
+    package_root: Path,
+    *,
+    max_entries: int | None,
+    pruned_names: frozenset[str],
+    root_share_delete: bool = False,
+) -> Iterator[tuple[Path, os.stat_result]]:
+    directory_access = (
+        _FILE_TRAVERSE | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE_ACCESS
+    )
+    directory_share = _FILE_SHARE_READ | _FILE_SHARE_WRITE
+    root_handle: object | None = None
+    try:
+        root_handle, root_final_path = _open_windows_verified(
+            package_root,
+            directory=True,
+            desired_access=directory_access,
+            share_delete=root_share_delete,
+        )
+    except UnsafeFileError:
+        raise
+    except OSError as exc:
+        raise _unsafe_open_error(package_root, exc) from exc
+    stack = [_TreeWalkFrame(package_root, root_handle, root_final_path)]
+    root_handle = None
+    observed = 0
+    try:
+        while stack:
+            frame = stack[-1]
+            if not frame.scanned:
+                entries, observed = _scan_tree_directory(
+                    Path(frame.scan_source),
+                    package_root,
+                    observed=observed,
+                    max_entries=max_entries,
+                )
+                children: list[
+                    tuple[str, Path, os.stat_result, tuple[int, int]]
+                ] = []
+                for name, stat_result in entries:
+                    path = frame.logical_path / name
+                    if _tree_directory(stat_result) and name not in pruned_names:
+                        child_handle: object | None = None
+                        try:
+                            child_handle, _ = _open_windows_relative_verified(
+                                frame.guard,
+                                name,
+                                directory=True,
+                                desired_access=directory_access,
+                            )
+                            expected_identity = _windows_file_identity(child_handle)
+                        except UnsafeFileError:
+                            raise
+                        except OSError as exc:
+                            raise _unsafe_open_error(path, exc) from exc
+                        finally:
+                            if child_handle is not None:
+                                _CloseHandle(child_handle)
+                        children.append(
+                            (name, path, stat_result, expected_identity)
+                        )
+                    yield path, stat_result
+                frame.children = tuple(children)
+                frame.scanned = True
+                continue
+            if frame.next_child < len(frame.children):
+                name, path, _, expected_identity = frame.children[
+                    frame.next_child
+                ]
+                frame.next_child += 1
+                child_handle: object | None = None
+                try:
+                    child_handle, child_final_path = _open_windows_relative_verified(
+                        frame.guard,
+                        name,
+                        directory=True,
+                        desired_access=directory_access,
+                        share_mode=directory_share,
+                    )
+                    if _windows_file_identity(child_handle) != expected_identity:
+                        raise UnsafeFileError(
+                            path,
+                            "directory identity changed before traversal",
+                            kind="escape",
+                        )
+                    stack.append(
+                        _TreeWalkFrame(path, child_handle, child_final_path)
+                    )
+                    child_handle = None
+                except UnsafeFileError:
+                    raise
+                except OSError as exc:
+                    raise _unsafe_open_error(path, exc) from exc
+                finally:
+                    if child_handle is not None:
+                        _CloseHandle(child_handle)
+                continue
+            handle = frame.guard
+            frame.guard = None
+            stack.pop()
+            _CloseHandle(handle)
+    finally:
+        if root_handle is not None:
+            _CloseHandle(root_handle)
+        for frame in reversed(stack):
+            if frame.guard is not None:
+                _CloseHandle(frame.guard)
+                frame.guard = None
+
+
 def _windows_root_identity(handle: object) -> RootIdentity:
     volume, index = _windows_file_identity(handle)
     return RootIdentity("windows", int(volume), int(index))
@@ -846,14 +1100,12 @@ def _write_windows_descriptor(
     os.fsync(descriptor)
 
 
-def _rename_windows_descriptor(
-    descriptor: int,
+def _rename_windows_handle_relative(
+    source_handle: object,
     parent_handle: object,
     target_name: str,
     *,
-    package_root: Path,
-    parent_parts: tuple[str, ...],
-    directory_handles: list[object],
+    replace: bool,
 ) -> None:
     if (
         not target_name
@@ -866,7 +1118,7 @@ def _rename_windows_descriptor(
     size = ctypes.sizeof(_FileRenameInfo) + len(encoded)
     buffer = ctypes.create_string_buffer(size)
     information = _FileRenameInfo.from_buffer(buffer)
-    information.ReplaceIfExists = 1
+    information.ReplaceIfExists = int(replace)
     # The target directory is the already verified handle; no mutable path is
     # resolved during publication.
     information.RootDirectory = wintypes.HANDLE(
@@ -876,12 +1128,9 @@ def _rename_windows_descriptor(
     ctypes.memmove(
         ctypes.addressof(buffer) + filename_offset, encoded, len(encoded)
     )
-    _assert_windows_directory_chain(
-        package_root, parent_parts, directory_handles
-    )
     status_block = _IoStatusBlock()
     status = _NtSetInformationFile(
-        _windows_descriptor_handle(descriptor),
+        source_handle,
         ctypes.byref(status_block),
         ctypes.byref(buffer),
         size,
@@ -889,6 +1138,26 @@ def _rename_windows_descriptor(
     )
     if status < 0:
         _raise_windows_ntstatus(status)
+
+
+def _rename_windows_descriptor(
+    descriptor: int,
+    parent_handle: object,
+    target_name: str,
+    *,
+    package_root: Path,
+    parent_parts: tuple[str, ...],
+    directory_handles: list[object],
+) -> None:
+    _assert_windows_directory_chain(
+        package_root, parent_parts, directory_handles
+    )
+    _rename_windows_handle_relative(
+        _windows_descriptor_handle(descriptor),
+        parent_handle,
+        target_name,
+        replace=True,
+    )
 
 
 def _delete_windows_handle(
@@ -1584,6 +1853,733 @@ def write_utf8_lf(
     root: str | Path | None = None,
 ) -> None:
     write_bytes_atomic(path, canonical_text_bytes(content), root=root)
+
+
+def _publication_relative_parts(path: str | Path) -> tuple[str, ...]:
+    raw = os.fspath(path)
+    if not isinstance(raw, str):
+        raise TypeError("publication paths must be text")
+    normalized = raw.replace("\\", "/")
+    relative = PurePosixPath(normalized)
+    if (
+        not normalized
+        or relative.is_absolute()
+        or not relative.parts
+        or any(part in {"", ".", ".."} or ":" in part for part in relative.parts)
+    ):
+        raise ValueError("publication path must be a contained relative path")
+    return tuple(relative.parts)
+
+
+def _posix_publication_directory_flags() -> int:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    return flags
+
+
+def _open_posix_publication_chain(
+    root_descriptor: int,
+    parts: tuple[str, ...],
+    *,
+    create: bool,
+    mode: int = 0o755,
+) -> list[int]:
+    descriptors = [os.dup(root_descriptor)]
+    try:
+        for component in parts:
+            created = False
+            try:
+                descriptor = os.open(
+                    component,
+                    _posix_publication_directory_flags(),
+                    dir_fd=descriptors[-1],
+                )
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(component, mode, dir_fd=descriptors[-1])
+                created = True
+                descriptor = os.open(
+                    component,
+                    _posix_publication_directory_flags(),
+                    dir_fd=descriptors[-1],
+                )
+            if created:
+                os.fchmod(descriptor, mode)
+            descriptors.append(descriptor)
+        return descriptors
+    except BaseException:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+        raise
+
+
+def _rename_posix_directory_no_replace(
+    parent_descriptor: int, source_name: str, target_name: str
+) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is not None:
+        renameat2.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        renameat2.restype = ctypes.c_int
+        result = renameat2(
+            parent_descriptor,
+            os.fsencode(source_name),
+            parent_descriptor,
+            os.fsencode(target_name),
+            1,
+        )
+        if result == 0:
+            return
+        error = ctypes.get_errno()
+        if error not in {errno.ENOSYS, errno.EINVAL, errno.ENOTSUP}:
+            raise OSError(error, os.strerror(error), target_name)
+    try:
+        os.stat(target_name, dir_fd=parent_descriptor, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    else:
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), target_name)
+    os.rename(
+        source_name,
+        target_name,
+        src_dir_fd=parent_descriptor,
+        dst_dir_fd=parent_descriptor,
+    )
+
+
+def _discard_posix_directory_contents(descriptor: int) -> None:
+    with os.scandir(descriptor) as iterator:
+        entries = [
+            (entry.name, entry.stat(follow_symlinks=False)) for entry in iterator
+        ]
+    for name, stat_result in entries:
+        if _tree_directory(stat_result):
+            child_descriptor = os.open(
+                name,
+                _posix_publication_directory_flags(),
+                dir_fd=descriptor,
+            )
+            try:
+                _discard_posix_directory_contents(child_descriptor)
+            finally:
+                os.close(child_descriptor)
+            os.rmdir(name, dir_fd=descriptor)
+        else:
+            os.unlink(name, dir_fd=descriptor)
+    os.fsync(descriptor)
+
+
+def _open_windows_publication_chain(
+    root_handle: object,
+    parts: tuple[str, ...],
+    *,
+    create: bool,
+) -> list[object]:
+    handles: list[object] = []
+    current = root_handle
+    try:
+        for component in parts:
+            try:
+                handle, _ = _open_windows_relative_verified(
+                    current,
+                    component,
+                    directory=True,
+                    desired_access=(
+                        _FILE_TRAVERSE
+                        | _FILE_READ_ATTRIBUTES
+                        | _SYNCHRONIZE_ACCESS
+                    ),
+                )
+            except FileNotFoundError:
+                if not create:
+                    raise
+                handle, _ = _open_windows_relative_verified(
+                    current,
+                    component,
+                    directory=True,
+                    create=True,
+                    desired_access=(
+                        _FILE_TRAVERSE
+                        | _FILE_READ_ATTRIBUTES
+                        | _SYNCHRONIZE_ACCESS
+                    ),
+                )
+            handles.append(handle)
+            current = handle
+        return handles
+    except BaseException:
+        for handle in reversed(handles):
+            _CloseHandle(handle)
+        raise
+
+
+def _discard_windows_directory_contents(directory_handle: object) -> None:
+    directory_path = _windows_final_path(directory_handle)
+    with os.scandir(directory_path) as iterator:
+        entries = [
+            (entry.name, entry.stat(follow_symlinks=False)) for entry in iterator
+        ]
+    for name, stat_result in entries:
+        child_handle: object | None = None
+        try:
+            if _tree_directory(stat_result):
+                child_handle, _ = _open_windows_relative_verified(
+                    directory_handle,
+                    name,
+                    directory=True,
+                    desired_access=(
+                        _DELETE_ACCESS
+                        | _FILE_TRAVERSE
+                        | _FILE_READ_ATTRIBUTES
+                        | _SYNCHRONIZE_ACCESS
+                    ),
+                )
+                _discard_windows_directory_contents(child_handle)
+            else:
+                child_handle, _ = _open_windows_relative_verified(
+                    directory_handle,
+                    name,
+                    directory=False,
+                    desired_access=(
+                        _DELETE_ACCESS
+                        | _FILE_READ_ATTRIBUTES
+                        | _SYNCHRONIZE_ACCESS
+                    ),
+                )
+            _delete_windows_handle(child_handle)
+        finally:
+            if child_handle is not None:
+                _CloseHandle(child_handle)
+
+
+class StagedDirectoryPublication:
+    """Build and atomically publish one directory through verified handles."""
+
+    def __init__(
+        self,
+        output_path: Path,
+        parent_guard: object,
+        staging_guard: object,
+        staging_name: str,
+        staging_path: Path,
+        parent_identity: RootIdentity,
+    ) -> None:
+        self.output_path = output_path
+        self.staging_path = staging_path
+        self._parent_path = output_path.parent
+        self._parent_guard: object | None = parent_guard
+        self._staging_guard: object | None = staging_guard
+        self._staging_name = staging_name
+        self._parent_identity = parent_identity
+        self._published = False
+        self._closed = False
+
+    @property
+    def staging_root(self) -> "StagedDirectoryPublication":
+        """Return the handle-bound root used for all staging I/O."""
+
+        return self
+
+    def _require_writable(self) -> None:
+        if self._closed:
+            raise RuntimeError("directory publication is closed")
+        if self._published:
+            raise RuntimeError("directory publication is already published")
+
+    def _verify_named_parent(self) -> None:
+        if os.name == "nt":
+            reopened: object | None = None
+            try:
+                reopened, _ = _open_windows_verified(
+                    self._parent_path,
+                    directory=True,
+                    desired_access=(
+                        _FILE_TRAVERSE
+                        | _FILE_READ_ATTRIBUTES
+                        | _SYNCHRONIZE_ACCESS
+                    ),
+                )
+                actual = _windows_root_identity(reopened)
+            except (OSError, UnsafeFileError) as exc:
+                raise UnsafeFileError(
+                    self._parent_path,
+                    "publication parent identity changed",
+                    kind="escape",
+                ) from exc
+            finally:
+                if reopened is not None:
+                    _CloseHandle(reopened)
+        else:
+            reopened_descriptor: int | None = None
+            try:
+                reopened_descriptor = os.open(
+                    self._parent_path, _posix_publication_directory_flags()
+                )
+                actual = _posix_root_identity(os.fstat(reopened_descriptor))
+            except OSError as exc:
+                raise UnsafeFileError(
+                    self._parent_path,
+                    "publication parent identity changed",
+                    kind="escape",
+                ) from exc
+            finally:
+                if reopened_descriptor is not None:
+                    os.close(reopened_descriptor)
+        _require_root_identity(actual, self._parent_identity, self._parent_path)
+
+    def _validate_staged_tree(self, logical_root: Path) -> None:
+        entries = None
+        try:
+            if os.name == "nt":
+                entries = _iter_tree_no_follow_windows(
+                    logical_root,
+                    max_entries=None,
+                    pruned_names=frozenset(),
+                    root_share_delete=True,
+                )
+            else:
+                entries = _iter_tree_no_follow_posix(
+                    logical_root,
+                    max_entries=None,
+                    pruned_names=frozenset(),
+                    root_descriptor=int(self._staging_guard),
+                )
+            for path, stat_result in entries:
+                if stat.S_ISLNK(stat_result.st_mode) or is_reparse_point(
+                    stat_result
+                ):
+                    raise UnsafeFileError(
+                        path,
+                        "staged publication contains a symlink or reparse point",
+                        kind="symlink",
+                    )
+                if not (
+                    stat.S_ISDIR(stat_result.st_mode)
+                    or stat.S_ISREG(stat_result.st_mode)
+                ):
+                    raise UnsafeFileError(
+                        path,
+                        "staged publication contains a special file",
+                    )
+        finally:
+            close = getattr(entries, "close", None)
+            if close is not None:
+                close()
+
+    def ensure_directory(self, relative_path: str | Path, *, mode: int = 0o755) -> None:
+        self._require_writable()
+        parts = _publication_relative_parts(relative_path)
+        if type(mode) is not int or not 0 <= mode <= 0o777:
+            raise ValueError("directory mode must be 0o000..0o777")
+        if os.name == "nt":
+            handles = _open_windows_publication_chain(
+                self._staging_guard, parts, create=True
+            )
+            for handle in reversed(handles):
+                _CloseHandle(handle)
+            return
+        descriptors = _open_posix_publication_chain(
+            int(self._staging_guard), parts, create=True, mode=mode
+        )
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+    def write_bytes(
+        self,
+        relative_path: str | Path,
+        content: bytes,
+        *,
+        mode: int = 0o600,
+    ) -> None:
+        self._require_writable()
+        parts = _publication_relative_parts(relative_path)
+        if not isinstance(content, bytes):
+            raise TypeError("publication content must be bytes")
+        if type(mode) is not int or not 0 <= mode <= 0o777:
+            raise ValueError("file mode must be 0o000..0o777")
+        if os.name == "nt":
+            self._write_bytes_windows(parts, content)
+        else:
+            self._write_bytes_posix(parts, content, mode)
+
+    def _write_bytes_posix(
+        self, parts: tuple[str, ...], content: bytes, mode: int
+    ) -> None:
+        descriptors = _open_posix_publication_chain(
+            int(self._staging_guard), parts[:-1], create=True
+        )
+        parent_descriptor = descriptors[-1]
+        temporary_name: str | None = None
+        file_descriptor: int | None = None
+        try:
+            try:
+                current = os.stat(
+                    parts[-1],
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                current = None
+            if current is not None and (
+                not stat.S_ISREG(current.st_mode) or stat.S_ISLNK(current.st_mode)
+            ):
+                raise UnsafeFileError(
+                    self.staging_path.joinpath(*parts),
+                    "publication target is not a regular file",
+                )
+            temporary_name = (
+                f".{parts[-1]}.tmp-{os.getpid()}-"
+                f"{next(tempfile._get_candidate_names())}"
+            )
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+            if hasattr(os, "O_CLOEXEC"):
+                flags |= os.O_CLOEXEC
+            file_descriptor = os.open(
+                temporary_name,
+                flags,
+                mode,
+                dir_fd=parent_descriptor,
+            )
+            view = memoryview(content)
+            offset = 0
+            while offset < len(view):
+                written = os.write(
+                    file_descriptor, view[offset : offset + 64 * 1024]
+                )
+                if written <= 0:
+                    raise OSError("publication write made no progress")
+                offset += written
+            os.fchmod(file_descriptor, mode)
+            os.fsync(file_descriptor)
+            os.close(file_descriptor)
+            file_descriptor = None
+            os.replace(
+                temporary_name,
+                parts[-1],
+                src_dir_fd=parent_descriptor,
+                dst_dir_fd=parent_descriptor,
+            )
+            temporary_name = None
+            os.fsync(parent_descriptor)
+        finally:
+            if file_descriptor is not None:
+                os.close(file_descriptor)
+            if temporary_name is not None:
+                try:
+                    os.unlink(temporary_name, dir_fd=parent_descriptor)
+                except OSError:
+                    pass
+            for descriptor in reversed(descriptors):
+                os.close(descriptor)
+
+    def _write_bytes_windows(
+        self, parts: tuple[str, ...], content: bytes
+    ) -> None:
+        handles = _open_windows_publication_chain(
+            self._staging_guard, parts[:-1], create=True
+        )
+        parent_handle = handles[-1] if handles else self._staging_guard
+        descriptor: int | None = None
+        temporary_handle: object | None = None
+        temporary_name: str | None = None
+        published = False
+        try:
+            existing: object | None = None
+            try:
+                existing, _ = _open_windows_relative_verified(
+                    parent_handle, parts[-1], directory=False
+                )
+            except FileNotFoundError:
+                pass
+            finally:
+                if existing is not None:
+                    _CloseHandle(existing)
+            for _ in range(128):
+                temporary_name = (
+                    f".{parts[-1]}.tmp-{os.getpid()}-"
+                    f"{next(tempfile._get_candidate_names())}"
+                )
+                try:
+                    temporary_handle, temporary_path = (
+                        _open_windows_relative_verified(
+                            parent_handle,
+                            temporary_name,
+                            directory=False,
+                            create=True,
+                            desired_access=(
+                                _FILE_READ_DATA
+                                | _FILE_WRITE_DATA
+                                | _FILE_READ_ATTRIBUTES
+                                | _DELETE_ACCESS
+                                | _SYNCHRONIZE_ACCESS
+                            ),
+                        )
+                    )
+                    break
+                except OSError as exc:
+                    if getattr(exc, "winerror", None) not in {80, 183}:
+                        raise
+            else:
+                raise FileExistsError(
+                    "could not allocate a unique publication temporary file"
+                )
+            descriptor = msvcrt.open_osfhandle(
+                _windows_handle_value(temporary_handle), os.O_RDWR | os.O_BINARY
+            )
+            temporary_handle = None
+            _write_windows_descriptor(
+                descriptor,
+                content,
+                target=self.staging_path.joinpath(*parts),
+                temporary=temporary_path,
+            )
+            _rename_windows_handle_relative(
+                _windows_descriptor_handle(descriptor),
+                parent_handle,
+                parts[-1],
+                replace=True,
+            )
+            published = True
+        finally:
+            if temporary_handle is not None:
+                _CloseHandle(temporary_handle)
+            if descriptor is not None:
+                if not published:
+                    try:
+                        _delete_windows_handle(
+                            _windows_descriptor_handle(descriptor)
+                        )
+                    except OSError:
+                        pass
+                os.close(descriptor)
+            for handle in reversed(handles):
+                _CloseHandle(handle)
+
+    def publish(self) -> Path:
+        self._require_writable()
+        self._verify_named_parent()
+        self._validate_staged_tree(self.staging_path)
+        if os.name == "nt":
+            try:
+                _rename_windows_handle_relative(
+                    self._staging_guard,
+                    self._parent_guard,
+                    self.output_path.name,
+                    replace=False,
+                )
+            except OSError as exc:
+                if os.path.lexists(self.output_path):
+                    raise FileExistsError(
+                        errno.EEXIST,
+                        os.strerror(errno.EEXIST),
+                        self.output_path,
+                    ) from exc
+                raise
+            try:
+                self._verify_named_parent()
+                self._validate_staged_tree(self.output_path)
+            except BaseException:
+                _rename_windows_handle_relative(
+                    self._staging_guard,
+                    self._parent_guard,
+                    self._staging_name,
+                    replace=False,
+                )
+                raise
+        else:
+            _rename_posix_directory_no_replace(
+                int(self._parent_guard),
+                self._staging_name,
+                self.output_path.name,
+            )
+            os.fsync(int(self._parent_guard))
+            try:
+                self._verify_named_parent()
+                self._validate_staged_tree(self.output_path)
+            except BaseException:
+                os.rename(
+                    self.output_path.name,
+                    self._staging_name,
+                    src_dir_fd=int(self._parent_guard),
+                    dst_dir_fd=int(self._parent_guard),
+                )
+                raise
+        self._published = True
+        return self.output_path
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        try:
+            if not self._published and self._staging_guard is not None:
+                if os.name == "nt":
+                    _discard_windows_directory_contents(self._staging_guard)
+                    _delete_windows_handle(self._staging_guard)
+                else:
+                    _discard_posix_directory_contents(int(self._staging_guard))
+                    expected = _posix_root_identity(
+                        os.fstat(int(self._staging_guard))
+                    )
+                    current = os.stat(
+                        self._staging_name,
+                        dir_fd=int(self._parent_guard),
+                        follow_symlinks=False,
+                    )
+                    _require_root_identity(
+                        _posix_root_identity(current),
+                        expected,
+                        self.staging_path,
+                    )
+                    os.rmdir(
+                        self._staging_name, dir_fd=int(self._parent_guard)
+                    )
+                    os.fsync(int(self._parent_guard))
+        finally:
+            if self._staging_guard is not None:
+                if os.name == "nt":
+                    _CloseHandle(self._staging_guard)
+                else:
+                    os.close(int(self._staging_guard))
+                self._staging_guard = None
+            if self._parent_guard is not None:
+                if os.name == "nt":
+                    _CloseHandle(self._parent_guard)
+                else:
+                    os.close(int(self._parent_guard))
+                self._parent_guard = None
+            self._closed = True
+
+
+@contextmanager
+def staged_directory_publication(
+    output_path: str | Path,
+) -> Iterator[StagedDirectoryPublication]:
+    """Create a private sibling tree and publish it through one parent guard."""
+
+    output = Path(os.path.abspath(output_path))
+    if not output.name:
+        raise ValueError("publication output must name one directory")
+    parent = output.parent
+    parent_guard: object | None = None
+    staging_guard: object | None = None
+    staging_name: str | None = None
+    publication: StagedDirectoryPublication | None = None
+    try:
+        if os.name == "nt":
+            parent_guard, _ = _open_windows_verified(
+                parent,
+                directory=True,
+                desired_access=(
+                    _FILE_TRAVERSE
+                    | _FILE_READ_ATTRIBUTES
+                    | _SYNCHRONIZE_ACCESS
+                ),
+                share_delete=False,
+            )
+            parent_identity = _windows_root_identity(parent_guard)
+            if os.path.lexists(output):
+                raise FileExistsError(
+                    errno.EEXIST, os.strerror(errno.EEXIST), output
+                )
+            for _ in range(128):
+                staging_name = (
+                    f".{output.name}.stage-{os.getpid()}-"
+                    f"{next(tempfile._get_candidate_names())}"
+                )
+                try:
+                    staging_guard, staging_path = _open_windows_relative_verified(
+                        parent_guard,
+                        staging_name,
+                        directory=True,
+                        create=True,
+                        desired_access=(
+                            _DELETE_ACCESS
+                            | _FILE_TRAVERSE
+                            | _FILE_READ_ATTRIBUTES
+                            | _SYNCHRONIZE_ACCESS
+                        ),
+                        share_mode=_FILE_SHARE_READ | _FILE_SHARE_WRITE,
+                    )
+                    break
+                except OSError as exc:
+                    if getattr(exc, "winerror", None) not in {80, 183}:
+                        raise
+            else:
+                raise FileExistsError(
+                    "could not allocate a unique publication directory"
+                )
+        else:
+            parent_guard = os.open(parent, _posix_publication_directory_flags())
+            parent_identity = _posix_root_identity(os.fstat(parent_guard))
+            try:
+                os.stat(
+                    output.name,
+                    dir_fd=parent_guard,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                pass
+            else:
+                raise FileExistsError(
+                    errno.EEXIST, os.strerror(errno.EEXIST), output
+                )
+            for _ in range(128):
+                staging_name = (
+                    f".{output.name}.stage-{os.getpid()}-"
+                    f"{next(tempfile._get_candidate_names())}"
+                )
+                try:
+                    os.mkdir(staging_name, 0o700, dir_fd=parent_guard)
+                    staging_guard = os.open(
+                        staging_name,
+                        _posix_publication_directory_flags(),
+                        dir_fd=parent_guard,
+                    )
+                    break
+                except FileExistsError:
+                    continue
+            else:
+                raise FileExistsError(
+                    "could not allocate a unique publication directory"
+                )
+            staging_path = parent / staging_name
+        publication = StagedDirectoryPublication(
+            output,
+            parent_guard,
+            staging_guard,
+            staging_name,
+            staging_path,
+            parent_identity,
+        )
+        parent_guard = None
+        staging_guard = None
+        yield publication
+    finally:
+        if publication is not None:
+            publication.close()
+        else:
+            if staging_guard is not None:
+                if os.name == "nt":
+                    try:
+                        _discard_windows_directory_contents(staging_guard)
+                        _delete_windows_handle(staging_guard)
+                    finally:
+                        _CloseHandle(staging_guard)
+                else:
+                    os.close(int(staging_guard))
+            if parent_guard is not None:
+                if os.name == "nt":
+                    _CloseHandle(parent_guard)
+                else:
+                    os.close(int(parent_guard))
 
 
 def logical_mode(relative_path: str | Path) -> str:

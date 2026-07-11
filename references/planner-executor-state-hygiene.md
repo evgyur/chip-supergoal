@@ -13,7 +13,7 @@ A launchable package must contain at least:
 - `THINKING.md`
 - `LOOP_DESIGN.md`
 - `ROADMAP.md`
-- `STATE.md`
+- `runtime/STATE.json` plus its generated `STATE.md` projection
 - `PROTOCOL.md`
 - `LAUNCH_GOAL.md`
 - `phases/phase-*.md`
@@ -55,19 +55,23 @@ Before `READY_TO_DISPATCH`:
 2. For nested roots, render every protocol/state/phase path against the exact package directory.
 3. Validate loop design and every phase.
 4. Assert exactly one `SUPERGOAL_GOAL_BODY:` line.
-5. Re-read `STATE.md` and assert the first pending phase is executable.
+5. Run `python scripts/sgctl.py state-show` and assert the first pending phase is executable.
 6. Keep implementation artifacts and predecessor final audits immutable; use a sibling follow-on package.
 
 ## Recovery when GoalManager no-ops immediately
 
-If Chip launches and GoalManager finds `STATE.md` already complete because the planner prematurely advanced it:
+If Chip launches and package validation finds authoritative state already advanced because the planner impersonated execution:
 
 1. Own the planner error directly.
 2. Inspect whether implementation evidence really exists.
-3. If remaining work exists, repair by creating a fresh follow-on package or resetting only an unexecuted package to phase 1 with a ledger entry.
+3. If remaining work exists, create a fresh follow-on package; never hand-reset a started sealed package or its projection.
 4. Do not rerun completed implementation merely to print markers.
 5. Do not defend the no-op as correct behavior when the package itself violated the planner/executor boundary.
 
 ## User-facing rule
 
 For Chip, “Make SuperGoal” means: produce a canonical executable package with `PROTOCOL.md`, pending `STATE.md`, validated phases, review files, and one launch handoff. It does not mean “do the work manually and label it complete.”
+
+For any later completion check, `STATE.md`, final-audit prose, and markers are
+insufficient. Only `python scripts/sgctl.py validate-terminal` accepting the
+exact current `reports/terminal-record.txt` authorizes done.

@@ -31,12 +31,12 @@ else
   status=$?
   set -e
   case "$status" in
-    0)
-      echo "review files already sent for target+hash"
-      exit 0
-      ;;
-    10) ;;
-    *) exit "$status" ;;
+  0)
+    echo "review files already sent for target+hash"
+    exit 0
+    ;;
+  10) ;;
+  *) exit "$status" ;;
   esac
 fi
 [[ -n "$CHECK_OUTPUT" ]] || {
@@ -48,13 +48,13 @@ if ! grep -q '"status": "record_required"' <<<"$CHECK_OUTPUT"; then
     echo "no real SUPERGOAL_TRANSPORT_SEND_FILE_CMD configured; refusing to send delivery" >&2
     exit 3
   }
-  SEND=("$PYTHON_BIN" "$SGCTL" delivery-review-send "$ROOT" --target "$TARGET" \
+  SEND=("$PYTHON_BIN" "$SGCTL" delivery-review-send "$ROOT" --target "$TARGET"
     --authorization-json "$CHECK_OUTPUT")
   if [[ "$FORCE" == "1" ]]; then SEND+=(--force); fi
   "${SEND[@]}" >/dev/null
 fi
 
-RECORD=("$PYTHON_BIN" "$SGCTL" delivery-review-record "$ROOT" --target "$TARGET" \
+RECORD=("$PYTHON_BIN" "$SGCTL" delivery-review-record "$ROOT" --target "$TARGET"
   --authorization-json "$CHECK_OUTPUT")
 if [[ "$FORCE" == "1" ]]; then RECORD+=(--force); fi
 "${RECORD[@]}"

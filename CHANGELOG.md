@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 3.0.0-alpha.4 — Native Windows and B2 authority hardening
+
+- Added one native Python aggregate runner and required Windows/Ubuntu CI parity.
+- Pinned CPython 3.11.9/3.13.14 CI coverage through setup-python v6.
+- Replaced path-based delivery handoff with reservation-owned, byte-stable transport and crash-resumable progress.
+- Hardened package locking, atomic writes, state/audit/terminal authority, deterministic archives, and publication recovery across package relocation.
+- Added canonical archive/result schemas, portable path checks, privacy gates, and adversarial crash/forgery regressions.
+- Updated generated-package protocol and public documentation; older generated packages must be recompiled.
+
 ## 3.0.0-alpha.3 — Research provider gate
 
 - Added executable `compatibility.research_gate` validation with Perplex-first policy for research-required plans.

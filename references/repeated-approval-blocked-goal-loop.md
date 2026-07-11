@@ -55,7 +55,7 @@ Safe shape:
 1. Back up `~/.hermes/state.db` before mutation.
 2. Query recent rows:
    ```bash
-   python3 - <<'PY'
+   python - <<'PY'
    import json, os, sqlite3
    con=sqlite3.connect(os.path.expanduser('~/.hermes/state.db'))
    con.row_factory=sqlite3.Row

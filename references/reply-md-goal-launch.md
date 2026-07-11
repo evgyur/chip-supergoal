@@ -13,7 +13,7 @@ After writing `.supergoal/THINKING.md`, `.supergoal/ROADMAP.md`, `.supergoal/LAU
 ```text
 Goal: Implement `.supergoal/ROADMAP.md` in `<workdir>` from phase 0 through final audit. Use `.supergoal/PROTOCOL.md` and `.supergoal/phases/phase-*.md`.
 ...
-Completion requires AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE.
+Completion requires successful python scripts/sgctl.py validate-terminal against reports/terminal-record.txt; the finalized record supplies AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE for host compatibility.
 ```
 
 Do not wrap this in “if you want, send this”, and do not make Chip copy a command manually. Keep any status/attachments compact, then provide the raw `Goal:` manifest as the launchable Markdown body or attached `LAUNCH_GOAL.md`.
@@ -22,7 +22,7 @@ Do not wrap this in “if you want, send this”, and do not make Chip copy a co
 
 Treat it as a failed handoff UX, not as confusion from Chip.
 
-1. Re-read the current `.supergoal/LAUNCH_GOAL.md` / `STATE.md` if needed.
+1. Re-read the current `.supergoal/LAUNCH_GOAL.md` and run package-local `state-show` if needed.
 2. Emit or continue the launch manifest/phase execution directly.
 3. Do not ask for another confirmation unless the next step is money/DNS/secrets/grants/destructive prod/mass post.
 

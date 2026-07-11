@@ -14,7 +14,9 @@ sys.path.insert(0, str(ROOT / "lib"))
 from chip_supergoal.compile import build_manifest, compile_contract_file
 from chip_supergoal.portable import (
     StateLockTimeout,
+    UnsafeFileError,
     canonical_text_bytes,
+    iter_tree_no_follow,
     logical_mode,
     package_lock,
     write_bytes_atomic,
@@ -47,6 +49,229 @@ class PortableRuntimeTest(unittest.TestCase):
     def _remove_junction(self, link: Path) -> None:
         if os.path.lexists(link):
             os.rmdir(link)
+
+    def test_tree_walk_can_prune_named_directories_without_reading_them(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            included = root / "included"
+            excluded = root / ".private"
+            included.mkdir()
+            excluded.mkdir()
+            (included / "visible.txt").write_text("visible", encoding="utf-8")
+            (excluded / "sentinel.txt").write_text("secret", encoding="utf-8")
+
+            paths = {
+                path.relative_to(root).as_posix()
+                for path, _ in iter_tree_no_follow(
+                    root,
+                    prune_directory_names={".private"},
+                )
+            }
+
+        self.assertIn(".private", paths)
+        self.assertIn("included/visible.txt", paths)
+        self.assertNotIn(".private/sentinel.txt", paths)
+
+    def test_tree_walk_rejects_a_linked_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            target = base / "outside"
+            link = base / "linked-root"
+            target.mkdir()
+            (target / "sentinel.txt").write_text("outside", encoding="utf-8")
+            if os.name == "nt":
+                self._junction(link, target)
+            else:
+                link.symlink_to(target, target_is_directory=True)
+            try:
+                with self.assertRaises(UnsafeFileError):
+                    list(iter_tree_no_follow(link))
+            finally:
+                if os.name == "nt":
+                    self._remove_junction(link)
+                elif os.path.lexists(link):
+                    link.unlink()
+
+    def _assert_tree_walk_rejects_directory_link_swap(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            root = base / "root"
+            child = root / "child"
+            parked = root / "child-before-race"
+            outside = base / "outside"
+            child.mkdir(parents=True)
+            outside.mkdir()
+            (child / "inside.txt").write_text("inside", encoding="utf-8")
+            (outside / "outside.txt").write_text("outside", encoding="utf-8")
+
+            walk = iter_tree_no_follow(root)
+            first_path, _ = next(walk)
+            self.assertEqual(first_path, child)
+            child.rename(parked)
+            if os.name == "nt":
+                self._junction(child, outside)
+            else:
+                child.symlink_to(outside, target_is_directory=True)
+            try:
+                with self.assertRaises(UnsafeFileError):
+                    list(walk)
+            finally:
+                if os.name == "nt":
+                    self._remove_junction(child)
+                elif os.path.lexists(child):
+                    child.unlink()
+
+    @unittest.skipUnless(os.name == "nt", "native Windows junction race regression")
+    def test_tree_walk_rejects_junction_swap_before_descending(self):
+        self._assert_tree_walk_rejects_directory_link_swap()
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory symlink race regression")
+    def test_tree_walk_rejects_symlink_swap_before_descending(self):
+        self._assert_tree_walk_rejects_directory_link_swap()
+
+    def test_staged_directory_publication_writes_complete_tree_once(self):
+        publication_factory = getattr(
+            portable_module, "staged_directory_publication", None
+        )
+        self.assertIsNotNone(publication_factory)
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td) / "publication"
+            output = parent / "result"
+            parent.mkdir()
+
+            with publication_factory(output) as publication:
+                publication.ensure_directory("backup/nested")
+                publication.write_bytes("backup/nested/source.bin", b"source")
+                publication.write_bytes("CONTRACT.json", b"{}\n")
+                publication.publish()
+
+            self.assertEqual(
+                (output / "backup/nested/source.bin").read_bytes(), b"source"
+            )
+            self.assertEqual((output / "CONTRACT.json").read_bytes(), b"{}\n")
+            with self.assertRaises(FileExistsError):
+                with publication_factory(output):
+                    pass
+
+    @unittest.skipUnless(os.name == "nt", "native Windows parent guard regression")
+    def test_staged_directory_publication_blocks_parent_junction_swap(self):
+        publication_factory = getattr(
+            portable_module, "staged_directory_publication", None
+        )
+        self.assertIsNotNone(publication_factory)
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            parent = base / "publication"
+            displaced = base / "publication-before-race"
+            outside = base / "outside"
+            output = parent / "result"
+            parent.mkdir()
+            outside.mkdir()
+
+            with publication_factory(output) as publication:
+                with self.assertRaises(OSError):
+                    parent.rename(displaced)
+                publication.write_bytes("CONTRACT.json", b"trusted\n")
+                publication.publish()
+
+            self.assertEqual((output / "CONTRACT.json").read_bytes(), b"trusted\n")
+            self.assertEqual(list(outside.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX parent descriptor regression")
+    def test_staged_directory_publication_rejects_parent_symlink_swap(self):
+        publication_factory = getattr(
+            portable_module, "staged_directory_publication", None
+        )
+        self.assertIsNotNone(publication_factory)
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            parent = base / "publication"
+            displaced = base / "publication-before-race"
+            outside = base / "outside"
+            output = parent / "result"
+            parent.mkdir()
+            outside.mkdir()
+
+            with publication_factory(output) as publication:
+                parent.rename(displaced)
+                parent.symlink_to(outside, target_is_directory=True)
+                publication.write_bytes("CONTRACT.json", b"trusted\n")
+                with self.assertRaises(UnsafeFileError):
+                    publication.publish()
+
+            self.assertFalse((displaced / "result").exists())
+            self.assertEqual(list(outside.iterdir()), [])
+            parent.unlink()
+
+    @unittest.skipUnless(os.name == "nt", "native Windows staged-tree regression")
+    def test_staged_directory_publication_rejects_injected_junction(self):
+        publication_factory = getattr(
+            portable_module, "staged_directory_publication", None
+        )
+        self.assertIsNotNone(publication_factory)
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            parent = base / "publication"
+            outside = base / "outside"
+            output = parent / "result"
+            parent.mkdir()
+            outside.mkdir()
+            (outside / "outside.txt").write_text("outside", encoding="utf-8")
+
+            with publication_factory(output) as publication:
+                publication.ensure_directory("backup")
+                publication.write_bytes("backup/source.txt", b"trusted\n")
+                staging_path = publication.staging_path
+                backup = staging_path / "backup"
+                parked = staging_path / "backup-before-race"
+                backup.rename(parked)
+                self._junction(backup, outside)
+                try:
+                    with self.assertRaises(UnsafeFileError):
+                        publication.publish()
+                finally:
+                    active_root = output if output.exists() else staging_path
+                    self._remove_junction(active_root / "backup")
+
+            self.assertFalse(output.exists())
+            self.assertEqual(
+                (outside / "outside.txt").read_text(encoding="utf-8"), "outside"
+            )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX staged-tree regression")
+    def test_staged_directory_publication_rejects_injected_symlink(self):
+        publication_factory = getattr(
+            portable_module, "staged_directory_publication", None
+        )
+        self.assertIsNotNone(publication_factory)
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            parent = base / "publication"
+            outside = base / "outside"
+            output = parent / "result"
+            parent.mkdir()
+            outside.mkdir()
+            (outside / "outside.txt").write_text("outside", encoding="utf-8")
+
+            with publication_factory(output) as publication:
+                publication.ensure_directory("backup")
+                publication.write_bytes("backup/source.txt", b"trusted\n")
+                staging_path = publication.staging_path
+                backup = staging_path / "backup"
+                parked = staging_path / "backup-before-race"
+                backup.rename(parked)
+                backup.symlink_to(outside, target_is_directory=True)
+                try:
+                    with self.assertRaises(UnsafeFileError):
+                        publication.publish()
+                finally:
+                    active_root = output if output.exists() else staging_path
+                    (active_root / "backup").unlink()
+
+            self.assertFalse(output.exists())
+            self.assertEqual(
+                (outside / "outside.txt").read_text(encoding="utf-8"), "outside"
+            )
 
     @unittest.skipUnless(os.name == "nt", "native Windows junction race regression")
     def test_atomic_writer_cannot_publish_through_swapped_parent_junction(self):

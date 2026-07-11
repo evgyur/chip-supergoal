@@ -48,9 +48,11 @@ Required sections:
 
 Validation:
 
-```bash
-bash scripts/validate-loop-design.sh templates/LOOP_DESIGN.md
+```text
+python scripts/sgctl.py validate-loop-design LOOP_DESIGN.md --instantiated
 ```
+
+The Bash wrapper is an optional Unix compatibility entrypoint.
 
 ## `ROADMAP.md`
 
@@ -66,9 +68,11 @@ Required sections:
 
 `ROADMAP.md` must not contain a line beginning `SUPERGOAL_GOAL_BODY:`. Launch belongs in `LAUNCH_GOAL.md`.
 
-## `STATE.md`
+## `STATE.md` and `runtime/STATE.json`
 
-Must include:
+`STATE.md` is a human projection. After execution starts, package-local Python
+authority owns `runtime/STATE.json`, `runtime/events.jsonl`, and projection
+consistency. The projection must include:
 
 - Goal identity / title
 - Current phase (`1..N`, `AUDIT`, `BLOCKED`, or `DONE`)
@@ -83,12 +87,13 @@ Must include:
 The only replyable/human launch surface. The generated file must include exactly one actual line beginning with the launch marker. Documentation should quote it with a leading `>` so it is not mistaken for a launchable artifact:
 
 ```text
-> SUPERGOAL_GOAL_BODY: From the project root, execute the SuperGoal in `<SUPERGOAL_ROOT>` using `<SUPERGOAL_ROOT>/PROTOCOL.md`, `<SUPERGOAL_ROOT>/LOOP_DESIGN.md`, `<SUPERGOAL_ROOT>/ROADMAP.md`, `<SUPERGOAL_ROOT>/STATE.md`, and `<SUPERGOAL_ROOT>/phases/phase-*.md`. Start from STATE.md current phase, continue through numbered phases, run the final audit, and finish only after AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE.
+> SUPERGOAL_GOAL_BODY: Resolve the package root, read its sealed contract/views and authoritative runtime state, execute through package-local Python authority, and finish only when the exact package-bound terminal record validates.
 ```
 
 ## `phases/phase-N.md`
 
-Must pass `scripts/validate-phase.sh`. See root Phase spec contract.
+Must pass `python scripts/sgctl.py validate-phase-markdown phases/phase-NN.md`
+from the package root. The shell wrapper is Unix compatibility only.
 
 ## Delivery receipts
 

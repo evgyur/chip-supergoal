@@ -15,7 +15,7 @@ When the original roadmap includes a full-suite gate and the full suite is red a
    - approval-sensitive product/payment/security policy;
    - environment/setup.
 3. Write a small classification artifact under the active `.supergoal/<name>/` root, e.g. `FAILURE_CLASSIFICATION.md`.
-4. Update `STATE.md` and `AUDIT.md` with current counts, command evidence, and the classification artifact path.
+4. Record current counts, command evidence, and the classification path through package-local evidence/state commands; do not patch `STATE.md` or invent an `AUDIT.md` authority.
 5. If remaining failures are outside scope and include a product/payment/security policy decision, stop with `Goal complete: no` / `SUPERGOAL_RUN_COMPLETE: no` and name the required user decision.
 6. Do not patch tests to match changed product behavior, or restore old behavior, when the failure is payment/product policy. Ask for the decision first.
 
@@ -31,6 +31,9 @@ blocker: <policy/scope decision>
 ```
 
 This is not a generic failure. It is an audit handoff: the scoped deliverable may be beta-proven, while the broader branch is not merge/prod-ready.
+Do not run `finalize` or claim successful `python scripts/sgctl.py validate-terminal`;
+no `reports/terminal-record.txt` is authorized while the declared full-suite
+criterion remains red.
 
 ## Pitfall
 

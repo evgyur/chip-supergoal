@@ -12,11 +12,11 @@ Before creating a new package:
 
 1. Inspect for an existing `.supergoal/` directory even if git status is clean.
 2. If the user asked for a new SuperGoal and the existing package is stale/unrelated, delete or archive it before writing the new package.
-   - Prefer archiving under the active package tree, e.g. `.supergoal/archive/<name-or-timestamp>/`, not a repo-root sibling like `.supergoal_archive/`.
-   - Reason: product repo scanners and secret-scan tests commonly skip `.supergoal/` as operational evidence, but will traverse sibling archive directories and can fail on historical evidence such as Telegram chat-id-shaped values. If a sibling archive already exists and breaks scans, move it under `.supergoal/archive/` and record a `FAILURE_PROBE`; do not weaken product scans.
+   - Move the whole stale package to an explicitly named external quarantine outside the repo/package tree; never hide historical material inside the new package or weaken scans to accommodate it.
+   - Recreate the package root only after the old root is absent and the external quarantine destination is verified.
 3. After writing, verify the package directly, not through git status:
    - required files exist and are non-empty;
-   - phase specs pass `scripts/validate-phase.sh`;
+   - phase specs pass `python scripts/sgctl.py validate-phase-markdown phases/phase-NN.md`;
    - exactly one actual launch line starts `SUPERGOAL_GOAL_BODY:`;
    - no non-launch artifact has a line starting `SUPERGOAL_GOAL_BODY:`.
 4. When reporting git status, distinguish:
@@ -25,14 +25,17 @@ Before creating a new package:
 
 ## Executor rule
 
-During phase verification, `repo-state.sh changed-files <baseline>` may report `0` when only ignored `.supergoal/STATE.md` changed. Do not treat that as evidence that STATE was not updated. Read `STATE.md` directly for SuperGoal state evidence, and use repo-state cleanliness only for implementation-file drift.
+During phase verification, optional Unix `repo-state.sh` may report `0` when
+only ignored runtime state changed. Use `python scripts/sgctl.py state-show` for
+authoritative state and bind implementation-file observations through evidence;
+the helper never proves state, audit, or completion.
 
 ## Good evidence wording
 
 ```text
 tracked git status: clean
 .supergoal package: ignored intentionally, verified directly
-STATE.md: updated to Current phase: 2
+runtime/STATE.json: state-show reports phase 2; STATE.md projection matches
 implementation changed_files_since_baseline: 0
 ```
 

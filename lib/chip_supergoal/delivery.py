@@ -209,11 +209,12 @@ def _run_transport_file(
             raise ReceiptValidationError(
                 "SGV-DELIVERY-SEND-PENDING: transport process could not start"
             ) from exc
+        assert process.stdout is not None
+        stack.callback(process.stdout.close)
         output = bytearray()
         overflow = threading.Event()
 
         def read_stdout() -> None:
-            assert process.stdout is not None
             while True:
                 chunk = process.stdout.read(4096)
                 if not chunk:

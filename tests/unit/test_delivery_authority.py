@@ -607,6 +607,56 @@ class DeliveryReceiptSchemaTest(unittest.TestCase):
             )
             self.assertEqual(receipt["message_id"], "transport-authority-id")
 
+    @unittest.skipUnless(os.name == "nt", "native Windows transport only")
+    def test_final_send_runs_real_transport_from_unicode_path_on_windows(self):
+        with tempfile.TemporaryDirectory() as td:
+            workspace = Path(td) / "transport path Ж 🚀"
+            workspace.mkdir()
+            package = self.delivery_package(workspace, final=True)
+            archive = workspace / "final artifact 🚀.zip"
+            deterministic_zip(
+                package,
+                archive,
+                package / "out/final-artifacts-manifest.json",
+            )
+            canonical = archive.read_bytes()
+            authorization = check_final_delivery(
+                package, target="current-thread", archive=archive
+            ).authorization
+            helper = workspace / "transport helper Ж.py"
+            capture = workspace / "captured payload 🚀.bin"
+            helper.write_text(
+                "import os\n"
+                "from pathlib import Path\n"
+                "source = Path(os.environ['SUPERGOAL_SEND_FILE'])\n"
+                "capture = Path(os.environ['SUPERGOAL_TEST_CAPTURE'])\n"
+                "capture.write_bytes(source.read_bytes())\n"
+                "print('native-windows-transport-id')\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            command = subprocess.list2cmdline([sys.executable, str(helper)])
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "SUPERGOAL_TRANSPORT_SEND_FILE_CMD": command,
+                    "SUPERGOAL_TEST_CAPTURE": str(capture),
+                },
+            ):
+                sent = send_final_delivery(
+                    package,
+                    target="current-thread",
+                    authorization=authorization,
+                )
+
+            self.assertEqual(capture.read_bytes(), canonical)
+            self.assertEqual(sent["status"], "record_required")
+            self.assertEqual(
+                sent["progress"]["archive"]["message_id"],
+                "native-windows-transport-id",
+            )
+
     def test_invalid_transport_timeout_and_target_fail_before_popen(self):
         with tempfile.TemporaryDirectory() as td:
             parent = Path(td)

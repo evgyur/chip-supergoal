@@ -324,6 +324,60 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
         self.assertEqual(events.read_bytes(), before_events)
         self.assertEqual(state.read_bytes(), before_state)
 
+    def test_delivery_authorization_file_is_native_windows_safe(self):
+        self.compile_delivery_package()
+        authorization_file = self.parent / "authorization 🙂.json"
+        authorization = self.run_cli(
+            "delivery-review-check",
+            "--target",
+            "current-thread",
+            "--authorization-out",
+            authorization_file,
+            expected=10,
+        )
+        self.assertEqual(
+            json.loads(authorization_file.read_text(encoding="utf-8")),
+            json.loads(authorization.stdout),
+        )
+
+        files = self.run_cli(
+            "delivery-review-files",
+            "--target",
+            "current-thread",
+            "--authorization-file",
+            authorization_file,
+        ).stdout.splitlines()
+        self.assertIn("THINKING.md", files)
+        reservation_id = self.run_cli(
+            "delivery-authorization-id",
+            "--authorization-file",
+            authorization_file,
+        ).stdout.strip()
+        self.assertRegex(reservation_id, r"^[a-f0-9]{32}$")
+        self.assertEqual(
+            self.run_cli(
+                "delivery-authorization-id",
+                "--authorization-file",
+                "-",
+                input=authorization.stdout,
+            ).stdout.strip(),
+            reservation_id,
+        )
+
+    def test_delivery_authorization_file_is_read_with_a_hard_size_limit(self):
+        oversized = self.parent / "oversized authorization.json"
+        oversized.write_bytes(b"{" + b" " * (1024 * 1024))
+
+        result = self.run_cli(
+            "delivery-authorization-id",
+            "--authorization-file",
+            oversized,
+            expected=1,
+        )
+
+        self.assertIn("SGV-DELIVERY-RECEIPT-INVALID", result.stderr)
+        self.assertIn("authorization input too large", result.stderr)
+
     def test_relocated_review_receipt_producer_is_canonical_and_reuse_rejects_forgery(self):
         self.compile_delivery_package()
         missing = self.run_cli(

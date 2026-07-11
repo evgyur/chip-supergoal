@@ -1,10 +1,12 @@
-import os
 import unittest
 
+
 class LiveGoalManagerProbe(unittest.TestCase):
-    @unittest.skipUnless(os.environ.get("SUPERGOAL_HERMES_INTEGRATION") == "1", "live Hermes GoalManager probe unavailable; hermetic suite is mandatory")
-    def test_live_goalmanager_probe_placeholder(self):
-        self.assertTrue(True)
+    @unittest.skip(
+        "reserved hook: no external Hermes GoalManager adapter ships in this repository"
+    )
+    def test_live_goalmanager_probe_reserved(self):
+        self.fail("reserved live probe must never execute as release evidence")
 
 if __name__ == "__main__":
     unittest.main()

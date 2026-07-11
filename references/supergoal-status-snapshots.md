@@ -58,27 +58,18 @@ Audit round <R>/3 · <verifying|fixing|complete|handoff>
 ┈ next: <AUDIT_COMPLETE|audit-fix|AUDIT_HANDOFF>
 ```
 
-## State fields
+## Live status snapshot rendering inputs
 
-Prefer adding these lightweight fields to `.supergoal/STATE.md`; they are for rendering only and must not become a second source of truth:
-
-```markdown
-## Live status snapshot
-
-- Phase count: <N>
-- Current phase name: <name>
-- Phase status: pending|in_progress|verifying|done|blocked|audit|complete
-- Last action: <short text>
-- Last evidence: <short text>
-- Last checks: build=<pass|fail|—>, typecheck=<pass|fail|—>, lint=<pass|fail|—>, tests=<pass|fail|—>
-- Failure attempt: 0|1|2|3
-```
-
-`Phase progress` and mandatory transcript markers remain authoritative.
+Derive the snapshot at display time from sealed contract/phase names,
+`runtime/STATE.json`, bound evidence, and the current audit. Do not add ad-hoc
+fields to `runtime/STATE.json` or `STATE.md`: the state schema is strict and the
+Markdown file must remain the exact generated projection. Last-action/check
+summaries that are not canonical state belong in transcript status or bound
+evidence, not a second persisted control plane.
 
 ## Pitfalls
 
 - Do not turn SuperGoal into Project Flow. No pinned Telegram rail, supervisor, lanes, or StatusGate unless the user explicitly asks for a Project Flow run.
-- Do not use status snapshots as completion proof. Completion still requires `AUDIT_COMPLETE` + `SUPERGOAL_RUN_COMPLETE`.
+- Do not use status snapshots as completion proof. Completion requires successful `python scripts/sgctl.py validate-terminal` against the exact package-bound `reports/terminal-record.txt`; footer markers alone must continue.
 - Do not spam long summaries. The snapshot must be readable in five seconds.
 - Do not hide blockers behind green progress. If there is a retry, red command, or human handoff, the status headline must show it.

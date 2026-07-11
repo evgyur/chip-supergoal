@@ -4,16 +4,17 @@ Use when executing or resuming a disk-backed SuperGoal from repeated continuatio
 
 ## Completion gate
 
-Before doing any new work, inspect the package state and final audit markers:
+Before doing any new work, validate package-owned completion authority:
 
-- `STATE.md` has `status: COMPLETE` and `current_phase` at the final phase;
-- `FINAL_AUDIT.md` exists;
-- marker order is `RPD_FINAL_REVIEW` before `AUDIT_COMPLETE` before `SUPERGOAL_RUN_COMPLETE`;
-- referenced evidence artifacts still exist.
+- `python scripts/sgctl.py state-show` reports terminal `runtime/STATE.json` state;
+- `reports/final-audit.json` recomputes against current evidence and inventory;
+- `python scripts/sgctl.py validate-terminal` accepts the exact terminal record;
+- required delivery reservations are closed and receipts remain valid.
 
-If these hold, answer `Goal complete: yes` and stop. Do not re-run phases or invent “next steps” merely because the continuation wrapper repeats.
+If these hold, return the already-validated terminal outcome and stop. Marker
+prose or `STATE.md` alone is never completion proof.
 
-For **repeated identical continuation wrappers in the same chat**, avoid turning completion checks into a loop of fresh audits. After one current-session verification has already read `STATE.md`, `FINAL_AUDIT.md`, phase specs, and evidence paths, later identical wrappers should only do the minimum needed to confirm nothing materially changed (or use unchanged/read dedupe when available), then stop with the compact final report. If the same wrapper repeats again after that, do **not** call tools again just to re-read unchanged files; answer from the already-verified completion gate unless the user explicitly asks to re-verify, run tests, inspect fresh evidence, or the package path/goal changed. Do not re-run tests, live probes, read-only network calls, archives, phase validation, or local readback scripts merely to satisfy another wrapper.
+For **repeated identical continuation wrappers in the same chat**, avoid turning completion checks into a loop of fresh audits. After one current-session `validate-terminal` success, later identical wrappers should only confirm the package identity has not changed, then stop with the compact final report. Do not re-run tests, live probes, archives, or phase validation merely to satisfy another wrapper.
 
 ## Workdir hygiene pitfall
 
@@ -21,24 +22,27 @@ When implementation is supposed to live under a disk-backed package root, tool c
 
 Recommended pattern:
 
-```bash
-ROOT=/absolute/package/root
-cd "$ROOT"
-# create files under $ROOT only
+```text
+cd <absolute-package-root>
+python scripts/sgctl.py validate-package . --strict
 ```
 
 After scaffold generation, verify:
 
-```bash
-find "$ROOT" -maxdepth 3 -type f | sort
-# also check parent/session cwd for accidental stray generated dirs
+```text
+python -c "from pathlib import Path; import json; print('\n'.join(item['path'] for item in json.loads(Path('MANIFEST.json').read_text(encoding='utf-8'))['files']))"
 ```
+
+Also inspect the parent/session directory for accidental generated siblings.
 
 If files were accidentally written to the session cwd, copy only byte-identical intended artifacts into the package root, then remove the stray generated paths. Do not leave duplicate `tests/`, package modules, manifests, or skill folders outside the intended root.
 
 ## Archive hygiene
 
-Do not create the archive inside the directory being archived; `tar` may report “file changed as we read it”. Write the archive to `/tmp` or another external path, then record its checksum in the package artifacts.
+Do not create the archive inside the package. Use
+`python scripts/sgctl.py archive --out <absolute-external-archive.zip> --manifest out/final-artifacts-manifest.json`;
+the packaged authority verifies the external ZIP destination and writes the
+result manifest inside the package-owned mutable output plane.
 
 ## Final report shape
 
@@ -46,7 +50,7 @@ For repeated continuations after completion, keep the reply short:
 
 ```text
 Goal complete: yes. Останавливаюсь.
-┈ STATE.md = COMPLETE
-┈ FINAL_AUDIT.md has AUDIT_COMPLETE + SUPERGOAL_RUN_COMPLETE
+┈ runtime state = DONE
+┈ validate-terminal = passed against current package and audit
 ┈ live actions remain BLOCKED_BY_APPROVAL
 ```

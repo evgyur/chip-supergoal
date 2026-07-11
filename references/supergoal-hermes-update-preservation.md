@@ -18,7 +18,7 @@ Do not tell Chip “it is safe across updates” if the fix exists only as dirty
 For SuperGoal launch-pipeline fixes, preserve this split instead of re-inlining everything into `gateway/run.py` / `hermes_cli/goals.py`:
 
 - `hermes_cli/goals.py` stays the persistent `/goal` engine: persistence, turn budgets, continuation prompts, judge call, compression migration, parse-failure pause, and status transitions.
-- `hermes_cli/goal_policies.py` owns deterministic structured-completion policy: standalone terminal markers, handoff/blocker prefix markers, canonical `STATE.md` completion checks, and blocked-state reason classification.
+- `hermes_cli/goal_policies.py` owns host structured-completion compatibility: standalone footer markers, handoff/blocker prefixes, and blocked-state classification. For v3 packages it must defer completion authority to successful `python scripts/sgctl.py validate-terminal` against `reports/terminal-record.txt`, not a `STATE.md` label or marker pair.
 - `gateway/goal_launch.py` owns launch parsing only: `SUPERGOAL_GOAL_BODY:` extraction, report-tail stripping, `.supergoal/...` artifact synthesis, bare reply filtering, pasted handoff detection, and SuperGoal dispatch detection.
 - `gateway/run.py` keeps thin compatibility shims and the official `GoalManager` start/recovery path. It must not create a custom/nested SuperGoal runner.
 - `gateway/platforms/telegram.py` hydrates replied document content into `event.reply_to_text` while preserving bare `event.text == "/goal"`; inline SuperGoal start buttons call the official `GoalManager` path and must not rely on queued slash-command replay.

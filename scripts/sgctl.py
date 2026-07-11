@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 from chip_supergoal.validate import validate_contract_file, validate_loop_design, validate_package, validate_phase_markdown
 from chip_supergoal.compile import CompileSafetyError, compile_contract_file
-from chip_supergoal.migrate import migrate_v2_package
+from chip_supergoal.migrate import MigrationError, migrate_v2_package
 from chip_supergoal.diagnostics import ContractValidationError, diagnostics_to_json
 from chip_supergoal.delivery import (
     cancel_delivery_reservation,
@@ -30,6 +30,7 @@ from chip_supergoal.delivery import (
     show_delivery_reservation,
 )
 from chip_supergoal.model import load_contract
+from chip_supergoal.portable import UnsafeFileError, read_regular_file_no_follow
 from chip_supergoal.research import research_report, validate_research_gate
 from chip_supergoal.audit import audit_json_bytes, audit_package
 from chip_supergoal.archive import (
@@ -41,6 +42,15 @@ from chip_supergoal.evidence import EvidenceRecord, record_evidence
 from chip_supergoal.events import strict_json_loads
 from chip_supergoal.state import State, StateStore, read_state, recover_from_events
 from chip_supergoal.terminal import finalize_package, validate_terminal_package
+
+
+def _configure_utf8_stdio() -> None:
+    """Make every textual CLI response independent of the Windows code page."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="strict")
 
 
 def emit(diags, fmt: str) -> int:
@@ -97,6 +107,63 @@ def _delivery_authorization_from_json(raw: str) -> dict:
             "SGV-DELIVERY-RECEIPT-INVALID: authorization envelope is invalid"
         )
     return envelope["authorization"]
+
+
+_MAX_AUTHORIZATION_BYTES = 1024 * 1024
+
+
+def _delivery_authorization_raw(args) -> str:
+    inline = getattr(args, "authorization_json", None)
+    if inline is not None:
+        return inline
+    source = getattr(args, "authorization_file", None)
+    if source == "-":
+        raw = sys.stdin.buffer.read(_MAX_AUTHORIZATION_BYTES + 1)
+    elif source is not None:
+        path = Path(source)
+        try:
+            raw = read_regular_file_no_follow(
+                path,
+                path.parent,
+                max_bytes=_MAX_AUTHORIZATION_BYTES,
+            )
+        except UnsafeFileError as exc:
+            if exc.kind == "limit":
+                raise ValueError(
+                    "SGV-DELIVERY-RECEIPT-INVALID: authorization input too large"
+                ) from exc
+            raise ValueError(
+                "SGV-DELIVERY-RECEIPT-INVALID: authorization input is unsafe"
+            ) from exc
+        except OSError as exc:
+            raise ValueError(
+                "SGV-DELIVERY-RECEIPT-INVALID: authorization input cannot be read"
+            ) from exc
+    else:
+        raise ValueError("SGV-DELIVERY-RECEIPT-INVALID: authorization input missing")
+    if len(raw) > _MAX_AUTHORIZATION_BYTES:
+        raise ValueError("SGV-DELIVERY-RECEIPT-INVALID: authorization input too large")
+    try:
+        return raw.decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise ValueError(
+            "SGV-DELIVERY-RECEIPT-INVALID: authorization input is not UTF-8"
+        ) from exc
+
+
+def _delivery_authorization_from_args(args) -> dict:
+    return _delivery_authorization_from_json(_delivery_authorization_raw(args))
+
+
+def _write_authorization_out(args, value: dict) -> None:
+    destination = getattr(args, "authorization_out", None)
+    if destination is None:
+        return
+    data = (
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    with Path(destination).open("xb") as stream:
+        stream.write(data)
 
 
 def _review_files_from_authorization_json(raw: str) -> list[str]:
@@ -222,12 +289,12 @@ def _run_runtime(args) -> int:
             root, target=args.target, force=args.force
         )
         if check.authorization is not None:
-            _json_stdout(
-                {
-                    "authorization": check.authorization,
-                    "status": "send_required",
-                }
-            )
+            envelope = {
+                "authorization": check.authorization,
+                "status": "send_required",
+            }
+            _write_authorization_out(args, envelope)
+            _json_stdout(envelope)
             return 10
         _json_stdout(check.receipt)
         return 0
@@ -235,9 +302,7 @@ def _run_runtime(args) -> int:
         for name in review_delivery_files(
             root,
             target=args.target,
-            authorization=_delivery_authorization_from_json(
-                args.authorization_json
-            ),
+            authorization=_delivery_authorization_from_args(args),
             force=args.force,
         ):
             print(name)
@@ -247,9 +312,7 @@ def _run_runtime(args) -> int:
             send_review_delivery(
                 root,
                 target=args.target,
-                authorization=_delivery_authorization_from_json(
-                    args.authorization_json
-                ),
+                authorization=_delivery_authorization_from_args(args),
                 force=args.force,
             )
         )
@@ -260,9 +323,7 @@ def _run_runtime(args) -> int:
                 root,
                 file=args.file,
                 message_id=args.message_id,
-                authorization=_delivery_authorization_from_json(
-                    args.authorization_json
-                ),
+                authorization=_delivery_authorization_from_args(args),
             )
         )
         return 0
@@ -271,9 +332,7 @@ def _run_runtime(args) -> int:
             root,
             target=args.target,
             message_ids=args.message_id,
-            authorization=_delivery_authorization_from_json(
-                args.authorization_json
-            ),
+            authorization=_delivery_authorization_from_args(args),
             force=args.force,
         )
         _json_stdout(receipt)
@@ -286,12 +345,12 @@ def _run_runtime(args) -> int:
             force=args.force,
         )
         if check.authorization is not None:
-            _json_stdout(
-                {
-                    "authorization": check.authorization,
-                    "status": "send_required",
-                }
-            )
+            envelope = {
+                "authorization": check.authorization,
+                "status": "send_required",
+            }
+            _write_authorization_out(args, envelope)
+            _json_stdout(envelope)
             return 10
         _json_stdout(check.receipt)
         return 0
@@ -300,9 +359,7 @@ def _run_runtime(args) -> int:
             final_delivery_file(
                 root,
                 target=args.target,
-                authorization=_delivery_authorization_from_json(
-                    args.authorization_json
-                ),
+                authorization=_delivery_authorization_from_args(args),
                 force=args.force,
             )
         )
@@ -312,9 +369,7 @@ def _run_runtime(args) -> int:
             send_final_delivery(
                 root,
                 target=args.target,
-                authorization=_delivery_authorization_from_json(
-                    args.authorization_json
-                ),
+                authorization=_delivery_authorization_from_args(args),
                 force=args.force,
             )
         )
@@ -326,9 +381,7 @@ def _run_runtime(args) -> int:
                 target=args.target,
                 archive=args.archive,
                 message_id=args.message_id,
-                authorization=_delivery_authorization_from_json(
-                    args.authorization_json
-                ),
+                authorization=_delivery_authorization_from_args(args),
                 force=args.force,
             )
         )
@@ -341,15 +394,13 @@ def _run_runtime(args) -> int:
             cancel_delivery_reservation(
                 root,
                 kind=args.kind,
-                authorization=_delivery_authorization_from_json(
-                    args.authorization_json
-                ),
+                authorization=_delivery_authorization_from_args(args),
                 confirm_not_sent=args.confirm_not_sent,
             )
         )
         return 0
     if args.cmd == "delivery-authorization-id":
-        print(_delivery_reservation_id_from_json(args.authorization_json))
+        print(_delivery_reservation_id_from_json(_delivery_authorization_raw(args)))
         return 0
     if args.cmd == "audit":
         sys.stdout.buffer.write(audit_json_bytes(audit_package(root)))
@@ -364,7 +415,17 @@ def _run_runtime(args) -> int:
     raise ValueError("SGV-RUNTIME-ERROR: unsupported runtime command")
 
 
+def _add_authorization_input(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--authorization-json")
+    group.add_argument(
+        "--authorization-file",
+        help="UTF-8 authorization envelope path, or - to read standard input",
+    )
+
+
 def main(argv=None) -> int:
+    _configure_utf8_stdio()
     parser = argparse.ArgumentParser(prog="sgctl")
     sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("compile")
@@ -412,29 +473,30 @@ def main(argv=None) -> int:
     p = sub.add_parser("delivery-review-check")
     p.add_argument("root", nargs="?", default=None)
     p.add_argument("--target", required=True)
+    p.add_argument("--authorization-out")
     p.add_argument("--force", action="store_true")
     p = sub.add_parser("delivery-review-record")
     p.add_argument("root", nargs="?", default=None)
     p.add_argument("--target", required=True)
     p.add_argument("--message-id", action="append", default=[])
-    p.add_argument("--authorization-json", required=True)
+    _add_authorization_input(p)
     p.add_argument("--force", action="store_true")
     for command in ("delivery-review-files", "delivery-review-send"):
         p = sub.add_parser(command)
         p.add_argument("root", nargs="?", default=None)
         p.add_argument("--target", required=True)
-        p.add_argument("--authorization-json", required=True)
+        _add_authorization_input(p)
         p.add_argument("--force", action="store_true")
     p = sub.add_parser("delivery-review-progress")
     p.add_argument("root", nargs="?", default=None)
     p.add_argument("--file", required=True)
     p.add_argument("--message-id", required=True)
-    p.add_argument("--authorization-json", required=True)
+    _add_authorization_input(p)
     for command in ("delivery-final-file", "delivery-final-send"):
         p = sub.add_parser(command)
         p.add_argument("root", nargs="?", default=None)
         p.add_argument("--target", required=True)
-        p.add_argument("--authorization-json", required=True)
+        _add_authorization_input(p)
         p.add_argument("--force", action="store_true")
     p = sub.add_parser("delivery-reservation-show")
     p.add_argument("root", nargs="?", default=None)
@@ -446,20 +508,21 @@ def main(argv=None) -> int:
     p.add_argument(
         "--kind", choices=["review-md-files", "final-artifacts"], required=True
     )
-    p.add_argument("--authorization-json", required=True)
+    _add_authorization_input(p)
     p.add_argument("--confirm-not-sent", action="store_true")
     p = sub.add_parser("delivery-authorization-id")
-    p.add_argument("--authorization-json", required=True)
+    _add_authorization_input(p)
     for command in ("delivery-final-check", "delivery-final-record"):
         p = sub.add_parser(command)
         p.add_argument("root", nargs="?", default=None)
         p.add_argument("--target", required=True)
         p.add_argument("--archive", required=True)
         if command == "delivery-final-check":
+            p.add_argument("--authorization-out")
             p.add_argument("--force", action="store_true")
         else:
             p.add_argument("--message-id")
-            p.add_argument("--authorization-json", required=True)
+            _add_authorization_input(p)
             p.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
     if args.cmd in {
@@ -511,7 +574,11 @@ def main(argv=None) -> int:
         print(args.out)
         return 0
     if args.cmd == "migrate-v2":
-        migrate_v2_package(args.source, args.out)
+        try:
+            migrate_v2_package(args.source, args.out)
+        except (MigrationError, OSError) as exc:
+            print(f"migration error: {exc}", file=sys.stderr)
+            return 1
         print(args.out)
         return 0
     if args.cmd == "validate-contract":

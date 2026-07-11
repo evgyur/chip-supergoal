@@ -17,7 +17,7 @@ A Dev-history review over 2026-06-12..2026-06-19 found recurring failure classes
 
 | Incident class | Trigger phrase / symptom | Required gate | Regression probe |
 |---|---|---|---|
-| goal stopped | “Почему goal стоит?”, “до конца”, status-only answer after a phase | read `STATE.md`; if not `DONE`/`BLOCKED`, continue current phase/audit | `/goal resume` after restart continues from phase |
+| goal stopped | “Почему goal стоит?”, “до конца”, status-only answer after a phase | run `python scripts/sgctl.py state-show`; if not `DONE`/blocked, continue the authoritative current phase/audit | `/goal resume` after restart continues from phase |
 | manual execution drift | “Снова вручную без goal делаешь?” | planner stops at launch; executor continues only from generated `PROTOCOL.md` | no phase work from planner session |
 | repeated complete loop | repeated wrapper on already completed root | do not re-run; show completion evidence or require new clean SuperGoal | stale completed wrapper probe |
 | missing review files | “Где три файла мд”, “не вижу файлов” | send `review_pack_v2` (`THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus non-empty `RESEARCH.md`) as native files and write receipt before `READY_TO_DISPATCH` | receipt + review_pack_v2 files |
@@ -50,7 +50,7 @@ If still missing, ask for the smallest exact item and name the stores checked.
 
 ## Done bar for Dev-history hardening
 
-The skill is not hardened until `scripts/test.sh` mechanically checks:
+The skill is not hardened until cross-platform `python scripts/test.py` mechanically checks (with `bash scripts/test.sh` as an additional Unix-only shell gate):
 
 - delivery templates and receipt schemas exist;
 - `dev-history-hardening.md` is linked from root/index;

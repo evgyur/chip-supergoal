@@ -9,36 +9,34 @@ This is the precedence table for the generated `/goal` executor.
 - `PHASE_N` — executor is running numbered phase N.
 - `AUDIT` — all numbered phases have `SUPERGOAL_PHASE_DONE`; final audit is pending.
 - `BLOCKED` — approval, missing credentials, destructive action, failed preflight, or unrecoverable verification gap.
-- `DONE` — `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE` printed.
+- `DONE` — the exact terminal record validates against the current sealed package, authoritative state, recomputed audit, inventory, and delivery state.
 
 ## Official GoalManager loop
 
-1. Read `STATE.md`.
-2. If `Current phase: N`, read `phases/phase-N.md`.
+1. Run `python scripts/sgctl.py state-show`; treat `runtime/STATE.json` as authority and `STATE.md` only as its checked projection.
+2. If the authoritative state selects phase N, read `phases/phase-N.md`.
 3. Print `SUPERGOAL_PHASE_START` and `SUPERGOAL_STATUS`.
 4. Do phase work and mandatory verification.
 5. Print `SUPERGOAL_PHASE_VERIFY` with criterion-to-evidence mapping.
 6. Run `RPD_PHASE_REVIEW` when required.
 7. Save durable non-obvious lessons or print `MEMORY_SAVED: none`.
 8. Print `SUPERGOAL_PHASE_DONE`.
-9. Update `STATE.md` to next phase or `AUDIT`.
+9. Advance state with `python scripts/sgctl.py state-transition ...`; never edit either state file manually.
 10. Continue immediately to the next phase in the same assistant turn until a real approval/safety gate, blocker, or final audit completion is reached.
 
 Do **not** treat phase boundaries as a stop condition for Chip. `SUPERGOAL_TURN_YIELD` is only appropriate when yielding at a real gate/blocker or after the full run completes. A per-phase courtesy stop is a weak stop and violates Chip's expected SuperGoal execution mode.
 
 ## State ledger and ignored package artifacts
 
-- Use a real timestamp for every `STATE.md` event (`date -u +%Y-%m-%dT%H:%M:%SZ` or tool-provided equivalent). Do not write placeholder times and patch them later unless unavoidable.
-- `.supergoal/` is often intentionally git-ignored. Plain `git status --short` can look clean while the package exists only as ignored files. When verifying package presence or cleanliness, also run one of:
-  - `git status --short --ignored .supergoal`
-  - `find .supergoal -maxdepth 3 -type f | sort`
+- Package-local state commands generate canonical event timestamps and keep `runtime/events.jsonl`, `runtime/STATE.json`, and `STATE.md` synchronized. Do not hand-write timestamps or state projections.
+- `.supergoal/` is often intentionally git-ignored. Plain `git status --short` can look clean while the package exists only as ignored files. Use `git status --short --ignored .supergoal` plus a platform-native file inventory.
 - Before creating a new package, check whether an ignored `.supergoal/` already exists. If it is stale and the user asked for a fresh SuperGoal, remove/recreate it explicitly and record that in `STATE.md`.
 - Phase evidence must distinguish tracked repo cleanliness from ignored planning artifacts. A clean tracked status does not prove the `.supergoal/` package is absent, delivered, or current.
 - During final residue cleanup, exclude runtime/vendor dirs such as `venv/`, `.venv/`, `.git/`, `.supergoal/`, and `node_modules/`. Clean `__pycache__`, `.pytest_cache`, and `*.pyc` with a bounded script that skips those dirs; do not sweep the whole repo blindly or you can hit permission-owned package caches inside the active virtualenv.
 
 ## Manual Telegram/no-stall fallback
 
-If auto-continuation is visibly not happening and the user sends a continuation command or frustration signal, continue from `STATE.md` without debating protocol. You may process more than one phase in the same turn; preserve all phase markers and update state after each phase. Stop only at a real approval/safety gate, a real blocker, or `AUDIT_COMPLETE` / `SUPERGOAL_RUN_COMPLETE`.
+If auto-continuation is visibly not happening and the user sends a continuation command or frustration signal, continue from `runtime/STATE.json` through `python scripts/sgctl.py state-show` without debating protocol. You may process more than one phase in the same turn; preserve all phase markers and transition state after each phase. Stop only at a real approval/safety gate, a real blocker, or successful `python scripts/sgctl.py validate-terminal` against the current `reports/terminal-record.txt`; legacy markers alone are never a stop condition.
 
 If the user challenges a blocker, reassess it. Do not defend an over-broad gate. For Chip-owned private proof actions that are part of the requested verification (for example a private DM smoke/readback with no config change, restart, topup, plugin change, session reset, public/group send, or default switch), treat the correction as authorization to proceed with that bounded proof unless another safety rule applies.
 
@@ -66,7 +64,11 @@ Stop only for money/topup/trading, DNS, secrets/credential disclosure or creatio
 
 ## Audit
 
-Final audit re-reads the original `ROADMAP.md`, not prior self-reports. It re-runs aggregate mandatory commands, checks deliverables with `repo-state.sh`, runs `RPD_FINAL_REVIEW`, and only then prints `AUDIT_COMPLETE`.
+Final audit re-reads the original sealed contract and `ROADMAP.md`, not prior
+self-reports. It re-runs aggregate mandatory commands, records bound evidence,
+runs `python scripts/sgctl.py audit`, then `RPD_FINAL_REVIEW`. Completion remains
+unauthorized until `python scripts/sgctl.py finalize` creates and
+`python scripts/sgctl.py validate-terminal` validates the exact terminal record.
 
 If gaps remain after bounded repair rounds, print `AUDIT_HANDOFF` and do not print `SUPERGOAL_RUN_COMPLETE`.
 

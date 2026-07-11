@@ -10,7 +10,7 @@ If the interrupted SuperGoal was only planning creation/update of a skill and Ch
 
 ## Resume behavior
 
-The next host `[Continuing toward your standing goal]` message should resume from `.supergoal/STATE.md` exactly where the loop paused. Do not restart the SuperGoal, do not re-dispatch `/goal`, and do not redo completed phases unless `STATE.md` or evidence files show missing bookkeeping.
+The next host `[Continuing toward your standing goal]` message should resume from authoritative `runtime/STATE.json` through `python scripts/sgctl.py state-show`. Do not restart the SuperGoal, re-dispatch `/goal`, or redo completed phases unless package validation, state, or bound evidence proves missing bookkeeping; `STATE.md` is only a checked projection.
 
 ## Why
 

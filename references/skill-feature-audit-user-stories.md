@@ -48,7 +48,7 @@ When a row fails:
 1. decide whether the failure is a real skill gap or a brittle test;
 2. patch the smallest canonical source: SKILL.md for new public invariants/dispatch, references for durable detail, templates/scripts for executable contracts;
 3. sync the live loaded skill and canonical repo copy if they differ;
-4. rerun `scripts/test-user-stories.py` and the skill's normal `scripts/test.sh`;
+4. rerun `python scripts/test-user-stories.py` and `python scripts/test.py`; on Unix-only hosts also run `bash scripts/test.sh`;
 5. verify `skill_view` loads the changed live file before declaring completion.
 
 ## Pitfalls

@@ -1,6 +1,6 @@
 # v2 → v3 migration
 
-`sgctl migrate-v2 <source> --out <dir>` reads a legacy Markdown package, writes a draft v3 `CONTRACT.json`, copies a read-only `v2-backup/`, and writes `migration-report.json`.
+`python scripts/sgctl.py migrate-v2 <source> --out <dir>` reads a legacy Markdown package, writes a draft v3 `CONTRACT.json`, copies a read-only `v2-backup/`, and writes `migration-report.json`.
 
 Rules:
 

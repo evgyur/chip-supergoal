@@ -169,6 +169,7 @@ class SelfContainedPackageTest(unittest.TestCase):
 
             required = {
                 "scripts/sgctl.py",
+                "scripts/check-cross-file-consistency.py",
                 "lib/chip_supergoal/__init__.py",
                 "lib/chip_supergoal/compile.py",
                 "lib/chip_supergoal/audit.py",
@@ -201,6 +202,25 @@ class SelfContainedPackageTest(unittest.TestCase):
                 "templates/delivery/send-review-md-files.sh",
             }
             self.assertTrue(required <= package_files(package))
+
+    def test_compiled_package_runs_native_cross_file_consistency_gate(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = self.compile_package(Path(td))
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    package / "scripts" / "check-cross-file-consistency.py",
+                    package,
+                ],
+                cwd=package,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("CROSS_FILE_CONSISTENCY_PASS", result.stdout)
 
     def test_library_compile_uses_canonical_protocol_by_default(self):
         with tempfile.TemporaryDirectory() as td:
@@ -474,6 +494,22 @@ class SelfContainedPackageTest(unittest.TestCase):
                 state=updated.to_dict(),
                 event_type="transition:COMPILED->PLAN_REVIEWED",
             )
+            contract = json.loads(
+                (package / "CONTRACT.json").read_text(encoding="utf-8")
+            )
+            phase = next(
+                item
+                for item in contract["phases"]
+                if item["id"] == updated.current_phase_id
+            )
+            criterion = next(
+                item for item in phase["criteria"] if item["id"] == "P01-C01"
+            )
+            command = next(
+                item["command"]
+                for item in phase["commands"]
+                if item["id"] == criterion["verifier"]["command_id"]
+            )
             evidence = [{
                 "evidence_id": "EV-001",
                 "goal_id": updated.goal_id,
@@ -488,9 +524,9 @@ class SelfContainedPackageTest(unittest.TestCase):
                 "replayable": True,
                 "result": "unverified",
                 "redaction": "passed",
-                "command": "python3 -m unittest",
+                "command": command,
                 "exit_code": 1,
-                "assertion": "test passes",
+                "assertion": criterion["verifier"]["expected_assertion"],
             }]
             (package / "runtime" / "evidence.json").write_text(
                 json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

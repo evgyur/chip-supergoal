@@ -15,12 +15,12 @@ Use this when executing a SuperGoal phase that maps existing recovery/control-pl
    - exact gap being pinned;
    - insertion points for the next phase;
    - test names and what each proves.
-7. At phase boundary, update `.supergoal/STATE.md` in the same turn: set `Current phase: N+1`, append `Completed phases`, `Last phase completed`, `Last update`, and a one-line event.
+7. At phase boundary, record evidence and use `python scripts/sgctl.py state-transition` with the expected revision in the same turn; the runtime updates `runtime/STATE.json`, event journal, and `STATE.md` projection together.
 8. Print `SUPERGOAL_PHASE_DONE` and `SUPERGOAL_TURN_YIELD`; do not start the next phase in the same assistant turn.
 
 ## Pitfall
 
-Do not let a phase finish with only a report and tests while `STATE.md` still points at the completed phase. The `/goal` loop will resume the same phase and can duplicate work.
+Do not let a phase finish with only a report and tests while authoritative state still points at the completed phase. The `/goal` loop can otherwise resume the same phase and duplicate work. Never repair this by hand-editing the projection.
 
 ## Example result shape
 

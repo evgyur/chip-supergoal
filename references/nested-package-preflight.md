@@ -1,6 +1,6 @@
 # Nested package and preflight guardrails
 
-Use this when a SuperGoal lives under `<repo>/.supergoal/<slug>/` instead of directly at `<repo>/.supergoal/`, or when assembling a plan-first package without `sgctl compile`.
+Use this when a SuperGoal lives under `<repo>/.supergoal/<slug>/` instead of directly at `<repo>/.supergoal/`, or when assembling a plan-first package without `python scripts/sgctl.py compile`.
 
 ## 1. Keep validator dependencies together
 
@@ -11,12 +11,14 @@ Use this when a SuperGoal lives under `<repo>/.supergoal/<slug>/` instead of dir
 
 When copying validators into a generated package, copy those dependencies too. Verify from the package copy, not from the installed skill:
 
-```bash
-python3 "$SUPERGOAL_ROOT/scripts/sgctl.py" validate-loop-design "$SUPERGOAL_ROOT/LOOP_DESIGN.md" --instantiated
-for f in "$SUPERGOAL_ROOT"/phases/phase-*.md; do
-  bash "$SUPERGOAL_ROOT/scripts/validate-phase.sh" "$f"
-done
+```text
+cd <resolved-package-root>
+python scripts/sgctl.py validate-loop-design LOOP_DESIGN.md --instantiated
+python scripts/sgctl.py validate-phase-markdown phases/phase-NN.md
 ```
+
+Run the last command once for every phase. The optional Bash wrappers are not
+the package authority and are unnecessary on native Windows.
 
 A wrapper that only works because it reaches back into the installed skill is not a portable package.
 
@@ -44,9 +46,9 @@ Minimum launch checks:
 
 ## 3. Distinguish strict and plan-first packages
 
-`sgctl validate-package` expects compiler artifacts such as `CONTRACT.json` and `MANIFEST.json`.
+`python scripts/sgctl.py validate-package` expects compiler artifacts such as `CONTRACT.json` and `MANIFEST.json`.
 
-- **Strict/compiler-built package:** generate with `sgctl compile`; run `validate-package --strict`.
+- **Strict/compiler-built package:** generate with `python scripts/sgctl.py compile`; run `python scripts/sgctl.py validate-package . --strict`.
 - **Plan-first/manual package:** do not claim strict package validation. Run phase validation, instantiated loop validation, launch-contract checks, baseline commands and package-file checks. State this evidence honestly.
 
 Do not create fake CONTRACT/MANIFEST files merely to silence the validator.

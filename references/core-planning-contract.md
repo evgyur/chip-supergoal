@@ -5,7 +5,7 @@ This reference expands the root Stage 0-7 workflow. The root is the public contr
 ## Stage 0 — context and resume
 
 - Resolve the live `skill_dir` from `skill_view`/runtime discovery before trusting hard-coded paths.
-- Detect whether the task is a new SuperGoal or a continuation from an existing `.supergoal/STATE.md`.
+- Detect whether the task is a new SuperGoal or a continuation from an existing `runtime/STATE.json`; use `STATE.md` only to locate legacy/manual packages and then validate or migrate them.
 - Preload durable memory and session context only when relevant to the user/task.
 - Detect available tools/skills: research, GitHub, browser, MCP/context docs, terminal, file tools, Telegram delivery.
 - For repo-backed work, capture repo root, git status, baseline ref, package manager, and obvious test/build commands.
@@ -18,14 +18,16 @@ Greenfield: ask enough batched questions to cover platform, stack, UX direction,
 
 ## Stage 2 — recon
 
-Run the included scripts where applicable:
+Use native file, Git, and search tools on every platform. The included scripts
+below are optional Unix-only recon helpers when Bash is available; their absence
+must not block native Windows planning:
 
 ```bash
 bash "$SUPERGOAL_DIR/scripts/detect-stack.sh" > "$SUPERGOAL_ROOT/context.md"
 bash "$SUPERGOAL_DIR/scripts/summarize-repo.sh" > "$SUPERGOAL_ROOT/repo-map.md"
 ```
 
-For greenfield/non-repo work:
+For greenfield/non-repo work on Unix:
 
 ```bash
 bash "$SUPERGOAL_DIR/scripts/detect-env.sh" > "$SUPERGOAL_ROOT/context.md"
@@ -75,15 +77,15 @@ Write/update:
 - optional `RESEARCH.md`
 - `LOOP_DESIGN.md`
 - `ROADMAP.md`
-- `STATE.md`
+- authoritative `runtime/STATE.json` plus generated `STATE.md` projection
 - `PROTOCOL.md`
 - `LAUNCH_GOAL.md`
 - `phases/phase-N.md`
-- copied helper scripts **with their runtime dependencies**. In particular, `validate-phase.sh` and `validate-loop-design.sh` require package-local `scripts/sgctl.py` and `lib/chip_supergoal/`; a wrapper-only copy is incomplete.
+- package-local `scripts/sgctl.py` and `lib/chip_supergoal/` as Python validator authority; optional Unix wrappers may be copied only with those dependencies.
 
 For nested roots such as `<repo>/.supergoal/<slug>/`, bind protocol paths without global self-replacement, distinguish compiler-built strict packages from manual plan-first packages, and handle ignored-artifact baseline dependencies honestly. Follow `references/nested-package-preflight.md`.
 
-Validate every phase with `scripts/validate-phase.sh`.
+From the package root, validate loop design with `python scripts/sgctl.py validate-loop-design LOOP_DESIGN.md --instantiated`, every phase with `python scripts/sgctl.py validate-phase-markdown phases/phase-NN.md`, and cross-file phase/launch consistency with `python scripts/check-cross-file-consistency.py .`. Bash wrappers are optional Unix conveniences.
 
 ## Stage 6 — embedded plan review
 

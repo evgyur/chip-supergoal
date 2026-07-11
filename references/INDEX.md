@@ -1,29 +1,39 @@
 # chip-supergoal reference index
 
+`spec/reference-catalog.json` is the status authority. Generated exhaustive
+status and trigger projections live in `INDEX.generated.md` and
+`dispatch.generated.md`; this file is the short human routing index.
+
 ## Canonical references
 
-- `dispatch-map.md` — active reference taxonomy, canonical dispatch table, superseded incident clusters, and banned stale-policy phrases.
-- `upstream-goal-compatibility.md` — standard Hermes `/goal` compiler boundary, judge-proof turn endings, blockers, and budget rules.
-- `core-planning-contract.md` — Stage 0-7 planner workflow.
-- `artifact-boundaries.md` — canonical review_pack_v2 and artifact owner/stage/delivery/receipt boundaries.
-- `artifact-schemas.md` — schemas for generated files and receipts.
-- `execution-state-machine.md` — `/goal` executor state machine and recovery precedence.
-- `research-and-architecture-gates.md` — current-facts, build-vs-buy, Architect+ lite.
-- `loop-design-gate.md` — Loop Design Gate for `LOOP_DESIGN.md`: pre-launch harness design with host/reviewer/judge, verification gates, state, stop/budget/boundaries, egress/redaction, and ASCII preview.
-- `phase-design.md` and `planning-depth.md` — phase slicing and planning bar.
+- `artifact-boundaries.md` — review-pack ownership, stages, delivery, and receipts.
+- `artifact-schemas.md` — generated artifact schemas and authority boundaries.
+- `completed-standing-goal-and-workdir-hygiene.md` — validated completed-package handling.
+- `core-planning-contract.md` — Stage 0–7 planner workflow.
+- `cross-file-consistency-review-hardening.md` — native phase-count and launch-surface consistency gate.
+- `dispatch-map.md` — active routing table and superseded incident clusters.
+- `execution-state-machine.md` — authoritative executor state machine and recovery precedence.
+- `follow-on-supergoal-after-completion.md` — immutable completed package and sibling follow-on flow.
+- `loop-design-gate.md` — pre-launch execution-harness design.
+- `planner-executor-state-hygiene.md` — plan-only boundary and honest initial state.
+- `production-safety.md` — production, auth, payments, and destructive-action boundaries.
 - `rpd-review-gates.md` — embedded RPD/Senior Gate.
-- `telegram-launch-and-delivery.md` — launch file/card and Telegram receipts.
-- `goalmanager-recovery.md` — continuation, restart, stale wrapper, completion-loop recovery.
-- `production-safety.md` — deploy/infra/auth/payments/risky work.
-- `skill-maintenance.md` — Hermes skill edit/package validation.
-- `dev-history-hardening.md` — Dev-chat incident classes: goal continuation, Telegram files, approvals, retrieval-before-ask, repo delivery.
-- `upstream-goal-reconciliation.md` — upstream/private Hermes `/goal` split, private-update preservation, and focused compatibility checks.
-- `supergoal-goal-code-review-hardening.md` — review/fix hardening for GoalManager, gateway launch, Telegram clarify buttons, and structured completion regressions.
-- `ignored-supergoal-package-hygiene.md` — package hygiene for ignored `.supergoal/` artifacts and stale-package cleanup before delivery.
-- `rpd-to-supergoal-handoff.md` — conversion contract from RPD/xhigh verdicts into launchable SuperGoal packages.
+- `skill-maintenance.md` — skill edit, validation, and repository delivery rules.
+- `telegram-launch-and-delivery.md` — launch surfaces and receipt-backed delivery.
+- `upstream-goal-compatibility.md` — standard Hermes `/goal` and compatibility footer contract.
 
-## Historical references
+## Specialist references
 
-The remaining references are incident-specific lessons. Keep them for targeted recovery and archaeology, but prefer updating a canonical reference when adding new durable behavior.
+Specialist references are active only for their catalog triggers; they do not
+override canonical authority. Use `INDEX.generated.md` for the exhaustive list
+and `dispatch-map.md` for curated routing. Incident, `private_profile_only`, and
+archive references retain forensic value but are not default policy.
 
-`legacy-monolith-2026-06-19.md` preserves the old oversized root. Do not load it by default.
+- Frequently routed specialist: `dev-history-hardening.md` — preserve and
+  reconcile development-history evidence without replacing current runtime
+  authority.
+
+If any reference conflicts with the current package runtime, the sealed
+contract, `runtime/STATE.json`, recomputed audit, and successful
+`python scripts/sgctl.py validate-terminal` against
+`reports/terminal-record.txt` win.

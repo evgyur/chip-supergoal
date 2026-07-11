@@ -45,7 +45,7 @@ Fail the gate before dispatch if:
 - the preview omits the `LOOP_DESIGN.md → /goal → FINAL AUDIT` chain;
 - stop/budget/boundary sections do not name concrete limits and approval boundaries.
 
-Use `bash scripts/validate-loop-design.sh <LOOP_DESIGN.md>` for the deterministic section gate; RPD still judges quality and fit.
+Use `python scripts/sgctl.py validate-loop-design <LOOP_DESIGN.md> --instantiated` for the deterministic section gate; RPD still judges quality and fit. The Bash wrapper is an optional Unix compatibility entrypoint.
 
 ## Loop health rubric
 

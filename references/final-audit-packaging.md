@@ -1,59 +1,42 @@
-# Final audit packaging pattern
+# Final audit and archive publication pattern
 
-Use this when a SuperGoal final phase must attach a complete artifact bundle and also produce a final audit report.
+Use this when a SuperGoal final audit must publish a deterministic artifact ZIP
+and retain machine-verifiable completion authority.
 
-## The self-referential bundle trap
+## Avoid the self-referential bundle trap
 
-If the final audit report includes the bundle path/hash/size, and the bundle includes the final audit report, the bundle hash becomes self-referential and unstable.
+Do not hand-write a bundle hash into a file that is itself inside that bundle.
+Do not patch `reports/final-audit.json`, its Markdown projection, an archive
+manifest, or a receipt after the package runtime has validated it.
 
-Safe pattern:
+The package-local Python authorities separate these records:
 
-1. Run final validation first:
-   - preflight command;
-   - regression probes;
-   - `skill_view` or equivalent readbacks;
-   - changed-file secret scan;
-   - state marker checks.
-2. Write `final-audit.md` with all validation evidence.
-3. Create the zip bundle **excluding**:
-   - `final-audit.md`;
-   - the bundle sidecar manifest itself.
-4. Write a sidecar manifest, for example `.supergoal/evidence/phase-N/package-manifest.json`, containing:
-   - bundle path;
-   - sha256;
-   - byte size;
-   - entry count;
-   - created timestamp;
-   - explicit excludes.
-5. Patch `final-audit.md` with the final bundle metadata.
-6. Re-run a final consistency check:
-   - `STATE.md` is complete;
-   - audit report contains `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`;
-   - bundle exists;
-   - actual sha256 matches the sidecar manifest.
+1. Record criterion and auxiliary evidence through `record-evidence`.
+2. Run `python scripts/sgctl.py audit`; treat `reports/final-audit.json` as the
+   audit authority and its Markdown file as a projection.
+3. Publish the ZIP to an absolute path outside the package:
+
+   ```text
+   python scripts/sgctl.py archive <package-root> --out <absolute-external-zip> --manifest <package-root>/out/final-artifacts-manifest.json
+   ```
+
+4. Let `archive` perform deterministic readback and atomically publish its
+   separate result record. Never add the result record or mutable receipts back
+   into the archive generation they describe.
+5. Complete any required delivery reservation and receipt before terminal
+   finalization.
+6. Transition legally to `DONE`, run `python scripts/sgctl.py finalize`, then
+   require `python scripts/sgctl.py validate-terminal` to accept the exact
+   `reports/terminal-record.txt`.
+
+The archive, archive result, delivery receipt, audit projection, and transcript
+markers are evidence with distinct owners. None substitutes for the exact
+package-bound terminal record.
 
 ## Reporting rule
 
-Attach both:
-
-- `final-audit.md` as its own file;
-- the final zip bundle.
-
-In the final user reply, state that the final audit is attached separately to avoid a self-referential bundle hash.
-
-## Minimal consistency check
-
-```python
-from pathlib import Path
-import hashlib, json
-state = Path('.supergoal/STATE.md').read_text()
-audit = Path('.supergoal/reports/final-audit.md').read_text()
-manifest = json.loads(Path('.supergoal/evidence/phase-5/package-manifest.json').read_text())
-zip_path = Path(manifest['bundle'])
-sha = hashlib.sha256(zip_path.read_bytes()).hexdigest()
-assert 'Status: COMPLETE' in state
-assert 'AUDIT_COMPLETE' in audit
-assert 'SUPERGOAL_RUN_COMPLETE' in audit
-assert zip_path.exists()
-assert sha == manifest['sha256']
-```
+Report the external ZIP path/hash, final-audit paths, delivery receipt when
+required, and the fresh `validate-terminal` result. The compatibility lines
+`AUDIT_COMPLETE`, `SUPERGOAL_RUN_COMPLETE`, and `Goal complete: yes` may be
+shown only as the exact finalized record; never search arbitrary Markdown for
+them or hand-compose them as completion proof.

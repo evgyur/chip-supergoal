@@ -23,11 +23,11 @@ The review pack is sent during planner dispatch before `READY_TO_DISPATCH`. It i
 | `LOOP_DESIGN.md` | planner | loop-design gate | Chip review | yes | review receipt + validator | Execution harness: roles, gates, stop, budget, boundaries, recovery. |
 | `ROADMAP.md` | planner | planning | Chip review | yes | review receipt | Phase map and acceptance contract. |
 | `LAUNCH_GOAL.md` | planner | dispatch | Chip review / launch | yes | review receipt + single-marker scan | Only artifact with a real line starting `SUPERGOAL_GOAL_BODY:`. |
-| `STATE.md` | planner then executor | execution | internal/status | no default review delivery | state readback | Executor-owned after launch; terminal state must be `DONE`/`COMPLETE` before final markers. |
+| `STATE.md` + `runtime/STATE.json` | planner then Python runtime | execution | internal/status | no default review delivery | `state-show` + projection validation | JSON is authoritative after launch; Markdown is a checked projection. |
 | `PROTOCOL.md` | planner | execution | internal executor contract | no default review delivery | copied file on disk | Must be self-contained inside `.supergoal/`; no external `references/` dependency. |
-| `phases/phase-N.md` | planner then executor | execution | internal executor contract | no default review delivery | phase validation | Strict schema; each phase validated before dispatch. |
-| `scripts/repo-state.sh` | planner | execution helper | internal | no default review delivery | shell syntax + functional tests | Copied into `.supergoal/scripts/`. |
-| `reports/final-audit.md` | executor | final audit | final/status | only if final artifacts requested | final audit markers | Must include `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE` only after verification. |
+| `phases/phase-N.md` | planner then executor | execution | internal executor contract | no default review delivery | Python phase validation | Strict schema; each phase validated before dispatch. |
+| `scripts/repo-state.sh` | planner | optional Unix compatibility | internal | no default review delivery | shell-only tests | Read-only convenience; Python evidence/audit remains authority and native Windows does not require it. |
+| `reports/final-audit.json` + `.md` | Python runtime | final audit | final/status | only if final artifacts requested | recomputed audit equality | Audit evidence only; completion additionally requires an exact validated terminal record. |
 | final artifact bundle | executor | delivery | Chip delivery when requested | conditional | final receipt | Separate from planning review pack. |
 
 ## Receipts

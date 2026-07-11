@@ -8,7 +8,7 @@ Use this reference when executing or repairing a SuperGoal that upgrades `chip-s
    The skill test suite scans the skill tree for launch-marker invariants. A real generated `LAUNCH_GOAL.md` under `<installed-skill-dir>/.supergoal/...` can create false failures or marker-count drift. Prefer `<workspace-dir>/.supergoal/<mission>` for the active execution package while editing the installed skill root.
 
 2. **Treat package-path drift as a controlled migration, not a blocker.**
-   If the launch body references an unsafe/stale package path under the skill root, move or continue from a safe workspace package path, record the path change in `STATE.md`, and keep the skill implementation target as `<installed-skill-dir>`.
+   If the launch body references an unsafe/stale package path under the skill root, move or continue from a safe workspace package path, record the path change through package-local Python state/evidence commands, and keep the skill implementation target as `<installed-skill-dir>`. Never hand-edit the `STATE.md` projection.
 
 3. **Phase reports are the execution ledger for non-git skill roots.**
    When the skill root is not a git repository, replace commit/remote-head proof with per-phase reports containing changed-file hashes, command evidence, RPD review, and final audit JSON/MD. Do not invent commit proof.
@@ -28,8 +28,8 @@ Use this reference when executing or repairing a SuperGoal that upgrades `chip-s
 8. **A sealed package can be structurally valid while its review views are semantically generic.**
    Generated `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and optional `RESEARCH.md` must render the actual contract source set, assumptions, decisions, loop limits, approvals, RPD mutations, and honest pending state. If the renderer ignores contract fields, patch the renderer and tests, increment `contract_revision`, and recompile. Do not hand-edit sealed Markdown and merely rebuild manifest hashes.
 
-9. **Use the installed `sgctl` surface rather than stale standalone script names.**
-   Inspect `scripts/sgctl.py --help`, then run `validate-contract`, strict `validate-package`, instantiated `validate-loop-design`, and `validate-phase-markdown` for every phase. Re-read representative generated views and assert exactly one `SUPERGOAL_GOAL_BODY:` plus no runtime sentinels before dispatch. A validator failure should mutate the contract; for example, add explicit retry and no-progress stop wording rather than bypassing the loop check.
+9. **Use package-local `python scripts/sgctl.py ...` rather than an uninstalled bare executable or stale standalone names.**
+   Run `python scripts/sgctl.py --help`, then its `validate-contract`, strict `validate-package`, instantiated `validate-loop-design`, and `validate-phase-markdown` subcommands for every phase. Re-read representative generated views and run `python scripts/check-cross-file-consistency.py .` before dispatch. A validator failure should mutate canonical contract input and trigger recompile rather than bypassing the gate.
 
 10. **Keep compiler reference metadata synchronized.**
     A new `references/*.md` file also requires an entry in `spec/reference-catalog.json`, regenerated `references/INDEX.generated.md` and `references/dispatch.generated.md`, then unit/rendering/semantic tests. Prefer extending this class-level reference when the lesson is another compiler-hardening case rather than creating a narrow uncataloged incident file.
@@ -39,12 +39,13 @@ Use this reference when executing or repairing a SuperGoal that upgrades `chip-s
 
 ## Minimum final evidence shape
 
-- `python3 -m unittest discover -s tests`
-- `bash scripts/test.sh`
-- `sgctl validate-contract ... --strict`
+- `python scripts/test.py` on native Windows or Ubuntu
+- `bash scripts/test.sh` for the additional Unix-only shell gate
+- `python scripts/sgctl.py validate-contract ... --strict`
 - compile twice and byte-compare immutable outputs
-- `sgctl validate-package ... --strict`
-- `sgctl migrate-v2 ...` plus validation of migrated contract
+- `python scripts/sgctl.py validate-package ... --strict`
+- `python scripts/sgctl.py migrate-v2 ...` plus validation of migrated contract
 - `skill_view("chip-supergoal")` loadability proof
 - `reports/final-audit.json` and `reports/final-audit.md`
-- final markers in one response: `AUDIT_COMPLETE`, `SUPERGOAL_RUN_COMPLETE`, `Goal complete: yes`
+- `python scripts/sgctl.py finalize`, followed by successful `python scripts/sgctl.py validate-terminal`
+- exact `reports/terminal-record.txt`; its marker lines are one host compatibility response, not independent authority

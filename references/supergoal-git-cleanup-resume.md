@@ -6,7 +6,7 @@ Use when a SuperGoal run is interrupted by a request to clean local git, reset a
 
 A clean product branch can accidentally remove code changes from already-completed SuperGoal phases while `.supergoal/` remains on disk because it is ignored. This creates split-brain:
 
-- `STATE.md` says phases are complete;
+- `python scripts/sgctl.py state-show` reports the expected authoritative phase state;
 - reports/evidence under `.supergoal/` still exist;
 - the clean tracked tree no longer contains the deliverables because they were moved to a WIP branch or reset.
 
@@ -30,12 +30,12 @@ git fetch origin --prune
 git reset --hard origin/prod
 ```
 
-3. Because `.supergoal/` is usually gitignored, explicitly verify both layers before resuming:
+3. Because `.supergoal/` is usually gitignored, explicitly verify both layers before resuming with platform-neutral commands:
 
-```bash
+```text
 git status --short --branch
-sed -n '1,120p' .supergoal/STATE.md
-find .supergoal/evidence -maxdepth 2 -type f | sort | sed -n '1,120p'
+python .supergoal/scripts/sgctl.py state-show .supergoal
+python .supergoal/scripts/sgctl.py validate-package .supergoal --strict
 ```
 
 4. For every phase already listed in `Completed phases`, check that its tracked deliverables exist in the current worktree, not only in the preserved WIP branch.
@@ -46,7 +46,9 @@ find .supergoal/evidence -maxdepth 2 -type f | sort | sed -n '1,120p'
 git checkout wip/<task>-<date> -- path/to/deliverable path/to/test
 ```
 
-Then rerun that phase's mandatory verifier (or a focused subset that proves the restored deliverables) and record a resume note in the phase report / `STATE.md`.
+Then rerun that phase's mandatory verifier and record the result through
+`record-evidence`; advance state with `state-transition` rather than editing
+`STATE.md` manually.
 
 6. Do not cherry-pick or restore a huge unrelated WIP branch wholesale. Use the phase specs and evidence reports as the allowlist. Avoid dragging unrelated production changes, assets, submodules, skills, meeting materials, or old experiments into the SuperGoal branch.
 
@@ -54,7 +56,7 @@ Then rerun that phase's mandatory verifier (or a focused subset that proves the 
 
 For the current resumed phase, include evidence that:
 
-- `STATE.md` current phase and completed phases match the actual tree;
+- authoritative `runtime/STATE.json` and its `STATE.md` projection match the actual tree;
 - restored phase dependencies are present;
 - the phase's mandatory command passed after rehydration;
 - targeted cleanliness/secret scan covers the restored files;

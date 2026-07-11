@@ -5,9 +5,10 @@ Use when Chip replies with “Make supergoal” / “Сделай supergoal” a
 ## Durable pattern
 
 1. Treat the research/report as the source brief, not as execution proof.
-2. If a previous `.supergoal/` already exists and is complete or from a different goal, archive it first under `.supergoal_archive/<slug>-<timestamp>/` rather than overwriting it.
+2. If a previous `.supergoal/` already exists and is complete or from a different goal, move the whole old root to an explicit external quarantine outside the repo/package tree rather than overwriting or nesting it.
 3. Create a fresh `.supergoal/` with the normal human-facing files:
    - `THINKING.md`
+   - `LOOP_DESIGN.md`
    - `ROADMAP.md`
    - `LAUNCH_GOAL.md`
    - `RESEARCH.md` when research drove the plan
@@ -16,8 +17,8 @@ Use when Chip replies with “Make supergoal” / “Сделай supergoal” a
    - any validation/preflight scripts needed by the future `/goal` run
 4. Copy or reference the research artifact under `.supergoal/research-sources/` so the future executor does not depend on chat memory.
 5. Encode a safe lane explicitly when the plan touches money, credentials, model routing, gateways, production infra, or public channels.
-6. Validate every phase spec with `validate-phase.sh` and run a small preflight that proves target paths/source artifacts exist before presenting the plan.
-7. Attach exactly the three review files by default in the engineering/DM chat: `THINKING.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`.
+6. Validate loop design and every phase through `python scripts/sgctl.py`, then run a small preflight that proves target paths/source artifacts exist before presenting the plan.
+7. Attach review_pack_v2 by default: `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus non-empty `RESEARCH.md`.
 
 ## Pitfalls
 

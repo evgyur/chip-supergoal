@@ -39,7 +39,7 @@ EOF
 Prefer Python when the report needs dynamic exit codes, paths, timestamps, or command summaries:
 
 ```bash
-python3 - <<'PY'
+python - <<'PY'
 from pathlib import Path
 from datetime import datetime, timezone
 

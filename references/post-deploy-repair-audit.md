@@ -21,7 +21,7 @@ Use this when a production SuperGoal has already deployed and the user reports a
 5. If UI buttons/features are missing, inspect the injected public env in the live HTML and the runtime env on the host. A test that stubs env is not production proof.
 6. Fix the canonical source first when a source file is missing, commit/push, deploy through the canonical deploy script, then verify public route markers.
 7. If runtime env was changed manually to repair prod, persist it in the shared env/config used by future releases, not only the current release directory.
-8. Add a post-deploy repair addendum to the phase report and `STATE.md`, then rerun final audit. Do not print `AUDIT_COMPLETE` from the pre-repair evidence.
+8. Record the post-deploy repair as bound evidence, transition authoritative state through the audit-remediation path, then rerun final audit. Do not hand-edit `STATE.md` or print `AUDIT_COMPLETE` from pre-repair evidence.
 
 ## Evidence to collect
 

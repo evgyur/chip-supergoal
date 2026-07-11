@@ -63,9 +63,13 @@ Good:
 - `<SignInForm/>` renders without console errors
 - Authenticated middleware rejects requests without a session cookie
 
-## Cleanliness (grep-checked at VERIFY)
+## Cleanliness (platform-native at VERIFY)
 
-Every phase's VERIFY block reports three grep-based counts against the complete set of added/new lines since the baseline — `bash .supergoal/scripts/repo-state.sh added-lines <Baseline ref>` (includes uncommitted + untracked work, not just committed; see `repo-state-comparison.md`):
+Every phase's VERIFY block reports three counts against the complete set of
+added/new lines since the baseline, including uncommitted and untracked work.
+Use Git plus native search/file tools on Windows or Ubuntu. The optional
+`bash scripts/repo-state.sh added-lines <baseline>` helper is Unix-only and is
+not audit or terminal authority; see `repo-state-comparison.md`.
 
 - **Debug prints added** — `console.log`/`console.error` for JS/TS, `print(`/`pprint(` for Python, `print(`/`dump(` for Swift, `fmt.Println`/`log.Println` for Go (adjust per stack).
 - **Session TODO/FIXME added** — `\b(TODO|FIXME|XXX)\b` introduced in this run's diff (not pre-existing).
@@ -101,10 +105,10 @@ If a command produces too much output to surface, require a **summary line** ("T
 For each phase, list what the agent must print into the conversation to prove completion. The evaluator only sees the transcript. Common evidence types:
 
 - **Command output excerpts** — last 10 lines of the test run, build summary
-- **File listings** — `ls -la` of the new files created, with sizes
+- **File inventories** — platform-native listing of new files with sizes
 - **Diff snippets** — key changes inline, not full diffs
 - **Screenshots** — for UI phases, paths to screenshots saved during execution
-- **API responses** — `curl -X POST ... | jq` outputs for new endpoints
+- **API responses** — captured status/body from an available HTTP client
 - **STATE.md update** — the new content of the phase's row
 
 ## Dependencies

@@ -370,7 +370,7 @@ Add `state-show`, `state-transition`, `state-recover`, `record-evidence`, `audit
 
 Run: `python -m unittest tests.semantic.test_state_machine tests.semantic.test_audit_engine tests.security.test_terminal_authority tests.e2e.test_full_run -v`
 
-Expected: all pass; only `sgctl finalize` can create the exact terminal record.
+Expected: all pass; only `python scripts/sgctl.py finalize` can create the exact terminal record.
 
 Commit: `git add lib/chip_supergoal/terminal.py lib/chip_supergoal/state.py lib/chip_supergoal/events.py lib/chip_supergoal/evidence.py lib/chip_supergoal/audit.py lib/chip_supergoal/validate.py scripts/sgctl.py tests/semantic/test_state_machine.py tests/semantic/test_audit_engine.py tests/security/test_terminal_authority.py && git commit -m "fix: bind SuperGoal completion to state and evidence"`
 
@@ -412,7 +412,7 @@ Expected: hash mismatch or duplicate-name assertion.
 
 Write sorted source entries once, preserve package `MANIFEST.json`, append `ARCHIVE-MANIFEST.json`, use fixed `ZipInfo`, and read back every field/hash before `os.replace()` of the external destination. Exclude the persistent lock and prior delivery outputs.
 
-- [ ] **Step 4: Route delivery shell through `sgctl archive`**
+- [ ] **Step 4: Route delivery shell through `python scripts/sgctl.py archive`**
 
 The shell file only validates arguments and executes `python scripts/sgctl.py archive <package-root> --out <external-zip> --manifest <result-json>`; archive policy remains in Python.
 

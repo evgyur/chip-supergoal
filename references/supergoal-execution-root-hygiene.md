@@ -8,18 +8,19 @@ A continuation that contains a concrete `SUPERGOAL_GOAL_BODY` is an execution re
 
 ## Root discipline
 
-Before generating implementation files, set a single implementation root and use it everywhere:
+Before generating implementation files, resolve one package root and one
+implementation root and pass them as tool working directories on every platform:
 
-```bash
-SG=/absolute/path/to/project/.supergoal
-ROOT=/absolute/path/to/project
+```text
+package root: <absolute-project-path>/.supergoal
+implementation root: <absolute-project-path>
 ```
 
 When using tools:
 
-- prefer `terminal(..., workdir=ROOT)` for command-based generation/checks;
-- in Python helper scripts, use `Path('/absolute/root')`, not `Path.cwd()` unless the workdir is guaranteed;
-- after generation, verify with `find ROOT -maxdepth ...` before running tests.
+- set the tool `workdir` to the implementation root for command-based generation/checks;
+- in Python helpers, pass the resolved root as an argument instead of trusting `Path.cwd()`;
+- after generation, use native file tools or the sealed manifest to verify outputs before tests.
 
 ## Common failure pattern
 
@@ -32,21 +33,15 @@ A helper run from the default Hermes cwd can create `chip_hlcopy/`, `tests/`, `m
 
 ## Archive hygiene
 
-Do not create a tarball inside the directory being archived; `tar` can fail with `file changed as we read it`. Write archives to `/tmp` or a sibling path:
+Do not create an archive inside the package. The cross-platform authority is:
 
-```bash
-cd "${WORKSPACE_ROOT:-$HOME/workspace}"
-tar --exclude='__pycache__' --exclude='.pytest_cache' --exclude='.hypothesis' \
-  -czf /tmp/<project>-scaffold.tgz <project>
-sha256sum /tmp/<project>-scaffold.tgz
+```text
+python scripts/sgctl.py archive --out <absolute-external-archive.zip> --manifest out/final-artifacts-manifest.json
 ```
 
-Clean transient caches before packaging:
-
-```bash
-rm -rf .pytest_cache .hypothesis
-find . -type d -name __pycache__ -prune -exec rm -rf {} +
-```
+Clean transient caches only with bounded platform-native operations after the
+resolved roots are verified; never sweep through junctions, symlinks, virtual
+environments, or unrelated workspace directories.
 
 ## Final audit minimum
 
@@ -56,5 +51,5 @@ Final audit must show:
 - aggregate commands and outputs;
 - secret/no-live-path scan;
 - `RPD_FINAL_REVIEW`;
-- `AUDIT_COMPLETE`;
-- `SUPERGOAL_RUN_COMPLETE`.
+- a recomputed final audit;
+- `python scripts/sgctl.py validate-terminal` success.

@@ -15,13 +15,23 @@ class ReferenceCatalogProfilesTest(unittest.TestCase):
 
     def test_generated_index_and_dispatch_match_catalog(self):
         catalog = load_reference_catalog(ROOT / "spec/reference-catalog.json")
-        self.assertEqual((ROOT / "references/INDEX.generated.md").read_text(), generate_index(catalog))
-        self.assertEqual((ROOT / "references/dispatch.generated.md").read_text(), generate_dispatch(catalog))
+        self.assertEqual(
+            (ROOT / "references/INDEX.generated.md").read_text(encoding="utf-8"),
+            generate_index(catalog),
+        )
+        self.assertEqual(
+            (ROOT / "references/dispatch.generated.md").read_text(encoding="utf-8"),
+            generate_dispatch(catalog),
+        )
 
     def test_profiles_split_private_policy_from_public_clean(self):
-        base = json.loads((ROOT / "profiles/base.json").read_text())
-        private = json.loads((ROOT / "profiles/chip-private.json").read_text())
-        public = json.loads((ROOT / "profiles/public-clean.json").read_text())
+        base = json.loads((ROOT / "profiles/base.json").read_text(encoding="utf-8"))
+        private = json.loads(
+            (ROOT / "profiles/chip-private.json").read_text(encoding="utf-8")
+        )
+        public = json.loads(
+            (ROOT / "profiles/public-clean.json").read_text(encoding="utf-8")
+        )
         self.assertFalse(base["privacy"]["private_operator_rules"])
         self.assertTrue(private["delivery"]["review_pack_required"])
         public_text = json.dumps(public, ensure_ascii=False).lower()

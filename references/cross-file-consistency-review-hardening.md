@@ -8,41 +8,40 @@ Per-file semantic validators can pass while the package is still inconsistent. I
 
 ## Required extra scan after phase/risk edits
 
-After any package mutation that changes phase count, caps, approvals, or market/action constraints, run a cross-file scan in addition to `validate-phase.sh`:
+After any package mutation that changes phase count, caps, approvals, or market/action constraints, first run the cross-platform Python authorities:
 
-```bash
-cd <package>/.supergoal
-export PYTHONPATH=<installed-chip-supergoal>/lib
-bash scripts/validate-loop-design.sh --instantiated LOOP_DESIGN.md
-for f in phases/phase-*.md; do bash scripts/validate-phase.sh "$f"; done
-python3 - <<'PY'
-from pathlib import Path
-import re
-root = Path('.')
-texts = '\n'.join(p.read_text() for p in root.rglob('*.md'))
-phase_files = sorted((root/'phases').glob('phase-*.md'))
-phase_totals = []
-for p in phase_files:
-    m = re.search(r'^Phase: (\d+) of (\d+) ', p.read_text(), re.M)
-    phase_totals.append((p.name, m.group(1), m.group(2)) if m else (p.name, None, None))
-launch = []
-for p in root.rglob('*.md'):
-    for n, line in enumerate(p.read_text().splitlines(), 1):
-        if line.startswith('SUPERGOAL_GOAL_BODY:'):
-            launch.append((str(p), n))
-print('phase_count=', len(phase_files))
-print('phase_totals=', phase_totals)
-print('launch_markers=', launch)
-assert len(launch) == 1
-assert all(t == str(len(phase_files)) for _, _, t in phase_totals)
-PY
+```text
+python scripts/sgctl.py validate-loop-design LOOP_DESIGN.md --instantiated
+python scripts/sgctl.py validate-phase-markdown phases/phase-NN.md
 ```
+
+Run the phase command once for every phase. Then run the checked-in,
+cross-platform consistency entrypoint from the package root:
+
+```text
+python scripts/check-cross-file-consistency.py .
+```
+
+During planner-side review before a fresh package has been compiled, the
+installed-skill entrypoint accepts an explicit target instead:
+
+```text
+python <installed-chip-supergoal>/scripts/check-cross-file-consistency.py <package-root>
+```
+
+It uses the sealed package's no-follow Python library, requires contiguous
+`phases/phase-NN.md` ordinals, checks every `Phase: N of TOTAL` header against
+the discovered phase count, and requires the only launch body to be
+inside root `LAUNCH_GOAL.md` (sealed `templates/` examples are excluded). It works directly in PowerShell, Command Prompt, and Unix
+shells; no heredoc, `PYTHONPATH`, Bash, or WSL translation is required. Tree
+enumeration, each Markdown read, and total Markdown bytes are explicitly
+bounded and fail closed.
 
 ## Risk-string scan
 
 For live/money/trading plans, add a stale-pattern scan for values you just changed. Examples:
 
-```bash
+```text
 rg '\$5|<= \$10|Phase: \d+ of 10|max-order-usd 10|expiresAfter|vaultAddress|builder_fee' .supergoal
 ```
 
@@ -50,21 +49,21 @@ Do not treat every hit as failure: review artifacts may mention stale values as 
 
 ## Review patch discipline
 
-- Shaw/XHIGH review findings should mutate `ROADMAP.md`, `LOOP_DESIGN.md`, `LAUNCH_GOAL.md`, and the affected `phases/phase-*.md`, not just create a review memo.
-- `/deep` reports are hypotheses until applied and verified. Extract concrete P0/P1 lines, patch the plan, rerun validators, and scan for the exact terms that should now exist.
-- After adding/removing phases, update all of: roadmap phase map, phase headings, phase-file `Phase: N of TOTAL`, loop budget, launch text if it names counts, and state total.
+- Before execution starts, Shaw/XHIGH findings must mutate the source contract or renderer inputs, then recompile `ROADMAP.md`, `LOOP_DESIGN.md`, `LAUNCH_GOAL.md`, phase views, state, and manifest together. Never hand-patch sealed generated views.
+- `/deep` reports are hypotheses until applied and verified. Extract concrete P0/P1 lines, patch canonical source, recompile, rerun validators, and scan for the exact terms that should now exist.
+- After adding/removing phases, recompile and verify all generated counts, loop budget, launch text, authoritative genesis state, and manifest in one operation.
 
 ## Mid-run execution rebase discipline
 
-A continuation may discover that `STATE.md` was manually rebased into a new execution map while `ROADMAP.md` and `phases/phase-N.md` still describe the original numbering. Do not silently let one file win and keep printing phase markers.
+A continuation may discover that `STATE.md` or another generated view was manually rebased while the sealed contract, authoritative state, roadmap, and phases still describe the original graph. This is package drift, not a valid execution rebase.
 
 Before closing the next phase:
 
-1. build an explicit old→new crosswalk and prove every original finding/deliverable still has a destination;
-2. update the ROADMAP phase map, affected phase specs, STATE rows/current phase, and finding ledger together;
-3. preserve superseded detail as source requirements or a clear rebase addendum — never waive it by renumbering;
-4. validate the phase file **before implementation**, then again before `SUPERGOAL_PHASE_DONE`;
-5. re-read every rewritten phase file immediately and verify real line count/content. A successful write call or byte count is not semantic proof;
-6. use only the allowed `RPD focus` enum from the phase contract (`security`, `integration`, `ux`, `migration`, `data-loss`, `gateway`, `payments`, `none`). Free-form focus text is invalid.
+1. run strict package validation and stop using the divergent projection;
+2. if execution never started, patch canonical contract input and compile a fresh package;
+3. if execution started, preserve the package as evidence and create an explicit audit-remediation or sibling follow-on package rather than rewriting history;
+4. build an old→new crosswalk and prove every original finding/deliverable still has a destination in that new authority;
+5. rerun phase validators and `check-cross-file-consistency.py` before dispatch;
+6. use only the allowed `RPD focus` enum (`security`, `integration`, `ux`, `migration`, `data-loss`, `gateway`, `payments`, `none`).
 
-The phase-close order should be: final tests/evidence → RPD review and required mutations → finding-ledger update → phase validator/cross-file scan → marker → STATE advance. If a review worker is still running, do not emit the irreversible phase marker until its blocker findings are incorporated or explicitly dispositioned.
+The phase-close order is: final tests/evidence → RPD review → finding-ledger update → phase validator/cross-file scan → marker → authoritative state transition. If a review worker is still running, do not emit the irreversible phase marker until its blocker findings are incorporated or explicitly dispositioned.

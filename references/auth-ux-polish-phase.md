@@ -66,7 +66,9 @@ npm run lint -- <extra touched auth files/tests>
 npx tsc --noEmit --pretty false  # if baseline red, grep for touched file errors
 ```
 
-Also run the SuperGoal cleanliness check over `repo-state.sh added-lines <baseline>` and grep for debug patterns.
+Also run the platform-native cleanliness check over the complete working-tree
+delta. `repo-state.sh added-lines <baseline>` is only an optional Unix helper;
+bind the observation through Python evidence authority.
 
 ## RPD focus prompts
 

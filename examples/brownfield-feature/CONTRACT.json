@@ -48,7 +48,7 @@
     {
       "commands": [
         {
-          "command": "python3 -m unittest",
+          "command": "python -m unittest",
           "id": "P01-CMD01",
           "purpose": "prove fixture",
           "safety": "local_read_write",

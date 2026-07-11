@@ -14,7 +14,10 @@ If the user asks for Supergoal, or corrects the agent for acting outside Supergo
 - Do not edit product code, deploy, migrate, restart services, or mark phases complete in the planning chat.
 - Safe recon and safe pre-flight checks are allowed only to prepare the plan/handoff.
 - Existing manual edits are `dirty baseline`, not completed phases.
-- A formal run counts only when `/goal` prints:
+- A formal run counts only when `/goal` records package-bound phase evidence and
+  `python scripts/sgctl.py validate-terminal` accepts the exact
+  `reports/terminal-record.txt`. These transcript lines remain compatibility
+  projections:
   - `SUPERGOAL_PHASE_START`
   - `SUPERGOAL_PHASE_VERIFY`
   - `SUPERGOAL_PHASE_DONE`
@@ -27,7 +30,7 @@ When manual work already exists:
 
 1. Stop direct execution immediately.
 2. Record the current git SHA and dirty tree in the new Supergoal artifacts.
-3. Keep or reset `STATE.md` to `READY_TO_DISPATCH` / first phase / no completed phases.
+3. Regenerate a pristine package or use legal state commands; never reset `STATE.md` by hand.
 4. Add Phase 0: audit and reconcile dirty baseline.
 5. The `/goal` run must decide what to keep, fix, revert, or deploy.
 6. Do not summarize manual work as “Phase done”. Call it `manual execution evidence` or `dirty baseline evidence`.
@@ -43,7 +46,7 @@ For production tasks, final audit must re-check both repo state and live state:
 - migrations/env/schema reload are verified where relevant;
 - logs are checked for the changed path;
 - smoke data is cleaned up;
-- blockers prevent `SUPERGOAL_RUN_COMPLETE`.
+- blockers prevent `finalize`/`validate-terminal`; `SUPERGOAL_RUN_COMPLETE` text never bypasses them.
 
 ## Messaging pattern
 

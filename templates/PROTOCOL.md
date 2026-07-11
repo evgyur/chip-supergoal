@@ -164,9 +164,13 @@ quarantine, or receipt.
 
 Review delivery uses the same reservation protocol. Exit `10` from
 `delivery-review-check` creates a durable authorization and a validated external
-snapshot. Pass that envelope to `delivery-review-send <package-root> --target
-<declared-target> --authorization-json <check-output>`, then finish with
-`delivery-review-record`. Python validates and copies the exact authorized bytes
+snapshot. On every platform, pass `--authorization-out <utf8-envelope-file>` to
+the check, then give that file to `delivery-review-send <package-root> --target
+<declared-target> --authorization-file <utf8-envelope-file>` and
+`delivery-review-record`. `--authorization-file -` accepts the same UTF-8
+envelope on standard input. This avoids PowerShell multiline-array coercion;
+`--authorization-json` remains an inline compatibility form for callers that
+already preserve one exact argument. Python validates and copies the authorized bytes
 into its transport boundary before starting the configured command; a pathname
 returned by a prior validation is never transport authority. After every real
 send, the bounded single-line id is persisted before the next file. A retry
@@ -178,19 +182,19 @@ not paths that may be sent.
 Before transporting the ZIP, run:
 
 ```text
-python scripts/sgctl.py delivery-final-check <package-root> --target <declared-target> --archive <absolute-external-zip>
+python scripts/sgctl.py delivery-final-check <package-root> --target <declared-target> --archive <absolute-external-zip> --authorization-out <utf8-envelope-file>
 ```
 
 Exit `0` means the exact target+archive generation already has a valid receipt
 and must not be sent again. Exit `10` emits a `send_required` JSON envelope
 containing a generation-bound authorization and captures a reservation-owned
 transport snapshot. Run `delivery-final-send <package-root> --target
-<declared-target> --authorization-json <check-output>`; never send the mutable
+<declared-target> --authorization-file <utf8-envelope-file>`; never send the mutable
 archive argument or a staged pathname directly. Python keeps a verified
 read-only Windows handle or a verified anonymous POSIX copy authoritative
 through process creation, then durably records the returned id. Exactly one
 logical transport send may proceed. Preserve the check output byte-for-byte and
-pass it to `delivery-final-record` as `--authorization-json <check-output>`
+pass it to `delivery-final-record` as `--authorization-file <utf8-envelope-file>`
 together with the same root, target, and archive; the durable id is recovered
 from the reservation. Any intervening state, package-root, review-file, target,
 force mode, or archive-generation change invalidates the authorization instead

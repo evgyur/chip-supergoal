@@ -11,9 +11,11 @@ Use when reviewing or fixing Hermes `/goal` / SuperGoal launch and continuation 
 ## Completion guards
 
 - Handoff/blocker markers may carry same-line details: `FAILURE_HANDOFF: ...`, `AUDIT_HANDOFF — ...`, `BLOCKED_BY_APPROVAL — ...`. Parse them as non-fenced line prefixes, not exact-only standalone strings.
-- Disk `STATE.md` completion is safe only when both are true:
-  - terminal state labels (`Status: DONE|COMPLETE`, `Current phase: DONE|COMPLETE`);
-  - recorded terminal markers (`AUDIT_COMPLETE`, `SUPERGOAL_RUN_COMPLETE`).
+- Disk completion is safe only when `python scripts/sgctl.py validate-terminal`
+  accepts the exact `reports/terminal-record.txt` against the current sealed
+  package, authoritative `runtime/STATE.json`, recomputed audit, inventory, and
+  delivery state. `STATE.md` labels and recorded transcript markers are never
+  sufficient.
 - Relative `.supergoal/...` paths must not steal completion from an explicit absolute root. Use cwd-relative `.supergoal` only when the goal text does not name a stronger root.
 
 ## Telegram clarify/button starts
@@ -31,4 +33,5 @@ Use when reviewing or fixing Hermes `/goal` / SuperGoal launch and continuation 
 - `python -m py_compile` for `hermes_cli/goals.py`, `hermes_cli/goal_policies.py`, `gateway/run.py`, `gateway/goal_launch.py`, `gateway/platforms/telegram.py`, `gateway/slash_commands.py`.
 - Focused tests for `tests/hermes_cli/test_goals.py`, `tests/gateway/test_goal_reply_command.py`, `tests/gateway/test_telegram_clarify_buttons.py`.
 - Broader goal matrix including startup recovery, status notices, max turns, verdict sends, Telegram documents.
+- Package terminal regressions covering marker-only prose, stale state/audit, and exact terminal-record validation.
 - `git diff --check`, conflict-marker scan, static added-line scan for obvious secrets/injection patterns, and a boundary probe proving parser helpers do not import/use `GoalManager`.

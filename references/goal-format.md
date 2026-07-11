@@ -19,10 +19,11 @@ Supergoal uses **one** `/goal` per run, dispatched by the **user** at the end of
 The condition is:
 
 ```
-Execute all phases of .supergoal/ROADMAP.md sequentially.
-Read .supergoal/phases/phase-N.md for each phase; do the work;
+Resolve the sealed package root and read authoritative runtime/STATE.json.
+Execute all phases of ROADMAP.md sequentially. Read phases/phase-N.md;
+do the work;
 run mandatory commands; print SUPERGOAL_PHASE_VERIFY then
-SUPERGOAL_PHASE_DONE; update STATE.md; immediately continue to the
+SUPERGOAL_PHASE_DONE; transition state through scripts/sgctl.py; immediately continue to the
 next phase/audit. Do not stop at phase boundaries. Use
 SUPERGOAL_TURN_YIELD only for forced platform cutoff or a real
 safety/approval blocker. Weak blockers are forbidden: private
@@ -30,19 +31,20 @@ verification/readback, local checks, read-only probes, usage/log
 queries, report/state writes, and requested repo cleanup are not
 approval blockers. Follow the failure-recovery protocol in
 .supergoal/PROTOCOL.md if any criterion fails. After the last numbered
-phase, continue from STATE.md Current phase=AUDIT and run the FINAL
-AUDIT in PROTOCOL.md (re-verify against ROADMAP.md; re-run aggregated
+phase, enter AUDITING through package-local state authority and run the
+FINAL AUDIT in PROTOCOL.md (re-verify against ROADMAP.md; re-run aggregated
 mandatory commands; spot-check criteria; on gaps, write
-audit-fix-<round>.md and execute inline). Only after AUDIT_COMPLETE,
-print SUPERGOAL_RUN_COMPLETE.
+audit-fix-<round>.md and execute inline). After a clean audit and legal
+DONE transition, run python scripts/sgctl.py finalize and require
+python scripts/sgctl.py validate-terminal to accept reports/terminal-record.txt.
 
-Done when SUPERGOAL_RUN_COMPLETE appears in the transcript with
-one SUPERGOAL_PHASE_DONE per phase, AUDIT_COMPLETE printed before
-SUPERGOAL_RUN_COMPLETE, and no FAILURE_HANDOFF or AUDIT_HANDOFF
-this run.
+Done only when validate-terminal succeeds for the current package. Then print
+the exact finalized record, which contains AUDIT_COMPLETE before
+SUPERGOAL_RUN_COMPLETE and Goal complete: yes. Footer text without the
+validated package record means continue.
 ```
 
-This works on both hosts. There is no per-phase `/goal` dispatch and no inter-session chain — once active, a single `/goal` session reads PROTOCOL.md, loops through every phase spec, runs the final audit, and only completes when the audit is clean.
+This works on both hosts. There is no per-phase `/goal` dispatch and no inter-session chain — once active, a single `/goal` session reads PROTOCOL.md, loops through every phase spec, runs the final audit, and only completes when the exact package terminal record validates.
 
 ## Required transcript blocks (Supergoal-specific)
 
@@ -74,7 +76,7 @@ Engineering:
 - typecheck: <pass|fail>
 - lint: <pass|fail|pre-existing>
 - tests: <pass|fail|N pre-existing>
-Cleanliness (grep `repo-state.sh added-lines` vs Baseline ref — incl. uncommitted + untracked; non-zero unless phase spec sets "Cleanliness override:"):
+Cleanliness (platform-native complete working-tree delta vs Baseline ref; optional Unix repo-state helper is supporting evidence only):
 - debug prints added (console.log / print / etc.): <count>
 - session TODO/FIXME added: <count>
 - dead imports added: <count>
@@ -93,18 +95,20 @@ MEMORY_SAVED: <memory-name>     (or "none — nothing non-obvious this phase")
 
 ```
 SUPERGOAL_PHASE_DONE
-Phase <N> complete. STATE.md updated.
+Phase <N> complete. Authoritative state transition recorded; STATE.md projection current.
 ```
 
-### `SUPERGOAL_TURN_YIELD` (after every numbered phase unless the run is blocked)
+### `SUPERGOAL_TURN_YIELD` (only at a real blocker or host-forced cutoff)
 
 ```
 SUPERGOAL_TURN_YIELD
 Next: <phase N+1 | AUDIT>
-Reason: yielding to /goal continuation to preserve tool-call/context budget.
+Reason: <real blocker or host-forced cutoff>.
 ```
 
-This is not a completion marker. It is the explicit handoff back to the `/goal` loop so the next assistant turn resumes from `STATE.md` instead of chaining phases in one turn.
+This is not a completion marker or routine phase boundary. Safe numbered phases
+continue in the same run; a later turn resumes from `runtime/STATE.json` only
+when the host actually forces a cutoff or a real gate blocks progress.
 
 ### `AUDIT_START` (once per audit round, after the last phase)
 
@@ -129,8 +133,8 @@ Re-run mandatory commands:
 Acceptance criteria spot-check:
 - Phase 1 / "<criterion>": <pass | fail | trust-prior-verify> — <evidence>
 - ...
-Deliverables (complete-working-tree check vs Baseline ref via repo-state.sh):
-- Phase 1 / "<deliverable bullet>": <present | missing> — <repo-state.sh deliverable evidence>
+Deliverables (bound evidence against the complete working-tree baseline):
+- Phase 1 / "<deliverable bullet>": <present | missing> — <platform-native evidence record>
 - Phase 2 / "<deliverable bullet>": <present | missing> — <evidence>
 - ...
 Summary: <pass count> pass, <fail count> fail, <trust count> trust-prior, <missing count> deliverable-gaps
@@ -147,7 +151,7 @@ Gaps:
 Writing fix spec at .supergoal/phases/audit-fix-<N>.md, executing inline.
 ```
 
-### `AUDIT_COMPLETE` (zero gaps — emit before SUPERGOAL_RUN_COMPLETE)
+### `AUDIT_COMPLETE` (zero gaps — compatibility projection, not authority)
 
 ```
 AUDIT_COMPLETE
@@ -169,20 +173,22 @@ Persistent gaps:
 - ...
 Three audit rounds attempted; fix specs at .supergoal/phases/audit-fix-{1,2,3}.md
 Suggested next move: <one line>
-STATE.md updated to BLOCKED.
+Authoritative state transitioned to `BLOCKED`; `STATE.md` projection refreshed.
 ```
 
-### `SUPERGOAL_RUN_COMPLETE` (once, after AUDIT_COMPLETE)
+### `SUPERGOAL_RUN_COMPLETE` (inside the exact finalized terminal record only)
 
 ```
+SUPERGOAL_TERMINAL v1 goal=<goal-id> contract_sha256=<sha256> contract_revision=<n> state_revision=<n> audit_sha256=<sha256>
+AUDIT_COMPLETE
 SUPERGOAL_RUN_COMPLETE
-[⚠ Audit coverage: <re_verified> re-verified, <trust_prior> trust-prior (<pct>%). Eyeball UI/UX before merging.]   ← only when trust-prior fraction > 30%
-Audit coverage: <re_verified> re-verified, <trust_prior> trust-prior (<pct>%).
-All <N> phases complete. Audit passed in <rounds> round(s).
-Summary: <5 lines max — what shipped, what changed, what to verify manually>
+Goal complete: yes
+END_SUPERGOAL_TERMINAL
 ```
 
-The first banner is **only** printed when trust-prior is more than 30% of total checks. Below 30%, only the plain `Audit coverage:` line appears — same honesty, no false alarm.
+Do not hand-compose this block. Run `python scripts/sgctl.py finalize`, then
+`python scripts/sgctl.py validate-terminal`; the exact record binds current
+state, recomputed audit, inventory, and delivery authority.
 
 ## Failure blocks (used by recovery protocol)
 
@@ -220,13 +226,13 @@ Three attempts tried:
   2. <summary>
   3. <fix spec summary>
 Suggested next move: <one line>
-STATE.md updated to BLOCKED. User intervention required.
+Authoritative state transitioned to `BLOCKED`; `STATE.md` projection refreshed. User intervention required.
 ```
 
 ## Anti-patterns
 
 - **Don't stuff long task content into the `/goal` argument.** Use a short condition; put work in files.
-- **Don't make conditions the evaluator can't verify from the transcript.** "Tests pass" is wrong (evaluator can't run tests); "`SUPERGOAL_PHASE_DONE` printed for all phases" is right.
+- **Don't treat marker prose as evidence.** Tests, state, audit, and completion must be bound to package-owned machine-readable records.
 - **Don't chain `/goal` commands across sessions.** One run = one `/goal`. The agent loops internally inside that session.
 - **Don't skip evidence to save space.** Files have no char budget — be exhaustive.
-- **Don't run multiple numbered phases in one assistant turn.** The `/goal` continuation loop is the phase scheduler; after `SUPERGOAL_PHASE_DONE`, emit `SUPERGOAL_TURN_YIELD` and stop so the next turn starts cleanly from `STATE.md`.
+- **Don't stop at safe numbered phase boundaries.** Continue through phases and audit until a real gate, real blocker, host-forced cutoff, or validated terminal record.

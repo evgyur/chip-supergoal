@@ -7,12 +7,12 @@ Use when modifying the `chip-supergoal` skill package itself and publishing the 
 1. Treat the live installed skill under `~/.hermes/skills/chip-supergoal` as the working source, but publish from clean clones/worktrees of the backing repositories.
 2. Copy only focused changed files into the repo checkout. Avoid whole-directory `rsync` unless you first prove the install tree and repo tree are meant to be identical.
 3. Validate the package before commit:
-   - `bash -n scripts/*.sh`
-   - `bash scripts/validate-phase.sh <fixture phase spec>`
+   - install `requirements-test.txt`, then run `python scripts/test.py`
+   - run `python scripts/sgctl.py validate-phase-markdown <fixture phase spec>`
    - focused contract assertions for any new marker/reference/template
    - `git diff --check`
    - lightweight secret scan on changed/untracked files
-   - run `bash scripts/test.sh` when its privacy gate is green on `origin/main`; if it fails on the clean baseline because the private repo intentionally contains operator/product words, record that baseline failure, run all non-privacy test sections, and prove the patch with a changed-file privacy/secret scan instead of weakening the test in-place.
+   - on Unix-only hosts, additionally run `bash scripts/test.sh`; never weaken or bypass the privacy gate
 4. Sync both private distribution surfaces when applicable:
    - `evgyur/chip-supergoal`
    - `human20team/hermes-agent-powerpack` nested path `skills/chip-supergoal/...`

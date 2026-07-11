@@ -15,11 +15,9 @@ Do not answer from the most recent topic or memory alone. Resolve the exact goal
 
 1. Extract the goal root from the quoted launch text, usually:
    - `Goal: Implement ... in /path/to/supergoal ...`
-2. Read that root’s `.supergoal/STATE.md`.
-3. If `Status: COMPLETE`, read `.supergoal/reports/final-audit.md` and verify both markers:
-   - `AUDIT_COMPLETE`
-   - `SUPERGOAL_RUN_COMPLETE`
-4. If the final audit names a package, verify the package exists and hash/integrity when practical.
+2. Run `python scripts/sgctl.py state-show` in that package and bind the reported goal/contract identity to the replied launch file.
+3. Treat it as complete only when `python scripts/sgctl.py validate-terminal` accepts the exact `reports/terminal-record.txt` against current `runtime/STATE.json` and `reports/final-audit.json`.
+4. Verify any named external archive/result and required delivery receipt.
 5. Report the result for that exact goal only. Do not merge status from a sibling goal.
 6. If the goal is not complete, read `Current phase` and continue only that phase.
 
@@ -31,9 +29,9 @@ Use a compact evidence-first answer:
 Да, этот goal закончен.
 
 ➊ статус
-┈ STATE.md: COMPLETE
-┈ AUDIT_COMPLETE: <file:line>
-┈ SUPERGOAL_RUN_COMPLETE: <file:line>
+┈ runtime/STATE.json: DONE
+┈ validate-terminal: passed
+┈ terminal record: <path + hash>
 
 ➋ аудит
 ┈ final audit: <path>

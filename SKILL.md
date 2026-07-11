@@ -6,7 +6,7 @@ argument-hint: <describe what must be built, fixed, shipped, or planned>
 
 # chip-supergoal
 
-`chip-supergoal` is a **planner/compiler**, not the executor. It turns a non-trivial task into a disk-backed `.supergoal/` package and one launchable standard Hermes `/goal` handoff. The later upstream GoalManager session executes from the generated files, verifies every phase, runs final audit, and prints `SUPERGOAL_RUN_COMPLETE` only after `AUDIT_COMPLETE`.
+`chip-supergoal` is a **planner/compiler**, not the executor. It turns a non-trivial task into a disk-backed `.supergoal/` package and one launchable standard Hermes `/goal` handoff. The later upstream GoalManager session executes from the generated files, verifies every phase, runs final audit, and prints the compatibility footer only after `python scripts/sgctl.py validate-terminal` accepts the exact package-bound `reports/terminal-record.txt`.
 
 ## Principal+ contract
 
@@ -16,7 +16,7 @@ Use this root as the controller. Heavy detail lives in references and templates.
 2. **Plan-only + honest-state boundary** — this skill may inspect, research, validate planning artifacts, and run preflight characterization, but it must not execute numbered implementation phases. When Chip says “make SuperGoal,” emit a canonical package with `PROTOCOL.md`, pending `STATE.md`, validated phase specs, and one launch handoff. Never manually implement first and then backfill completed phases, `FINAL_AUDIT`, `AUDIT_COMPLETE`, `SUPERGOAL_RUN_COMPLETE`, or a no-op `Current phase: COMPLETE`; use `references/planner-executor-state-hygiene.md`.
 3. **One launch surface** — create exactly one human-facing launch body in `LAUNCH_GOAL.md`. Do not hide alternate launch bodies in `ROADMAP.md` or `THINKING.md`.
 4. **One standard `/goal`, not a chain** — the executor reads `STATE.md` and continues until all phases plus audit complete.
-5. **No false done** — every phase needs real evidence; final completion requires re-reading the original `ROADMAP.md`, re-running aggregate checks, checking deliverables, `RPD_FINAL_REVIEW`, `AUDIT_COMPLETE`, then `SUPERGOAL_RUN_COMPLETE`.
+5. **No false done** — every phase needs real evidence; final completion requires re-reading the original `ROADMAP.md`, re-running aggregate checks, checking deliverables, `RPD_FINAL_REVIEW`, `python scripts/sgctl.py finalize`, and successful `python scripts/sgctl.py validate-terminal`. The resulting terminal record supplies the host compatibility footer.
 6. **Risky work gets Senior Gate** — auth, payments, secrets, production, migrations, gateways, cron/model routing, private data, destructive actions, public launches, and recurring bugs require evidence-tiered RPD/Senior review.
 7. **Telegram delivery is blocking when requested** — if Chip asks for files or final artifacts in Telegram, scripted send + receipt is part of done, not a promise.
 8. **Chip review files are always delivered** — for Chip-facing SuperGoal planning, send the review `.md` files into the current Telegram thread by default (`THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus `RESEARCH.md` when non-empty). A text-only summary is incomplete.
@@ -31,7 +31,7 @@ Use for:
 - brownfield work where codebase reality, tests, deployment, or recovery matter
 - greenfield products/systems where stack, research, architecture, and phase boundaries matter
 - standing SuperGoal continuation/repair where `STATE.md` exists
-- repeated standing-goal continuations after `AUDIT_COMPLETE`: verify completion once from `STATE.md`/final audit artifacts if not already fresh in-session, then stop with `SUPERGOAL_RUN_COMPLETE`; do not re-run phase loops, keep re-testing, or repeat long identical completion reports on every auto-resume unless the user explicitly asks for a re-audit or new work. After one fresh completion proof in the same session, answer duplicate wrappers with one compact stop line and explicitly say the auto-continuation/standing goal should be closed. If the same wrapper repeats again in the same chat with no new instruction, do not call tools again, do not mention approval gates repeatedly, and emit only the compact complete/stop line.
+- repeated standing-goal continuations after a current `validate-terminal` success: verify package identity once from `runtime/STATE.json`, `reports/final-audit.json`, and `reports/terminal-record.txt`, then stop; do not re-run phase loops, keep re-testing, or repeat long identical completion reports on every auto-resume unless the user explicitly asks for a re-audit or new work. After one fresh completion proof in the same session, answer duplicate wrappers with one compact stop line and explicitly say the auto-continuation/standing goal should be closed. If the same wrapper repeats again in the same chat with no new instruction, do not call tools again, do not mention approval gates repeatedly, and emit only the compact complete/stop line.
 - skill/library hardening work that needs phases, review, and final audit
 
 Do **not** use for tiny edits, one factual answer, pure copywriting, or a task whose safest path is direct execution in the current session. For those, say it is too small for SuperGoal and use the direct workflow.
@@ -47,18 +47,18 @@ Everything else should be autonomous and evidence-backed.
 
 ## Generated artifacts
 
-Write under `$SUPERGOAL_ROOT` (normally `<repo>/.supergoal/`):
+Write under the resolved package root (normally `<repo>/.supergoal/`):
 
 - `THINKING.md` — goals, constraints, risks, dependencies, assumptions, memory hits, tools/skills used.
 - `RESEARCH.md` — only when research gates run.
 - `LOOP_DESIGN.md` — pre-launch loop harness: goal, context, host/reviewer/judge roles, verification gates, state, stop conditions, budget, boundaries, egress/redaction, recovery, and ASCII preview.
 - `ROADMAP.md` — decision package, phase map, measurable acceptance criteria, mandatory commands, evidence requirements.
-- `STATE.md` — current phase, baseline ref, status snapshot, events, delivery state.
+- `STATE.md` — initial human projection; `runtime/STATE.json` becomes authoritative after execution starts.
 - `PROTOCOL.md` — self-contained executor loop copied from `templates/PROTOCOL.md`.
 - `LAUNCH_GOAL.md` — the only artifact containing a launch line beginning exactly `SUPERGOAL_GOAL_BODY:`.
-- `phases/phase-N.md` — one strict phase spec per phase, validated by `scripts/validate-phase.sh`.
-- `scripts/repo-state.sh` — deliverable/diff/cleanliness helper copied from this skill.
-- delivery scripts/receipts when Telegram/file delivery is requested.
+- `phases/phase-N.md` — one strict phase spec per phase, validated by `python scripts/sgctl.py validate-phase-markdown`; the shell wrapper is Unix compatibility only.
+- `scripts/repo-state.sh` — optional Unix-only repo-diff convenience, never runtime authority.
+- delivery receipts plus optional Unix wrappers when Telegram/file delivery is requested.
 
 See `references/artifact-schemas.md` for exact schemas and `templates/LAUNCH_GOAL.md` for the launch contract.
 
@@ -68,7 +68,7 @@ See `references/artifact-schemas.md` for exact schemas and `templates/LAUNCH_GOA
 |---|---|---|
 | 0 | Resolve live skill dir, preload memory, detect tools/skills, detect resume state. | skill path + context notes |
 | 1 | Intake. Brownfield asks 0–2 questions; greenfield batches up to 4 until material gaps close. | assumptions/gaps list |
-| 2 | Recon. Run stack/env/repo scripts and read outputs. | 5-line stack/commands/risk summary |
+| 2 | Recon. Use native file/git tools; optional shell helpers only when Bash exists. | 5-line stack/commands/risk summary |
 | 3 | Research + architecture gates. Use skill-first research when current facts matter. | `THINKING.md`; optional `RESEARCH.md` |
 | 3.5 | **Loop Design Gate.** Design the execution harness before roadmap compilation: host/reviewer/judge, verification gates, state, stop, budget, boundaries, egress/redaction, failure recovery, and ASCII preview. Mutate weak loop specs before launch. | `LOOP_DESIGN.md`; loop health rubric |
 | 4 | Decompose into as many phases as the task requires. | phase map with dependencies |
@@ -91,7 +91,7 @@ The generated `PROTOCOL.md` must preserve these exact marker families:
 - delivery/approval: `SUPERGOAL_REVIEW_FILES_BLOCKED`, `SUPERGOAL_FILES_SENT`, `BLOCKED_BY_APPROVAL`, `READY_FOR_DELETE_APPROVAL`
 - completion: `SUPERGOAL_RUN_COMPLETE`
 
-Official GoalManager execution continues across numbered phases in the same run until final audit, a real safety/approval gate, or a real blocker. It must not stop merely because `SUPERGOAL_PHASE_DONE` was printed. `SUPERGOAL_TURN_YIELD` is a forced-yield/blocker marker, not a courtesy phase boundary. See `references/execution-state-machine.md`.
+Official GoalManager execution continues across numbered phases in the same run until the package terminal record validates, a real safety/approval gate, or a real blocker. It must not stop merely because `SUPERGOAL_PHASE_DONE` or the legacy footer was printed. `SUPERGOAL_TURN_YIELD` is a forced-yield/blocker marker, not a courtesy phase boundary. See `references/execution-state-machine.md`.
 
 ## Phase spec contract
 
@@ -113,7 +113,7 @@ RPD focus: security|integration|ux|migration|data-loss|gateway|payments|none
 
 Exact headings: `## Work`, `## Acceptance criteria`, `## Mandatory commands`, `## Evidence required`.
 
-Run `bash "$SUPERGOAL_DIR/scripts/validate-phase.sh" <phase-file>` for every phase.
+From the resolved package root, run `python scripts/sgctl.py validate-phase-markdown <phase-file>` for every phase; `bash scripts/validate-phase.sh <phase-file>` is only a Unix compatibility wrapper.
 
 ## RPD / Senior Gate
 
@@ -156,30 +156,35 @@ If a new incident only adds another example of an existing invariant, update the
 
 - `LAUNCH_GOAL.md` is the replyable launch file. It contains the exact upstream-compatible `SUPERGOAL_GOAL_BODY:` line.
 - `ROADMAP.md`, `THINKING.md`, and `PROTOCOL.md` must not contain their own actual launch body line.
-- When creating a SuperGoal **about the `chip-supergoal` skill itself**, do not leave the generated package under the skill root if the package contains a real `LAUNCH_GOAL.md`: the skill self-test scans the skill tree and expects only the template launch body. Put the mission package in an external workspace path (for example `<workspace-dir>/.supergoal/<name>`) or ensure it is outside the self-test scan before running `scripts/test.sh`.
+- When creating a SuperGoal **about the `chip-supergoal` skill itself**, do not leave the generated package under the skill root if the package contains a real `LAUNCH_GOAL.md`: the skill self-test scans the skill tree and expects only the template launch body. Put the mission package in an external workspace path (for example `<workspace-dir>/.supergoal/<name>`) before running `python scripts/test.py`.
 - Planning-stage review pack uses `review_pack_v2`: `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus `RESEARCH.md` when non-empty.
 - **Chip default: always send the planning-stage `.md` files back into the current Telegram thread for Chip to review, even if he did not explicitly ask for files.** This is a standing preference for `chip-supergoal`, not an optional delivery mode. Include native `MEDIA:` attachments or use the Telegram delivery script, then verify delivery/receipt before saying the package is ready. A text summary without the `.md` files is incomplete.
 - For Chip-facing SuperGoal packages with useful supporting context, also send `RESEARCH.md` when it exists and is not empty; keep `PROTOCOL.md`, `STATE.md`, and phase specs on disk unless Chip asks for the full bundle.
 - If Telegram/native file delivery is required or triggered by the Chip default above, the run must create/send receipts and verify `ok=true` and `sent=true` before declaring the corresponding gate closed. If a multi-file send partially succeeds or one attachment times out, resend only the missing file(s), store all successful message IDs in the receipt, and record the partial-send note instead of treating the whole review pack as failed or silently complete.
-- Final artifacts require `SUPERGOAL_FILES_SENT` before `SUPERGOAL_RUN_COMPLETE` when final-file delivery was requested.
+- Final artifacts require a valid delivery receipt before `finalize` when final-file delivery was requested; `SUPERGOAL_FILES_SENT` remains a compatibility marker only.
 
 ## Verification checklist
-
 After editing this skill or generating a package:
 
-```bash
+```text
 cd <installed-skill-dir>
-bash scripts/test.sh
-python3 <skills-dir>/create-skill/scripts/skill_workflow_guard.py <installed-skill-dir> || true
+python -m pip install --disable-pip-version-check -r requirements-test.txt
+python scripts/test.py
+python scripts/check-cross-file-consistency.py <generated-package-root>
+python <skills-dir>/create-skill/scripts/skill_workflow_guard.py <installed-skill-dir>
 ```
+
+On Unix-only hosts, also run `bash scripts/test.sh` for mandatory shell syntax and style validation. Never suppress a failed skill guard.
+
+The packaged Python authority requires CPython 3.11.9 or newer and supports native Windows and Ubuntu. Generated packages from earlier alphas require a full recompile; updating Bash wrappers alone does not update archive, delivery, audit, or terminal authority.
 
 When validating a generated `.supergoal/` package outside the installed skill directory, the copied `validate-phase.sh` / `validate-loop-design.sh` may call `scripts/sgctl.py`, which imports `chip_supergoal` from the skill's `lib/` tree. Set `PYTHONPATH=<installed-chip-supergoal>/lib` for those validation commands instead of treating `ModuleNotFoundError: chip_supergoal` as a package failure.
 
 Compiler/validator pitfalls:
 
 - A strict validator can prove package shape while the generated review files remain generic or omit contract semantics. Before dispatch, verify that `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and optional `RESEARCH.md` render the actual source set, decisions, assumptions, loop limits, approvals, RPD mutations, and honest pending state. Patch the renderer and recompile rather than hand-editing sealed output. Use `references/architect-plus-v3-upgrade-execution-lessons.md` for renderer-contract checks, current `sgctl` validation, validator-driven mutations, research fallback, and reference-catalog maintenance.
-- Full `sgctl validate-package` expects a compiler-shaped package with `CONTRACT.json` and `MANIFEST.json`; a hand-written markdown-only package may pass phase/loop validators but fail package validation. For strict packages, write a valid v3 `CONTRACT.json` and run `sgctl compile ... --out <root>`.
-- `sgctl compile` refuses to overwrite a package that already contains runtime/delivery artifacts such as `out/`. For planner regeneration, remove or move the package root first, then compile fresh; do not keep retrying the same compile command.
+- Full `python scripts/sgctl.py validate-package` expects a compiler-shaped package with `CONTRACT.json` and `MANIFEST.json`; a hand-written markdown-only package may pass phase/loop validators but fail package validation. For strict packages, write a valid v3 `CONTRACT.json` and run `python scripts/sgctl.py compile ... --out <root>`.
+- `python scripts/sgctl.py compile` refuses to overwrite a package that already contains runtime/delivery artifacts such as `out/`. For planner regeneration, remove or move the package root first, then compile fresh; do not keep retrying the same compile command.
 - Contract `risk_tags` must come from `spec/risk-policy.json` (`private_data`, `gateway`, `migration`, etc.), not generic labels like `security`, `privacy`, or library-specific tags. Phase `RPD focus` must use the allowed enum (`security`, `integration`, `ux`, `migration`, `data-loss`, `gateway`, `payments`, `none`).
 - If you copy `scripts/validate-phase.sh` or `scripts/validate-loop-design.sh` into a portable manual package, also copy package-local `scripts/sgctl.py` **and** `lib/chip_supergoal/`. The wrappers resolve `$ROOT/scripts/sgctl.py`, and `sgctl.py` imports from `$ROOT/lib`; copying only the wrapper or only `sgctl.py` is incomplete. Alternatively run validators through the installed skill path with `PYTHONPATH=<installed-chip-supergoal>/lib` and label the package non-portable until dependencies are embedded.
 - For nested package roots such as `<repo>/.supergoal/<slug>`, never insert an absolute path containing `.supergoal/` and then globally replace `.supergoal/` in `PROTOCOL.md`; that self-rewrites the inserted path. Render placeholders or perform exact targeted replacements, then assert protocol/root/phase paths and exactly one launch body.
@@ -189,18 +194,17 @@ Compiler/validator pitfalls:
 Then verify live loadability with `skill_view("chip-supergoal")` and, for critical refs, `skill_view("chip-supergoal", file_path="references/rpd-review-gates.md")`.
 
 ## Output Contract
-
 For Chip, final planning output is compact and evidence-first: package path, risks/assumptions, sent files or disk paths, exact launch instruction/card, and any blocker.
 
-Do not claim execution success from this planner. Only the `/goal` executor can earn `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`.
+Do not claim execution success from this planner. Only the `/goal` executor can create and validate the exact package-bound terminal record; its marker lines are the host compatibility projection.
 ## Quick Test Checklist
-- [ ] `skill_view` loads; `scripts/test.sh` passes; launch-body, phase/PROTOCOL, incident-reference, and ignored `.supergoal` regressions hold.
+- [ ] `skill_view` loads; `python scripts/test.py` passes; on Unix-only hosts `bash scripts/test.sh` also passes; launch-body, phase/PROTOCOL, incident-reference, and ignored `.supergoal` regressions hold.
 ## Done Criteria
 - [ ] Frontmatter has `name: chip-supergoal`, trigger-rich description, and `argument-hint`.
-- [ ] Root `SKILL.md` stays under the local architecture budget enforced by `scripts/test.sh`.
+- [ ] Root `SKILL.md` stays under the local architecture budget enforced by `python scripts/test.py`.
 - [ ] Planner writes `THINKING.md`, optional `RESEARCH.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, `PROTOCOL.md`, `LAUNCH_GOAL.md`, and strict phase specs.
 - [ ] Embedded RPD/Senior Gate remains self-contained; no external `/rpd` dependency.
 - [ ] Risky phases require RPD metadata and measurable evidence.
-- [ ] Final executor completion requires `AUDIT_COMPLETE` before `SUPERGOAL_RUN_COMPLETE`.
+- [ ] Final executor completion requires successful `python scripts/sgctl.py validate-terminal` against `reports/terminal-record.txt`; marker order alone never completes a package.
 - [ ] File/Telegram delivery, when requested, is backed by receipts before completion.
 - [ ] For Chip-facing planning packages, the review `.md` files were sent to the current Telegram thread by default: `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, and non-empty `RESEARCH.md`. If delivery could not be verified, the package is `SUPERGOAL_REVIEW_FILES_BLOCKED`, not ready.

@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Static regression probes for Dev-history SuperGoal hardening contracts."""
 from pathlib import Path
-import json, re, sys
+import json, re, stat, sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'lib'))
+
+from chip_supergoal.portable import is_reparse_point, iter_tree_no_follow, read_regular_file_no_follow
+
 failures = []
 
 def require(cond, msg):
@@ -11,7 +15,7 @@ def require(cond, msg):
         failures.append(msg)
 
 def read(rel):
-    return (ROOT / rel).read_text(encoding='utf-8')
+    return read_regular_file_no_follow(ROOT / rel, ROOT).decode('utf-8')
 
 required_files = [
     'references/dev-history-hardening.md',
@@ -62,10 +66,16 @@ require('not a request for another status summary' in continuation,
 
 # Launch body must be single-sourced.
 actual=[]
-for p in ROOT.rglob('*.md'):
-    if '.git' in p.parts:
+for p, stat_result in iter_tree_no_follow(ROOT, prune_directory_names={'.git'}):
+    if (
+        p.suffix != '.md'
+        or not stat.S_ISREG(stat_result.st_mode)
+        or is_reparse_point(stat_result)
+        or p.name == '.git'
+    ):
         continue
-    for n,line in enumerate(p.read_text(encoding='utf-8', errors='ignore').splitlines(),1):
+    contents = read_regular_file_no_follow(p, ROOT).decode('utf-8', errors='ignore')
+    for n,line in enumerate(contents.splitlines(),1):
         if line.startswith('SUPERGOAL_GOAL_BODY:'):
             actual.append(f'{p.relative_to(ROOT).as_posix()}:{n}')
 require(len(actual)==1 and actual[0].startswith('templates/LAUNCH_GOAL.md:'), f'launch body not single-sourced: {actual}')

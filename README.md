@@ -17,13 +17,17 @@ It creates a `.supergoal/` package containing:
 - `reports/research.json` — machine-readable research provider/status/sources report when the gate is active.
 - `LOOP_DESIGN.md` — execution loop design: host, reviewer/judge, gates, stop conditions, recovery, boundaries.
 - `ROADMAP.md` — phase map, acceptance criteria, required commands, evidence contract.
-- `STATE.md` — initial execution state and current phase pointer.
+- `runtime/STATE.json` — authoritative execution state; `STATE.md` is its checked human projection.
 - `PROTOCOL.md` — self-contained executor protocol for a later `/goal` run.
 - `LAUNCH_GOAL.md` — the only file containing the launch body line beginning with `SUPERGOAL_GOAL_BODY:`.
 - `phases/phase-N.md` — strict phase specifications.
 - helper scripts and delivery receipts when the workflow requires them.
 
-The later Hermes `/goal` session reads those files and executes the work. Final completion is only valid after final audit markers such as `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`.
+The later Hermes `/goal` session reads those files and executes the work. Final
+completion is valid only when `python scripts/sgctl.py validate-terminal`
+accepts the exact package-bound `reports/terminal-record.txt`; transcript
+markers such as `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE` are compatibility
+output, not completion authority by themselves.
 
 ## Why it exists
 
@@ -57,23 +61,30 @@ Typical usage in Hermes:
 
 For direct CLI validation of this repository:
 
-```bash
-python3 -m unittest discover -s tests
-bash scripts/test.sh
+Requires CPython 3.11.9 or newer. CI verifies 3.11.9 and 3.13.14 on both
+native Windows and Ubuntu.
+
+```console
+python -m pip install --disable-pip-version-check -r requirements-test.txt
+python scripts/test.py
 ```
 
-Compile the example contract:
+The same aggregate command is supported on native Windows and Ubuntu. The
+Unix-only `bash scripts/test.sh` entrypoint additionally enforces shell syntax
+and style before it delegates to the Python runner.
 
-```bash
-python3 scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out /tmp/example-supergoal
-python3 scripts/sgctl.py validate-package /tmp/example-supergoal --strict
+Compile the example contract to a fresh sibling directory outside the skill
+tree (move or remove an older target first):
+
+```console
+python scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out ../chip-supergoal-example
+python scripts/sgctl.py validate-package ../chip-supergoal-example --strict
 ```
 
-Then inspect:
+Then inspect the launch file with the same Python installation:
 
-```bash
-ls -la /tmp/example-supergoal
-sed -n '1,80p' /tmp/example-supergoal/LAUNCH_GOAL.md
+```console
+python -c "from pathlib import Path; print((Path('../chip-supergoal-example') / 'LAUNCH_GOAL.md').read_text(encoding='utf-8'))"
 ```
 
 ## CLI: `sgctl.py`
@@ -104,30 +115,56 @@ Minimal satisfied gate:
 
 Validate and inspect it:
 
-```bash
-python3 scripts/sgctl.py research-gate examples/brownfield-feature/CONTRACT.json --format json
-python3 scripts/sgctl.py validate-contract examples/brownfield-feature/CONTRACT.json --strict
+```console
+python scripts/sgctl.py research-gate examples/brownfield-feature/CONTRACT.json --format json
+python scripts/sgctl.py validate-contract examples/brownfield-feature/CONTRACT.json --strict
 ```
 
 Compile writes `RESEARCH.md` and `reports/research.json`; `validate-package` detects drift in both.
 
 Common commands:
 
-```bash
+```console
 # Validate a v3 contract
-python3 scripts/sgctl.py validate-contract examples/brownfield-feature/CONTRACT.json --strict
+python scripts/sgctl.py validate-contract examples/brownfield-feature/CONTRACT.json --strict
 
 # Compile a contract into a sealed SuperGoal package
-python3 scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out /tmp/example-supergoal
+python scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out ../chip-supergoal-example
 
 # Validate a generated package
-python3 scripts/sgctl.py validate-package /tmp/example-supergoal --strict
+python scripts/sgctl.py validate-package ../chip-supergoal-example --strict
 
 # Migrate an older v2-style package when supported
-python3 scripts/sgctl.py migrate-v2 <old-package-root> --out <new-contract-or-package>
+python scripts/sgctl.py migrate-v2 <old-package-root> --out <new-contract-or-package>
 ```
 
 ## Safety model
+
+### Supported runtime planes
+
+The compiler, validator, state journal, audit, archive, delivery receipts, and
+terminal authority are package-local Python authority. They run directly on
+native Windows and Ubuntu; Bash files are optional Unix compatibility wrappers,
+not a second policy implementation. Packages compiled by an older alpha must be
+recompiled before use so they contain the current runtime and schemas.
+
+Only `python scripts/sgctl.py finalize` may create
+`reports/terminal-record.txt`, and completion remains unauthorized until
+`python scripts/sgctl.py validate-terminal` succeeds against the current sealed
+package, authoritative state, recomputed audit, inventory, and delivery state.
+
+Archives must be published to an absolute external archive path outside the
+package. Delivery sends only a verified reservation snapshot, with a read-only
+Windows handle or anonymous POSIX copy held through transport startup. The
+native delivery flow writes multiline authorization JSON with
+`--authorization-out` and consumes it with `--authorization-file`, avoiding
+PowerShell pipeline/string coercion. The
+privacy scan covers all tracked files, including force-tracked runtime paths,
+plus untracked working-tree files outside runtime/private state directories. It
+does not scan unrelated user directories or serve as a credential manager. No
+genuine external Hermes GoalManager probe ships in this repository: the reserved
+integration hook is always skipped and must not be counted as release evidence.
+Hermetic GoalManager simulation is always part of the aggregate suite.
 
 ### Planner/executor boundary
 
@@ -184,41 +221,50 @@ The compiler refuses unsafe output targets, including:
 
 Run the full local gate:
 
+```console
+python -m pip install --disable-pip-version-check -r requirements-test.txt
+python scripts/test.py
+```
+
+Unix-only shell checks plus the same Python gate:
+
 ```bash
 bash scripts/test.sh
 ```
 
 Run Python tests directly:
 
-```bash
-python3 -m unittest discover -s tests
+```console
+python -m unittest discover -s tests
 ```
 
 Focused useful tests:
 
-```bash
-python3 -m unittest tests.rendering.test_compile_determinism
-python3 -m unittest tests.semantic.test_sgctl_semantic_validation
-python3 -m unittest tests.security.test_archive_symlink tests.security.test_forged_receipt
+```console
+python -m unittest tests.rendering.test_compile_determinism
+python -m unittest tests.semantic.test_sgctl_semantic_validation
+python -m unittest tests.security.test_archive_symlink tests.security.test_forged_receipt
 ```
 
 ## Development workflow
 
 1. Change code, templates, references, or tests.
 2. Run focused tests for the changed area.
-3. Run `python3 -m unittest discover -s tests`.
-4. Run `bash scripts/test.sh`.
+3. Run `python scripts/test.py` on Windows or Ubuntu.
+4. On Unix-only development environments, also run `bash scripts/test.sh`.
 5. Compile the example package and validate it strictly.
 6. Check that only `templates/LAUNCH_GOAL.md` contains a real `SUPERGOAL_GOAL_BODY:` marker.
 
 Suggested final gate:
 
-```bash
-python3 -m unittest discover -s tests
-bash scripts/test.sh
-python3 scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out /tmp/chip-supergoal-example
-python3 scripts/sgctl.py validate-package /tmp/chip-supergoal-example --strict
+```console
+python scripts/test.py
+python scripts/sgctl.py compile examples/brownfield-feature/CONTRACT.json --out ../chip-supergoal-final
+python scripts/sgctl.py validate-package ../chip-supergoal-final --strict
 ```
+
+On Unix-only hosts, run `bash scripts/test.sh` as the additional shell-quality
+gate before release.
 
 ## Public-use notes
 

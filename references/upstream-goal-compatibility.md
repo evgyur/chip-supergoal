@@ -30,10 +30,10 @@ Forbidden:
 `LAUNCH_GOAL.md` must compile the package into a self-contained standing goal. The launch body must tell the standard `/goal` executor to:
 
 1. load `PROTOCOL.md`, `STATE.md`, `ROADMAP.md`, and `phases/phase-*.md` from the package root;
-2. continue from `STATE.md` rather than chat memory;
+2. continue from authoritative `runtime/STATE.json` through package-local commands rather than chat memory or the `STATE.md` projection;
 3. continue through numbered phases in the same run; phase boundaries are checkpoints, not stop points;
 4. use `SUPERGOAL_TURN_YIELD` only for forced platform cutoff or a real blocker/gate, never as a courtesy phase stop;
-5. treat the whole goal as incomplete until both `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE` are printed in the same final response;
+5. treat the whole goal as incomplete until the exact package terminal record validates and its `AUDIT_COMPLETE` / `SUPERGOAL_RUN_COMPLETE` compatibility lines are printed in the same final response;
 6. stop with explicit `BLOCKED_BY_APPROVAL`, `FAILURE_HANDOFF`, or `AUDIT_HANDOFF` only for real blockers.
 
 ## Judge-proof turn endings
@@ -46,7 +46,7 @@ Forced-yield/blocker footer:
 SUPERGOAL_TURN_YIELD
 Goal complete: no
 Next: <phase N+1|AUDIT|blocked marker>
-Completion requires: AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE in the same final response.
+Completion requires: a validated package terminal record whose final response contains AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE.
 ```
 
 A normal phase `SUPERGOAL_PHASE_DONE` is not whole-goal completion and not a stop condition. Continue to the next phase/audit unless a real gate, real blocker, or platform cutoff exists.
@@ -59,7 +59,13 @@ SUPERGOAL_RUN_COMPLETE
 Goal complete: yes
 ```
 
-If audit passes but `SUPERGOAL_RUN_COMPLETE` is missing, the judge must continue.
+This footer is emitted only as part of the exact package-generated terminal
+record. Without a validated package terminal record, the footer is compatibility
+text rather than completion authority and the judge must continue. If audit
+passes but `SUPERGOAL_RUN_COMPLETE` is missing, the judge must also continue.
+The executor proves that precondition with
+`python scripts/sgctl.py validate-terminal` against
+`reports/terminal-record.txt` before returning the footer.
 
 ## Blocker semantics
 
@@ -82,5 +88,5 @@ Use these as static/judge probes:
 1. Phase done + `SUPERGOAL_TURN_YIELD` + `Goal complete: no` → continue.
 2. `AUDIT_COMPLETE` without `SUPERGOAL_RUN_COMPLETE` → continue.
 3. `SUPERGOAL_RUN_COMPLETE` without `AUDIT_COMPLETE` → continue.
-4. Both final markers + `Goal complete: yes` → done.
+4. Both final markers + `Goal complete: yes` without a validated package terminal record → continue.
 5. `BLOCKED_BY_APPROVAL` with required manifest → done as blocked.

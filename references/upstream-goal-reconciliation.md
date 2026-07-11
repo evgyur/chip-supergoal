@@ -18,7 +18,7 @@ Do **not** build a custom SuperGoal runner. SuperGoal is a compiler/planner into
 1. **Baseline before edits**
    - Record `HEAD`, branch, tracked status, and ignored `.supergoal/` presence separately.
    - Run the focused private matrix before changing code.
-   - Write an invariant ledger before refactor: terminal markers, blocker states, disk `STATE.md` guard, compression migration, reply/body extraction, button direct-start, startup recovery.
+   - Write an invariant ledger before refactor: host terminal markers, package `validate-terminal` authority, blocker states, authoritative runtime-state guard, compression migration, reply/body extraction, button direct-start, startup recovery.
 
 2. **Extract core policy first**
    - Move deterministic pre-judge marker/blocker/disk-state checks out of `GoalManager` into a pure helper such as `hermes_cli/goal_policies.py`.
@@ -45,7 +45,7 @@ Do **not** build a custom SuperGoal runner. SuperGoal is a compiler/planner into
 
 - Marker mentions in prose or fenced examples must not satisfy terminal completion.
 - `FAILURE_HANDOFF`, `AUDIT_HANDOFF`, and `BLOCKED_BY_APPROVAL` stop as blocked/handoff, not achieved success.
-- Completed disk `STATE.md` can stop repeated continuations only for the canonical current root, not stale previous roots.
+- A v3 package can stop repeated continuations only after `validate-terminal` succeeds for the canonical current root; a disk `STATE.md` label or stale root cannot.
 - Active goals migrate across context-compression parent/child sessions.
 - Bare `/goal` replies can launch from explicit SuperGoal body marker or visible `.supergoal` artifacts without copying the whole report.
 - Telegram reply-to text documents preserve `/goal` as command text and put document body in `reply_to_text`.
@@ -68,6 +68,6 @@ custom runner probe: no custom/nested goal runner markers
 ## Pitfalls
 
 - Plain `git status --short` can hide ignored `.supergoal/`; use `git status --short --ignored .supergoal` or `find .supergoal -maxdepth 3 -type f`.
-- Do not write placeholder timestamps into `STATE.md`; use a real UTC timestamp before patching.
+- Do not patch `STATE.md` or timestamps manually; package-local state transitions own canonical event time and projection.
 - Moving marker guards only to gateway is insufficient: CLI/API and post-compression GoalManager paths still need deterministic pre-judge policy.
 - “Smaller diff” is not a success metric if it reopens premature completion, restart, reply, or compression failures.

@@ -1,9 +1,14 @@
 # Repository-state comparison — the one strategy
 
-Both the **final audit's deliverable check** and the **per-phase cleanliness check** ask the
-same question: *what changed in this repository since the run started?* This is the single,
-canonical answer. Everything else (PROTOCOL.md, SKILL.md, goal-format.md, phase-design.md)
-defers to it.
+`scripts/repo-state.sh` is an optional Unix-only compatibility helper. It is
+read-only supporting evidence, not terminal or audit authority. Native Windows
+uses the same Git comparison model through Git plus PowerShell/Python file tools;
+package completion is decided only by the Python evidence/audit/terminal plane.
+
+Planning-side deliverable review and per-phase cleanliness ask the same question:
+*what changed in this repository since the run started?* This reference defines
+that comparison model. Package audit and terminal authority independently
+validate bound evidence and sealed runtime state.
 
 ## The trap: `git diff <baseline>..HEAD`
 
@@ -42,14 +47,13 @@ with exit 3 unless the roadmap marks it pre-existing/verification-only; (b) debu
 file escapes the cleanliness count — if a phase legitimately ships such output and wants it
 inspected, declare a `Cleanliness override:` in the phase spec rather than relying on the greps.
 
-## The implementation: `scripts/repo-state.sh`
+## Optional Unix implementation: `scripts/repo-state.sh`
 
-Don't hand-type the git incantations — the single-revision-vs-range distinction is exactly the
-bug this exists to prevent. Use the helper, which encapsulates the table above and never mutates
-the repo or index. At Stage 7 it is copied under `.supergoal/scripts/`, so the
-`/goal` session invokes it as `bash .supergoal/scripts/repo-state.sh`.
+On Unix, the helper encapsulates the table above and never mutates the repo or
+index. It may be copied under `scripts/` as a convenience. The executor must not
+require it when running natively on Windows.
 
-```
+```text
 bash .supergoal/scripts/repo-state.sh deliverable   <baseline> <path>
     -> "present — <evidence>" (exit 0) | "missing"/"deleted" (exit 1) |
        "invalid baseline" (exit 2) | "unchanged — existed before baseline" (exit 3)
@@ -66,22 +70,32 @@ bash .supergoal/scripts/repo-state.sh added-lines   <baseline>
 
 Quote path arguments — deliverable paths may contain spaces.
 
+### Native Windows path
+
+Run `git diff <baseline>` and
+`git ls-files --others --exclude-standard` directly from PowerShell, inventory
+declared deliverable paths with PowerShell or Python, and bind the observations
+through `python scripts/sgctl.py record-evidence --input <evidence.json>`. Never
+substitute `git diff <baseline>..HEAD`, which omits working-tree state.
+
 ### Audit deliverable check
 
-For each `**Deliverables:**` bullet that names a path/glob:
+For each declared deliverable path/glob, collect platform-native evidence. The
+following command is an optional Unix convenience:
 
-```
+```text
 bash .supergoal/scripts/repo-state.sh deliverable "$(baseline)" "<path>"
 ```
 
-`missing`/`deleted` (exit 1), `invalid baseline` (exit 2), or `unchanged pre-existing` (exit 3) → `AUDIT_GAP: phase <N> deliverable "<bullet>" not proven as delivered by this run`, unless the roadmap explicitly marks that deliverable as pre-existing / verification-only.
+`missing`/`deleted` (exit 1), `invalid baseline` (exit 2), or `unchanged pre-existing` (exit 3) remains an evidence failure unless the contract explicitly marks the deliverable pre-existing/verification-only. The bound Python audit, not this helper, decides completion.
 
 ### Per-phase cleanliness check
 
-```
-bash .supergoal/scripts/repo-state.sh added-lines "$(baseline)" > /tmp/sg-added
-grep -cE 'console\.log|console\.error' /tmp/sg-added   # JS/TS debug prints (adjust per stack)
-grep -cE '\b(TODO|FIXME|XXX)\b'        /tmp/sg-added   # session TODO/FIXME added
+```text
+added_file="$(mktemp)"
+bash .supergoal/scripts/repo-state.sh added-lines "$(baseline)" > "$added_file"
+grep -cE 'console\.log|console\.error' "$added_file"   # JS/TS debug prints
+grep -cE '\b(TODO|FIXME|XXX)\b' "$added_file"         # session TODO/FIXME added
 # dead imports: inspect added import lines for usage in their file
 ```
 
@@ -100,7 +114,7 @@ verification-only.
 
 ## Line endings (cross-platform)
 
-`repo-state.sh` and every other `*.sh` are forced to LF via `.gitattributes` (`*.sh text eol=lf`).
-On Windows with `core.autocrlf=true`, a CRLF shebang (`#!/usr/bin/env bash␍`) yields a "bad
-interpreter" failure, so LF is mandatory for these scripts to run. `eol=lf` overrides
-`core.autocrlf` per-path, so consumers get LF regardless of their global git config.
+`repo-state.sh` and every other `*.sh` are forced to LF via `.gitattributes`
+for Unix compatibility consumers. Native Windows does not invoke them; the LF
+rule prevents `core.autocrlf` from breaking their shebang when a checkout is
+shared with WSL or another Unix host.

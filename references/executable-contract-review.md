@@ -12,7 +12,7 @@ Build a root table before reviewing phase semantics:
 
 | Field | Required meaning |
 |---|---|
-| Package root | Stable location of STATE, PROTOCOL, phases, scripts, evidence, and receipts |
+| Package root | Stable location of `runtime/STATE.json`, PROTOCOL, phases, scripts, evidence, and receipts |
 | Source/recon root | Checkout inspected by the planner |
 | Active execution root | Checkout/worktree where the current phase mutates and verifies code |
 | Baseline ref | Exact base commit for the active execution root, not merely the planner's current HEAD |
@@ -21,7 +21,7 @@ Required checks:
 
 - PROTOCOL explicitly establishes the working directory; a launch file merely naming an implementation root is not enough.
 - Relative commands run under the intended package/repository/subproject root.
-- If a phase creates a clean worktree, STATE and PROTOCOL define an atomic transition to that worktree for all later phases.
+- If a phase creates a clean worktree, the sealed contract, authoritative runtime state, and PROTOCOL define an atomic transition to that worktree for all later phases.
 - `repo-state.sh` or equivalent runs against the active worktree and its own base commit.
 - A prod-based candidate must not retain a divergent beta/audit SHA as its cleanliness or deliverable baseline.
 - Use `git -C <root>` or explicit `cd <root>` for commands whose correctness depends on cwd.
@@ -78,7 +78,7 @@ Audit those actions through immutable receipts, exact live SHA/readback, DB reco
 Terminal audit artifacts and markers have one owner.
 
 - The last numbered phase may prepare aggregate checks and audit inputs.
-- Only the `AUDIT` state produces `RPD_FINAL_REVIEW`, final audit verdict, `AUDIT_COMPLETE`, and `SUPERGOAL_RUN_COMPLETE`.
+- Only the `AUDITING` lifecycle produces `RPD_FINAL_REVIEW` and the final audit verdict. After the legal transition to `DONE`, only `python scripts/sgctl.py finalize` creates `reports/terminal-record.txt`; successful `python scripts/sgctl.py validate-terminal` is completion authority.
 - Do not require a numbered phase to provide markers that the protocol can produce only after that phase advances STATE to `AUDIT`.
 - If Phase N is itself the sole final audit, remove the second protocol audit instead of duplicating ownership.
 
@@ -113,8 +113,9 @@ PLANNING_REVIEW
   -> PHASE_1 ... PHASE_N
   -> BLOCKED_BY_APPROVAL (optional, exact manifest)
   -> PHASE_N continuation
-  -> AUDIT
-  -> COMPLETE/DONE
+  -> AUDITING
+  -> DONE
+  -> finalize + validate-terminal
 ```
 
 At each transition ask:
@@ -130,8 +131,8 @@ At each transition ask:
 
 In addition to phase and loop validators:
 
-- assert exactly one launch-body line;
-- compare phase count across ROADMAP, STATE, LOOP_DESIGN, and phase headers;
+- assert exactly one launch-body line and consistent phase headers with `python <installed-chip-supergoal>/scripts/check-cross-file-consistency.py <package-root>`;
+- compare phase count across ROADMAP, `runtime/STATE.json`, LOOP_DESIGN, and phase headers;
 - inspect package-manager roots;
 - inspect deploy/apply script argument contracts;
 - enumerate mutation commands and ensure audit excludes them;
@@ -139,5 +140,6 @@ In addition to phase and loop validators:
 - test one tracked deliverable and one ignored package-evidence deliverable through the declared verifier;
 - cross-check review-receipt wording against generic audit-gap handling;
 - confirm the final numbered phase does not require post-phase audit markers.
+- require successful `python scripts/sgctl.py validate-terminal` against the exact current `reports/terminal-record.txt`; marker prose or `STATE.md` alone must fail the review.
 
 Report only material findings with severity, file/section, failure scenario, direct evidence, and a concrete cross-file fix.

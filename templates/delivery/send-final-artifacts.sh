@@ -13,7 +13,10 @@ SGCTL="$ROOT/scripts/sgctl.py"
   echo "SUPERGOAL_FORCE_RESEND must be 0 or 1" >&2
   exit 2
 }
-[[ -s "$ARCHIVE" ]] || { echo "missing archive: $ARCHIVE" >&2; exit 2; }
+[[ -s "$ARCHIVE" ]] || {
+  echo "missing archive: $ARCHIVE" >&2
+  exit 2
+}
 set +e
 SHOW_OUTPUT="$("$PYTHON_BIN" "$SGCTL" delivery-reservation-show "$ROOT" \
   --kind final-artifacts 2>/dev/null)"
@@ -22,8 +25,8 @@ set -e
 if [[ "$show_status" -eq 0 ]]; then
   CHECK_OUTPUT="$SHOW_OUTPUT"
   if grep -q '"status": "record_required"' <<<"$CHECK_OUTPUT"; then
-    RECORD=("$PYTHON_BIN" "$SGCTL" delivery-final-record "$ROOT" \
-      --target "$TARGET" --archive "$ARCHIVE" \
+    RECORD=("$PYTHON_BIN" "$SGCTL" delivery-final-record "$ROOT"
+      --target "$TARGET" --archive "$ARCHIVE"
       --authorization-json "$CHECK_OUTPUT")
     if [[ "$FORCE" == "1" ]]; then RECORD+=(--force); fi
     "${RECORD[@]}"
@@ -41,12 +44,12 @@ else
   status=$?
   set -e
   case "$status" in
-    0)
-      echo "final archive already sent for target+hash"
-      exit 0
-      ;;
-    10) ;;
-    *) exit "$status" ;;
+  0)
+    echo "final archive already sent for target+hash"
+    exit 0
+    ;;
+  10) ;;
+  *) exit "$status" ;;
   esac
 fi
 [[ -n "$CHECK_OUTPUT" ]] || {
@@ -58,13 +61,13 @@ fi
   echo "no real SUPERGOAL_TRANSPORT_SEND_FILE_CMD configured; refusing to send delivery" >&2
   exit 3
 }
-SEND=("$PYTHON_BIN" "$SGCTL" delivery-final-send "$ROOT" --target "$TARGET" \
+SEND=("$PYTHON_BIN" "$SGCTL" delivery-final-send "$ROOT" --target "$TARGET"
   --authorization-json "$CHECK_OUTPUT")
 if [[ "$FORCE" == "1" ]]; then SEND+=(--force); fi
 "${SEND[@]}" >/dev/null
 
-RECORD=("$PYTHON_BIN" "$SGCTL" delivery-final-record "$ROOT" \
-  --target "$TARGET" --archive "$ARCHIVE" \
+RECORD=("$PYTHON_BIN" "$SGCTL" delivery-final-record "$ROOT"
+  --target "$TARGET" --archive "$ARCHIVE"
   --authorization-json "$CHECK_OUTPUT")
 if [[ "$FORCE" == "1" ]]; then RECORD+=(--force); fi
 "${RECORD[@]}"

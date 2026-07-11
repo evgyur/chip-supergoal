@@ -46,10 +46,12 @@ no duplicate skill created
 
 ## Related cleanup
 
-If script validation uses `py_compile`, remove generated caches before closing the phase:
+If script validation uses `py_compile`, remove generated caches before closing
+the phase. This is a Unix-only shell example; native Windows may run the same
+Python command and remove `__pycache__` with PowerShell or Python:
 
 ```bash
-python3 -m py_compile "$skill_dir/scripts/name.py"
+python -m py_compile "$skill_dir/scripts/name.py"
 rm -rf "$skill_dir/scripts/__pycache__"
 ```
 

@@ -69,7 +69,7 @@ else
   nested_locks=$(find . -mindepth 2 -maxdepth 3 -type f \( -name package-lock.json -o -name pnpm-lock.yaml -o -name yarn.lock -o -name uv.lock -o -name poetry.lock -o -name requirements.txt \) -not -path './.git/*' 2>/dev/null | sort | head -20)
   if [[ -n "$nested_locks" ]]; then
     echo "- **monorepo / nested packages**"
-    while IFS= read -r lock; do echo "  - \`$lock\`"; done <<< "$nested_locks"
+    while IFS= read -r lock; do echo "  - \`$lock\`"; done <<<"$nested_locks"
   else
     echo "- _none detected_"
   fi

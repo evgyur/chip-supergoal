@@ -15,15 +15,11 @@ The user’s reply target and attached `LAUNCH_GOAL.md` are the source of truth.
 ## Required workflow
 
 1. Parse the exact root path from the replied `LAUNCH_GOAL.md`.
-2. Read that root’s `.supergoal/STATE.md` before acting.
-3. If the user asks “is this done?” or “where is the audit?”, look for:
-   - `Status: COMPLETE` in `.supergoal/STATE.md`;
-   - `.supergoal/reports/final-audit.md`;
-   - `AUDIT_COMPLETE`;
-   - `SUPERGOAL_RUN_COMPLETE`.
+2. Run `python scripts/sgctl.py state-show` in that package before acting; `runtime/STATE.json` is authority and `STATE.md` only its checked projection.
+3. If the user asks “is this done?” or “where is the audit?”, require successful `python scripts/sgctl.py validate-terminal` against the exact `reports/terminal-record.txt`, current authoritative state, and `reports/final-audit.json`.
 4. Report the exact audit path, package path/hash if present, and honest scope.
-5. If `STATE.md` is complete and audit markers exist, do not rerun phases or create another goal.
-6. If the goal is incomplete, continue the next numbered phase from its own `STATE.md`, not from chat memory.
+5. If the terminal record validates for the exact package identity, do not rerun phases or create another goal; markers alone do not qualify.
+6. If the goal is incomplete, continue the authoritative current phase, not a phase inferred from chat memory or stale Markdown.
 7. If a different related goal exists, name the distinction explicitly.
 
 ## Scope wording pitfall
@@ -41,8 +37,8 @@ Never collapse these statuses:
 да/нет.
 
 ➊ status
-┈ STATE: ...
-┈ audit marker: ...
+┈ runtime state: ...
+┈ validate-terminal: ...
 
 ➋ audit
 ┈ path: ...
@@ -57,5 +53,6 @@ Never collapse these statuses:
 
 - Starting a new SuperGoal when the user asked about the old one.
 - Treating a repeated standing-goal wrapper as a new human request after `SUPERGOAL_RUN_COMPLETE`.
+- Treating `SUPERGOAL_RUN_COMPLETE` text without a validated package terminal record as completion.
 - Saying a skill scaffold is “100% ready to trade.”
 - Ignoring a replied document path and using the latest workspace path instead.

@@ -192,7 +192,11 @@ Overengineering budget: <checked + mutations|checked-holds>
 Decision: complete | audit-fix-needed | handoff
 ```
 
-If decision is `audit-fix-needed`, write `.supergoal/phases/audit-rpd-fix-<round>.md`, execute it inline, then rerun the audit round. If decision is `handoff`, update `STATE.md` to `BLOCKED` and do not print `SUPERGOAL_RUN_COMPLETE`.
+If decision is `audit-fix-needed`, write `.supergoal/phases/audit-rpd-fix-<round>.md`, execute it inline, then rerun the audit round. If decision is `handoff`, transition authoritative state to `BLOCKED` through package-local commands; do not hand-edit `STATE.md`, finalize, or print `SUPERGOAL_RUN_COMPLETE`.
+
+An RPD `checked-holds` verdict is necessary review evidence, never terminal
+authority. Completion still requires `python scripts/sgctl.py validate-terminal`
+against the exact current `reports/terminal-record.txt`.
 
 ## Anti-theater rule
 
