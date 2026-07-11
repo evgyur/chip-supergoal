@@ -3,9 +3,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "lib"))
+
+from chip_supergoal.events import read_events, verify_event_chain
+from chip_supergoal.state import StateStore, read_state
 
 class CompileDeterminismTest(unittest.TestCase):
     def compile_to(self, out: Path):
@@ -16,23 +21,34 @@ class CompileDeterminismTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "sg"
             self.compile_to(out)
-            for rel in ["CONTRACT.json", "MANIFEST.json", "THINKING.md", "RESEARCH.md", "reports/research.json", "LOOP_DESIGN.md", "ROADMAP.md", "STATE.md", "PROTOCOL.md", "LAUNCH_GOAL.md", "phases/phase-01.md"]:
+            for rel in ["CONTRACT.json", "MANIFEST.json", "THINKING.md", "RESEARCH.md", "reports/research.json", "LOOP_DESIGN.md", "ROADMAP.md", "STATE.md", "runtime/STATE.json", "runtime/events.jsonl", "runtime/evidence.json", "PROTOCOL.md", "LAUNCH_GOAL.md", "phases/phase-01.md", "scripts/sgctl.py", "lib/chip_supergoal/validate.py", "templates/PROTOCOL.md", "spec/risk-policy.json", "profiles/chip-private.json"]:
                 self.assertTrue((out / rel).is_file(), rel)
             hits = []
             for p in out.rglob("*.md"):
+                if p.relative_to(out).as_posix().startswith("templates/"):
+                    continue
                 for i, line in enumerate(p.read_text().splitlines(), 1):
                     if line.startswith("SUPERGOAL_GOAL_BODY:"):
                         hits.append(f"{p.relative_to(out)}:{i}")
             self.assertEqual(len(hits), 1)
             self.assertTrue(hits[0].startswith("LAUNCH_GOAL.md:"))
 
-    def test_recompile_is_byte_stable_including_launch_and_manifest(self):
+    def test_sealed_plane_is_byte_stable_separately_from_mutable_event_timestamps(self):
         with tempfile.TemporaryDirectory() as td:
             out1 = Path(td) / "a"; out2 = Path(td) / "b"
             self.compile_to(out1); self.compile_to(out2)
-            comparable = ["CONTRACT.json", "THINKING.md", "RESEARCH.md", "reports/research.json", "LOOP_DESIGN.md", "ROADMAP.md", "STATE.md", "PROTOCOL.md", "LAUNCH_GOAL.md", "MANIFEST.json", "phases/phase-01.md"]
-            for rel in comparable:
+            manifest1 = json.loads((out1 / "MANIFEST.json").read_text(encoding="utf-8"))
+            manifest2 = json.loads((out2 / "MANIFEST.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest1, manifest2)
+            for rel in [item["path"] for item in manifest1["artifacts"]]:
                 self.assertTrue(filecmp.cmp(out1 / rel, out2 / rel, shallow=False), rel)
+            for rel in ["STATE.md", "runtime/STATE.json", "runtime/evidence.json"]:
+                self.assertTrue(filecmp.cmp(out1 / rel, out2 / rel, shallow=False), rel)
+            for out in (out1, out2):
+                events = read_events(out / "runtime/events.jsonl")
+                self.assertEqual(len(events), 1)
+                self.assertEqual(verify_event_chain(events), [])
+                self.assertIn("timestamp", events[0])
 
 class CompileSafetyTest(unittest.TestCase):
     def run_compile(self, out: Path):
@@ -53,13 +69,24 @@ class CompileSafetyTest(unittest.TestCase):
             out = Path(td) / "sg"
             ok = self.run_compile(out)
             self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
-            runtime = out / "runtime"
-            runtime.mkdir()
-            (runtime / "STATE.json").write_text('{"live": true}\n', encoding="utf-8")
+            store = StateStore(out)
+            state = read_state(store.state_json)
+            store.transition("PLAN_REVIEWED", expected_revision=state.state_revision)
             result = self.run_compile(out)
             self.assertNotEqual(result.returncode, 0)
-            self.assertTrue((runtime / "STATE.json").is_file())
-            self.assertIn("runtime", result.stderr + result.stdout)
+            self.assertEqual(read_state(store.state_json).state_revision, 2)
+            self.assertIn("started runtime", result.stderr + result.stdout)
+
+    def test_compile_allows_pristine_package_recompile(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "sg"
+            first = self.run_compile(out)
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+
+            second = self.run_compile(out)
+
+            self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+            self.assertEqual(read_state(out / "runtime/STATE.json").state_revision, 1)
 
     def test_compile_refuses_source_container(self):
         with tempfile.TemporaryDirectory() as td:

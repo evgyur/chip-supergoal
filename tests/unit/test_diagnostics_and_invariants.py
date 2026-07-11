@@ -16,7 +16,13 @@ import chip_supergoal.diagnostics as diagnostics_module
 
 
 _SGV_PATTERN = re.compile(r"\bSGV-[A-Z0-9-]+\b")
-_DIAGNOSTIC_FACTORIES = {"Diagnostic", "_diag", "_diagnostic", "_research_diag"}
+_DIAGNOSTIC_FACTORIES = {
+    "Diagnostic",
+    "_diag",
+    "_diagnostic",
+    "_mutable_diagnostic",
+    "_research_diag",
+}
 
 
 def _call_name(call: ast.Call) -> str | None:
@@ -164,7 +170,7 @@ class DiagnosticsAndInvariantsTest(unittest.TestCase):
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
         self.assertEqual(set(catalog), {"catalog_version", "expected_code_count", "diagnostics"})
         self.assertEqual(catalog["catalog_version"], "1.0")
-        self.assertEqual(catalog["expected_code_count"], 71)
+        self.assertEqual(catalog["expected_code_count"], 76)
         entries = catalog.get("diagnostics", [])
         self.assertEqual(len(entries), catalog["expected_code_count"])
         catalog_codes = [entry.get("code") for entry in entries]

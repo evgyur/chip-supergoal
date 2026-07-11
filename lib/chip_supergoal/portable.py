@@ -16,9 +16,84 @@ else:
 
 EXECUTABLE_WRAPPERS = frozenset(
     {
+        "scripts/detect-stack.sh",
+        "scripts/repo-state.sh",
+        "scripts/summarize-repo.sh",
         "scripts/validate-loop-design.sh",
         "scripts/validate-phase.sh",
     }
+)
+
+RUNTIME_MODULES = (
+    "__init__.py",
+    "compile.py",
+    "diagnostics.py",
+    "events.py",
+    "graph.py",
+    "migrate.py",
+    "model.py",
+    "normalize.py",
+    "pipeline.py",
+    "policy.py",
+    "portable.py",
+    "profiles.py",
+    "render.py",
+    "research.py",
+    "state.py",
+    "validate.py",
+)
+RUNTIME_SCRIPTS = (
+    "sgctl.py",
+    "validate-phase.sh",
+    "validate-loop-design.sh",
+    "repo-state.sh",
+    "detect-stack.sh",
+    "summarize-repo.sh",
+)
+RUNTIME_TEMPLATES = (
+    "LAUNCH_GOAL.md",
+    "LOOP_DESIGN.md",
+    "phase-goal.txt",
+    "PROTOCOL.md",
+    "RESEARCH.md",
+    "ROADMAP.md",
+    "STATE.md",
+)
+RUNTIME_SPEC_FILES = (
+    "risk-policy.json",
+    "diagnostic-catalog.json",
+    "contract.schema.json",
+    "diagnostic.schema.json",
+    "event.schema.json",
+    "evidence.schema.json",
+    "state.schema.json",
+)
+RUNTIME_PROFILES = ("base.json", "public-clean.json", "chip-private.json")
+SEALED_RUNTIME_PATHS = frozenset(
+    [f"scripts/{name}" for name in RUNTIME_SCRIPTS]
+    + [f"lib/chip_supergoal/{name}" for name in RUNTIME_MODULES]
+    + [f"templates/{name}" for name in RUNTIME_TEMPLATES]
+    + [f"spec/{name}" for name in RUNTIME_SPEC_FILES]
+    + [f"profiles/{name}" for name in RUNTIME_PROFILES]
+)
+
+
+MUTABLE_PATHS = (
+    {"path": "STATE.md", "required": True, "validation": "state_projection"},
+    {"path": "runtime/STATE.json", "required": True, "validation": "state_schema_identity"},
+    {"path": "runtime/events.jsonl", "required": True, "validation": "event_chain_identity_revision"},
+    {"path": "runtime/evidence.json", "required": True, "validation": "evidence_json_array"},
+    {"path": "runtime/state.lock", "required": False, "validation": "one_byte_lock"},
+    {"path": "reports/final-audit.json", "required": False, "validation": "final_audit_json"},
+    {"path": "reports/final-audit.md", "required": False, "validation": "final_audit_projection"},
+    {"path": "reports/terminal-record.txt", "required": False, "validation": "terminal_record"},
+    {"path": "out/review-md-files-delivery-receipt.json", "required": False, "validation": "review_delivery_receipt"},
+    {"path": "out/final-artifacts-delivery-receipt.json", "required": False, "validation": "final_delivery_receipt"},
+    {"path": "out/final-artifacts-manifest.json", "required": False, "validation": "archive_result"},
+)
+MUTABLE_PATH_NAMES = frozenset(item["path"] for item in MUTABLE_PATHS)
+REQUIRED_MUTABLE_PATHS = frozenset(
+    item["path"] for item in MUTABLE_PATHS if item["required"]
 )
 
 

@@ -345,7 +345,6 @@ class CompileFailClosedTest(unittest.TestCase):
             output = root / "package"
             first = self.run_sgctl("compile", str(source), "--out", str(output))
             self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
-            (output / "runtime").mkdir()
             (output / "runtime" / "STATE.json").write_text("{}\n", encoding="utf-8")
 
             result = self.run_sgctl("compile", str(source), "--out", str(output))

@@ -1,6 +1,6 @@
 {
   "catalog_version": "1.0",
-  "expected_code_count": 71,
+  "expected_code_count": 76,
   "diagnostics": [
     {
       "code": "SGV-CONTRACT-MALFORMED",
@@ -93,6 +93,18 @@
       "remediation_class": "package_rebuild"
     },
     {
+      "code": "SGV-PACKAGE-EVENTS-MALFORMED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-PACKAGE-EVIDENCE-MALFORMED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "state_recovery"
+    },
+    {
       "code": "SGV-PACKAGE-FINGERPRINT-MISMATCH",
       "invariant": "INV-VALIDATOR-001",
       "stage": "preflight",
@@ -153,6 +165,18 @@
       "remediation_class": "package_rebuild"
     },
     {
+      "code": "SGV-PACKAGE-MUTABLE-MALFORMED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-PACKAGE-MUTABLE-REGISTRY",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "package_rebuild"
+    },
+    {
       "code": "SGV-PACKAGE-PATH-ESCAPE",
       "invariant": "INV-ARCHIVE-001",
       "stage": "archive",
@@ -175,6 +199,12 @@
       "invariant": "INV-ARCHIVE-001",
       "stage": "archive",
       "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-STATE-MALFORMED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "state_recovery"
     },
     {
       "code": "SGV-PACKAGE-ZIP-HASH-MISMATCH",

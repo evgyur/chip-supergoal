@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 from .events import append_event, read_events, verify_event_chain
-from .portable import package_lock, write_utf8_lf
+from .portable import package_lock, write_bytes_atomic, write_utf8_lf
 
 ALLOWED_TRANSITIONS = {
     ("DRAFT", "COMPILED"), ("COMPILED", "PLAN_REVIEWED"), ("PLAN_REVIEWED", "PREFLIGHT_GREEN"),
@@ -18,6 +20,9 @@ ALLOWED_TRANSITIONS = {
     ("WAITING_APPROVAL", "HANDOFF"), ("WAITING_EXTERNAL", "HANDOFF"),
 }
 TERMINAL = {"DONE", "HANDOFF"}
+LIFECYCLES = frozenset(
+    {"DRAFT", *{source for source, _ in ALLOWED_TRANSITIONS}, *{target for _, target in ALLOWED_TRANSITIONS}}
+)
 
 @dataclass(frozen=True)
 class State:
@@ -31,6 +36,28 @@ class State:
     attempt: int = 0
     audit_round: int = 0
     schema_version: str = "3.0"
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "3.0":
+            raise ValueError("state schema_version must be 3.0")
+        if not isinstance(self.goal_id, str) or not self.goal_id:
+            raise ValueError("state goal_id must be a nonempty string")
+        if not isinstance(self.contract_sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", self.contract_sha256):
+            raise ValueError("state contract_sha256 must be a lowercase SHA-256")
+        if type(self.state_revision) is not int or self.state_revision < 0:
+            raise ValueError("state_revision must be a nonnegative integer")
+        if self.lifecycle not in LIFECYCLES:
+            raise ValueError("state lifecycle is unsupported")
+        if self.current_phase_id is not None and not isinstance(self.current_phase_id, str):
+            raise ValueError("current_phase_id must be a string or null")
+        if self.phase_status is not None and not isinstance(self.phase_status, str):
+            raise ValueError("phase_status must be a string or null")
+        if self.blocker is not None and not isinstance(self.blocker, dict):
+            raise ValueError("blocker must be an object or null")
+        if type(self.attempt) is not int or self.attempt < 0:
+            raise ValueError("attempt must be a nonnegative integer")
+        if type(self.audit_round) is not int or self.audit_round < 0:
+            raise ValueError("audit_round must be a nonnegative integer")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "State":
@@ -65,9 +92,16 @@ def read_state(path: str | Path) -> State:
     return State.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
+def state_json_bytes(state: State) -> bytes:
+    return (json.dumps(state.to_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def state_sha256(state: State) -> str:
+    return hashlib.sha256(state_json_bytes(state)).hexdigest()
+
+
 def write_state_atomic(path: str | Path, state: State) -> None:
-    content = json.dumps(state.to_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    write_utf8_lf(path, content)
+    write_bytes_atomic(path, state_json_bytes(state))
 
 
 def render_state_md(state: State) -> str:
@@ -86,7 +120,15 @@ class StateStore:
         self.runtime.mkdir(parents=True, exist_ok=True)
         write_state_atomic(self.state_json, state)
         write_utf8_lf(self.state_md, render_state_md(state))
-        append_event(self.events, goal_id=state.goal_id, contract_sha256=state.contract_sha256, state_revision=state.state_revision, event_type="state_initialized", phase_id=state.current_phase_id)
+        append_event(
+            self.events,
+            goal_id=state.goal_id,
+            contract_sha256=state.contract_sha256,
+            state_revision=state.state_revision,
+            state_sha256=state_sha256(state),
+            event_type="state_initialized",
+            phase_id=state.current_phase_id,
+        )
 
     def transition(self, to_lifecycle: str, *, expected_revision: int, phase_id: str | None = None, phase_status: str | None = None, blocker: dict[str, Any] | None = None) -> State:
         self.runtime.mkdir(parents=True, exist_ok=True)
@@ -97,7 +139,15 @@ class StateStore:
             new = current.transition(to_lifecycle, phase_id=phase_id, phase_status=phase_status, blocker=blocker)
             write_state_atomic(self.state_json, new)
             write_utf8_lf(self.state_md, render_state_md(new))
-            append_event(self.events, goal_id=new.goal_id, contract_sha256=new.contract_sha256, state_revision=new.state_revision, event_type=f"transition:{current.lifecycle}->{new.lifecycle}", phase_id=new.current_phase_id)
+            append_event(
+                self.events,
+                goal_id=new.goal_id,
+                contract_sha256=new.contract_sha256,
+                state_revision=new.state_revision,
+                state_sha256=state_sha256(new),
+                event_type=f"transition:{current.lifecycle}->{new.lifecycle}",
+                phase_id=new.current_phase_id,
+            )
             reread = read_state(self.state_json)
             if reread.state_revision != new.state_revision:
                 raise ValueError("SGV-STATE-WRITE-VERIFY-FAILED")

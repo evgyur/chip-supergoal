@@ -34,10 +34,17 @@
       ]
     },
     "prev_event_sha256": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "state_revision": {
       "type": "integer"
+    },
+    "state_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
     },
     "timestamp": {
       "type": "string"
@@ -48,6 +55,7 @@
     "goal_id",
     "contract_sha256",
     "state_revision",
+    "state_sha256",
     "event_type",
     "timestamp",
     "prev_event_sha256",
