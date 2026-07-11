@@ -38,23 +38,42 @@ for p in ROOT.rglob('*.md'):
         continue
     for n,line in enumerate(p.read_text(encoding='utf-8', errors='ignore').splitlines(), 1):
         if line.startswith('SUPERGOAL_GOAL_BODY:'):
-            actual.append(f'{p.relative_to(ROOT)}:{n}')
+            actual.append(f'{p.relative_to(ROOT).as_posix()}:{n}')
 require(len(actual)==1 and actual[0].startswith('templates/LAUNCH_GOAL.md:'), f'launch body not single-sourced: {actual}')
 
 launch_body = next((line for line in launch.splitlines() if line.startswith('SUPERGOAL_GOAL_BODY:')), '')
 for phrase in [
     'standard Hermes `/goal` continuation only',
-    'Trust `STATE.md` over chat memory',
-    'Do not stop at numbered phase boundaries',
-    'Weak blockers are forbidden',
+    'Resolve the package root',
+    'authoritative runtime/STATE.json',
+    'contract-declared boundary',
+    'runtime authority permits completion',
+    '`AUDIT_COMPLETE`',
+    '`SUPERGOAL_RUN_COMPLETE`',
+    'Goal complete: yes',
+]:
+    require(phrase in launch_body, f'launch body missing {phrase}')
+require('PROTOCOL.md' in launch, 'LAUNCH_GOAL context does not load PROTOCOL.md')
+
+# The launch body is intentionally concise in v3. Detailed continuation and
+# blocker semantics remain package-local in PROTOCOL.md plus the compatibility
+# reference instead of being duplicated into a second runtime contract.
+for phrase in [
+    'continue from `STATE.md` rather than chat memory',
+    'phase boundaries are checkpoints, not stop points',
     'Goal complete: no',
     'Completion requires: AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE in the same final response.',
-    'Goal complete: yes',
     'BLOCKED_BY_APPROVAL',
     'FAILURE_HANDOFF',
     'AUDIT_HANDOFF',
 ]:
-    require(phrase in launch_body, f'launch body missing {phrase}')
+    require(phrase in compat, f'compatibility reference missing {phrase}')
+for phrase in [
+    'Do not stop at numbered phase boundaries',
+    'Weak blockers are forbidden',
+    'runtime/STATE.json` is the authoritative runtime state',
+]:
+    require(phrase in protocol, f'protocol missing continuation authority: {phrase}')
 
 for phrase in [
     '## Standard Hermes `/goal` compatibility',

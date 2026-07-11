@@ -16,8 +16,11 @@ from .events import (
     TERMINAL_LIFECYCLES,
     JournalCorruptionError,
     append_event,
+    canonical_genesis_phase_id,
+    canonical_json_value_bytes,
     canonical_state_bytes,
     read_events,
+    strict_json_loads,
     validate_event_journal,
 )
 from .model import canonical_json, contract_from_dict
@@ -83,6 +86,12 @@ class State:
             raise ValueError(
                 "SGV-STATE-ILLEGAL-UPDATE: phase must be complete and unblocked in AUDITING or DONE"
             )
+        try:
+            canonical_json_value_bytes(self.to_dict())
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "SGV-STATE-ILLEGAL-UPDATE: state must contain strict JSON values"
+            ) from exc
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "State":
@@ -180,6 +189,26 @@ class State:
             or new_attempt != self.attempt
         ):
             raise ValueError("SGV-STATE-ILLEGAL-UPDATE")
+        target_blocker = self.blocker if blocker is _UNSET else blocker
+        current_semantic = self.to_dict()
+        current_semantic.pop("state_revision")
+        target_semantic = {
+            **current_semantic,
+            "current_phase_id": target_phase,
+            "phase_status": target_status,
+            "blocker": target_blocker,
+            "attempt": new_attempt,
+        }
+        try:
+            semantic_noop = canonical_json_value_bytes(
+                target_semantic
+            ) == canonical_json_value_bytes(current_semantic)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "SGV-STATE-ILLEGAL-UPDATE: state must contain strict JSON values"
+            ) from exc
+        if semantic_noop:
+            raise ValueError("SGV-STATE-ILLEGAL-UPDATE: semantic no-op")
         return State(
             goal_id=self.goal_id,
             contract_sha256=self.contract_sha256,
@@ -188,7 +217,7 @@ class State:
             lifecycle=self.lifecycle,
             current_phase_id=target_phase,
             phase_status=target_status,
-            blocker=self.blocker if blocker is _UNSET else blocker,
+            blocker=target_blocker,
             attempt=new_attempt,
             audit_round=self.audit_round,
         )
@@ -208,8 +237,8 @@ def read_state(path: str | Path, *, root: str | Path | None = None) -> State:
     trusted_root = Path(root) if root is not None else state_path.parent
     raw = read_regular_file_no_follow(state_path, trusted_root)
     try:
-        data = json.loads(raw)
-    except (UnicodeError, json.JSONDecodeError) as exc:
+        data = strict_json_loads(raw)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError("state JSON is malformed") from exc
     state = State.from_dict(data)
     if raw != state_json_bytes(state):
@@ -284,7 +313,14 @@ class StateStore:
         self,
         *,
         require_sealed: bool = True,
-    ) -> tuple[str | None, str | None, int | None, set[str] | None, dict[str, set[str]] | None]:
+    ) -> tuple[
+        str | None,
+        str | None,
+        int | None,
+        set[str] | None,
+        dict[str, set[str]] | None,
+        dict[str, int] | None,
+    ]:
         contract_path = self.root / "CONTRACT.json"
         if not os.path.lexists(contract_path):
             if require_sealed and any(
@@ -297,7 +333,7 @@ class StateStore:
                 )
             ):
                 raise ValueError("SGV-STATE-CONTRACT-MISMATCH")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
         raw = read_regular_file_no_follow(contract_path, self.root)
         sealed = verify_sealed_artifact(self.root, "CONTRACT.json", data=raw)
         if require_sealed and not sealed:
@@ -311,17 +347,23 @@ class StateStore:
             raise ValueError("SGV-STATE-CONTRACT-MISMATCH")
         digest = hashlib.sha256(canonical).hexdigest()
         phase_ids = {phase.id for phase in contract.phases}
-        dependencies = {phase.id: set(phase.depends_on) for phase in contract.phases}
+        dependencies = {
+            phase.id: set(phase.depends_on) for phase in contract.phases
+        }
+        ordinals = {phase.id: phase.ordinal for phase in contract.phases}
         return (
             contract.goal.id,
             digest,
             contract.contract_revision,
             phase_ids,
             dependencies,
+            ordinals,
         )
 
     def _validated_events(self) -> list[dict[str, Any]]:
-        goal_id, digest, revision, phase_ids, dependencies = self._contract_context()
+        goal_id, digest, revision, phase_ids, dependencies, ordinals = (
+            self._contract_context()
+        )
         try:
             events = read_events(self.events, root=self.root)
             return validate_event_journal(
@@ -331,6 +373,7 @@ class StateStore:
                 contract_revision=revision,
                 phase_ids=phase_ids,
                 phase_dependencies=dependencies,
+                phase_ordinals=ordinals,
             )
         except JournalCorruptionError:
             raise
@@ -345,7 +388,10 @@ class StateStore:
             markdown = read_regular_file_no_follow(self.state_md, self.root)
         except Exception as exc:
             raise ValueError("SGV-STATE-RECOVERY-REQUIRED") from exc
-        if projected != state or markdown != render_state_md(state).encode("utf-8"):
+        if (
+            state_json_bytes(projected) != state_json_bytes(state)
+            or markdown != render_state_md(state).encode("utf-8")
+        ):
             raise ValueError("SGV-STATE-RECOVERY-REQUIRED")
 
     def _assert_lock_safe(self) -> None:
@@ -373,9 +419,17 @@ class StateStore:
             for path in (self.events, self.state_json, self.state_md)
         ):
             raise ValueError("SGV-STATE-GENESIS-INVALID")
-        goal_id, digest, revision, phase_ids, dependencies = self._contract_context(
-            require_sealed=False
+        goal_id, digest, revision, phase_ids, dependencies, ordinals = (
+            self._contract_context(require_sealed=False)
         )
+        canonical_genesis = canonical_genesis_phase_id(
+            phase_ids, dependencies, ordinals
+        )
+        if phase_ids is not None and (
+            canonical_genesis is None
+            or state.current_phase_id != canonical_genesis
+        ):
+            raise ValueError("SGV-STATE-GENESIS-INVALID")
         validate_goal_identity(
             state,
             goal_id=goal_id or state.goal_id,
@@ -388,23 +442,25 @@ class StateStore:
             event_type="state_initialized",
             phase_ids=phase_ids,
             phase_dependencies=dependencies,
+            phase_ordinals=ordinals,
         )
         write_state_atomic(self.state_json, state, root=self.root)
         write_utf8_lf(self.state_md, render_state_md(state), root=self.root)
 
     def _write_transition_locked(self, current: State, target: State, event_type: str) -> State:
-        _, _, _, phase_ids, dependencies = self._contract_context()
+        _, _, _, phase_ids, dependencies, ordinals = self._contract_context()
         append_event(
             self.events,
             state=target.to_dict(),
             event_type=event_type,
             phase_ids=phase_ids,
             phase_dependencies=dependencies,
+            phase_ordinals=ordinals,
         )
         write_state_atomic(self.state_json, target, root=self.root)
         write_utf8_lf(self.state_md, render_state_md(target), root=self.root)
         reread = read_state(self.state_json, root=self.root)
-        if reread != target:
+        if state_json_bytes(reread) != state_json_bytes(target):
             raise ValueError("SGV-STATE-WRITE-VERIFY-FAILED")
         return reread
 
@@ -510,9 +566,9 @@ def recover_from_events(root: str | Path) -> RecoveryResult:
             state_matches = False
             markdown_matches = False
             try:
-                state_matches = (
-                    read_state(store.state_json, root=store.root) == recovered
-                )
+                state_matches = state_json_bytes(
+                    read_state(store.state_json, root=store.root)
+                ) == state_json_bytes(recovered)
             except Exception:
                 pass
             try:

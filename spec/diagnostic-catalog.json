@@ -1,6 +1,6 @@
 {
   "catalog_version": "1.0",
-  "expected_code_count": 102,
+  "expected_code_count": 116,
   "diagnostics": [
     {
       "code": "SGV-CONTRACT-MALFORMED",
@@ -489,7 +489,73 @@
       "remediation_class": "audit_repair"
     },
     {
+      "code": "SGV-DELIVERY-ARCHIVE-AUTHORITY-UNAVAILABLE",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "archive_completion"
+    },
+    {
+      "code": "SGV-DELIVERY-ARCHIVE-MISSING",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "archive_completion"
+    },
+    {
+      "code": "SGV-DELIVERY-CONTRACT-MISMATCH",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "delivery_repair"
+    },
+    {
+      "code": "SGV-DELIVERY-FILE-SET-MISMATCH",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "delivery_repair"
+    },
+    {
+      "code": "SGV-DELIVERY-MESSAGE-ID-MISMATCH",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "delivery_repair"
+    },
+    {
+      "code": "SGV-DELIVERY-NOT-REQUIRED",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "delivery_repair"
+    },
+    {
+      "code": "SGV-DELIVERY-RECEIPT-INVALID",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "delivery_repair"
+    },
+    {
+      "code": "SGV-DELIVERY-TARGET-MISMATCH",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "delivery_repair"
+    },
+    {
       "code": "SGV-EVIDENCE-ASSERTION-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-APPROVAL-DECLARATION-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-APPROVAL-SCOPE-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-APPROVAL-UNDECLARED",
       "invariant": "INV-AUDIT-001",
       "stage": "runtime",
       "remediation_class": "evidence_repair"
@@ -539,6 +605,24 @@
     {
       "code": "SGV-EVIDENCE-PHASE-MISMATCH",
       "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-POLICY-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-POLICY-SCOPE-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-RPD-SCOPE-MISMATCH",
+      "invariant": "INV-RPD-001",
       "stage": "runtime",
       "remediation_class": "evidence_repair"
     },

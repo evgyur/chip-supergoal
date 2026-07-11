@@ -12,7 +12,11 @@ from .diagnostics import Diagnostic, diagnostic_metadata
 from .audit import audit_json_bytes, read_final_audit, recompute_package_audit
 from .delivery import read_receipt, validate_final_receipt, validate_review_receipt
 from .events import read_events, validate_event_journal
-from .evidence import read_evidence, validate_record_against_contract
+from .evidence import (
+    package_policy_requirements,
+    read_evidence,
+    validate_record_against_contract,
+)
 from .model import canonical_json, load_contract
 from .pipeline import contract_diagnostics, repository_resource_root
 from .portable import (
@@ -627,6 +631,9 @@ def _validate_mutable_plane(
     dependencies = {
         phase.id: set(phase.depends_on) for phase in getattr(contract, "phases", ())
     } if contract is not None else {}
+    ordinals = {
+        phase.id: phase.ordinal for phase in getattr(contract, "phases", ())
+    } if contract is not None else {}
     goal_id = getattr(getattr(contract, "goal", None), "id", None)
     contract_revision = getattr(contract, "contract_revision", None)
 
@@ -695,6 +702,7 @@ def _validate_mutable_plane(
                 contract_revision=contract_revision,
                 phase_ids=phase_ids,
                 phase_dependencies=dependencies,
+                phase_ordinals=ordinals,
             )
             journal_tail_state = State.from_dict(events[-1]["state"])
             journal_valid = True
@@ -709,7 +717,10 @@ def _validate_mutable_plane(
                 )
             )
     if journal_valid and (
-        state is None or journal_tail_state != state or not projection_matches
+        state is None
+        or journal_tail_state is None
+        or state_json_bytes(journal_tail_state) != state_json_bytes(state)
+        or not projection_matches
     ):
         diagnostics.append(
             _diag(
@@ -729,8 +740,14 @@ def _validate_mutable_plane(
             evidence = read_evidence(evidence_path, root=root)
             if contract is None or state is None:
                 raise ValueError("contract/state authority unavailable")
+            policy_requirements = package_policy_requirements(root, contract)
             for record in evidence:
-                validate_record_against_contract(record, contract, state)
+                validate_record_against_contract(
+                    record,
+                    contract,
+                    state,
+                    policy_requirements=policy_requirements,
+                )
             evidence_valid = True
         except Exception:
             diagnostics.append(

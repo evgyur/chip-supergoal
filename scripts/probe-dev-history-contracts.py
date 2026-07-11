@@ -31,15 +31,21 @@ dev = read('references/dev-history-hardening.md')
 prod = read('references/production-safety.md')
 skillm = read('references/skill-maintenance.md')
 execsm = read('references/execution-state-machine.md')
+gateway = read('references/gateway-goal-startup-recovery.md')
+continuation = read('references/standing-goal-continuation-completion.md')
 
 dispatch = read('references/dispatch-map.md')
 require('references/dev-history-hardening.md' in skill or 'dev-history-hardening.md' in dispatch, 'root/dispatch-map does not dispatch dev-history-hardening')
 require('dev-history-hardening.md' in index, 'INDEX does not list dev-history-hardening')
 for marker in [
-    'Retrieval-before-ask', 'Safe-lane approval', 'Bounded live manifest',
-    'Repo/private delivery', 'Gateway restart/autoresume', 'Continuation over status-only'
+    'python scripts/sgctl.py validate-package . --strict',
+    'runtime/STATE.json',
+    'BLOCKED_BY_APPROVAL',
+    'Required delivery receipts',
+    'AUDITING -> RUNNING',
+    'Do not stop at numbered phase boundaries',
 ]:
-    require(marker in protocol, f'PROTOCOL missing {marker}')
+    require(marker in protocol, f'PROTOCOL missing current runtime contract: {marker}')
 for phrase in ['у тебя они уже есть', 'review_pack_v2', 'remote HEAD', 'bounded manifest']:
     require(phrase in dev, f'dev-history reference missing {phrase}')
 artifact_boundaries = read('references/artifact-boundaries.md')
@@ -49,6 +55,10 @@ require('Safe-lane vs live-lane approval matrix' in prod, 'production safety mis
 require('Repo/private delivery gate' in skillm, 'skill maintenance missing repo/private delivery gate')
 require('Retrieval-before-ask gate' in execsm, 'execution state machine missing retrieval gate')
 require('Repo delivery completion gate' in execsm, 'execution state machine missing repo delivery gate')
+require('restart' in gateway and 'resumes in the same session' in gateway,
+        'gateway recovery reference missing restart/autoresume contract')
+require('not a request for another status summary' in continuation,
+        'standing-goal reference missing continuation-over-status contract')
 
 # Launch body must be single-sourced.
 actual=[]
@@ -57,7 +67,7 @@ for p in ROOT.rglob('*.md'):
         continue
     for n,line in enumerate(p.read_text(encoding='utf-8', errors='ignore').splitlines(),1):
         if line.startswith('SUPERGOAL_GOAL_BODY:'):
-            actual.append(f'{p.relative_to(ROOT)}:{n}')
+            actual.append(f'{p.relative_to(ROOT).as_posix()}:{n}')
 require(len(actual)==1 and actual[0].startswith('templates/LAUNCH_GOAL.md:'), f'launch body not single-sourced: {actual}')
 
 # Receipt schemas must be valid JSON and enforce ok/sent true.

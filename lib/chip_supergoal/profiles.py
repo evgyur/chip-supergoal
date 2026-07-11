@@ -24,7 +24,13 @@ ALLOWED_PROFILE_KEYS = {
     "operator",
 }
 _ALLOWED_APPROVAL_KEYS = {"dangerous_actions"}
-_ALLOWED_DELIVERY_KEYS = {"files", "review_pack_required", "target", "transport"}
+_ALLOWED_DELIVERY_KEYS = {
+    "files",
+    "receipt_policy",
+    "review_pack_required",
+    "target",
+    "transport",
+}
 _ALLOWED_PRIVACY_KEYS = {
     "private_operator_rules",
     "public_export_allowed",
@@ -141,6 +147,18 @@ def _validate_profile_fields(name: str, profile: dict[str, Any]) -> None:
             raise ProfileError(
                 f"profile {name!r} delivery.review_pack_required must be a boolean"
             )
+        if "receipt_policy" in delivery:
+            receipt_policy = delivery["receipt_policy"]
+            if not isinstance(receipt_policy, dict) or set(receipt_policy) != {
+                "required"
+            }:
+                raise ProfileError(
+                    f"profile {name!r} delivery.receipt_policy must contain only required"
+                )
+            if type(receipt_policy["required"]) is not bool:
+                raise ProfileError(
+                    f"profile {name!r} delivery.receipt_policy.required must be a boolean"
+                )
         for key in ("target", "transport"):
             if key in delivery and not isinstance(delivery[key], str):
                 raise ProfileError(
@@ -228,6 +246,9 @@ def _sanitize_public_delivery(delivery: dict[str, Any]) -> dict[str, Any]:
         sanitized.pop(key, None)
     sanitized["transport"] = "none"
     sanitized["review_pack_required"] = False
+    receipt_policy = sanitized.get("receipt_policy")
+    if isinstance(receipt_policy, dict):
+        receipt_policy["required"] = False
     return sanitized
 
 

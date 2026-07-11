@@ -10,11 +10,13 @@ from typing import Any
 
 from .events import now_rfc3339_z_seconds, parse_rfc3339_z_seconds
 from .model import canonical_json, contract_from_dict
+from .policy import mandatory_evidence_requirements
 from .portable import (
     package_lock,
     package_operation_lock,
     read_regular_file_no_follow,
     unlink_regular_file_no_follow,
+    verify_sealed_artifact,
     write_bytes_atomic,
 )
 from .state import State, StateStore, assert_runtime_mutable
@@ -334,7 +336,26 @@ def evidence_satisfies_verifier(record: EvidenceRecord, verifier: Any) -> bool:
     )
 
 
-def validate_record_against_contract(record: EvidenceRecord, contract: Any, state: State) -> None:
+def _approval_applies_to_phase(approval: Any, phase: Any, contract: Any) -> bool:
+    phase_ids = {item.id for item in contract.phases}
+    scope = approval.scope
+    if scope in {"all", "global", phase.id}:
+        return True
+    if scope in phase_ids:
+        return False
+    risk_tags = {risk.tag for risk in contract.risks}
+    if scope in risk_tags:
+        return scope in phase.risk_tags
+    return True
+
+
+def validate_record_against_contract(
+    record: EvidenceRecord,
+    contract: Any,
+    state: State,
+    *,
+    policy_requirements: dict[str, list[str]] | None = None,
+) -> None:
     if (
         record.goal_id != state.goal_id
         or record.contract_sha256 != state.contract_sha256
@@ -346,11 +367,55 @@ def validate_record_against_contract(record: EvidenceRecord, contract: Any, stat
     if phase is None:
         raise ValueError("SGV-EVIDENCE-PHASE-MISMATCH")
     criteria = {criterion.id: criterion for criterion in phase.criteria}
+    undeclared_rpd = sorted(
+        set(record.metadata.get("rpd_focus", [])) - set(phase.rpd.focus)
+    )
+    if undeclared_rpd:
+        raise ValueError(
+            "SGV-EVIDENCE-RPD-SCOPE-MISMATCH: undeclared rpd_focus labels: "
+            + ", ".join(undeclared_rpd)
+        )
+    if policy_requirements is not None:
+        undeclared_policy = sorted(
+            set(record.metadata.get("policy_evidence", []))
+            - set(policy_requirements.get(phase.id, []))
+        )
+        if undeclared_policy:
+            raise ValueError(
+                "SGV-EVIDENCE-POLICY-SCOPE-MISMATCH: undeclared policy_evidence labels: "
+                + ", ".join(undeclared_policy)
+            )
     if record.type in AUXILIARY_EVIDENCE_TYPES:
         if record.criterion_id != AUXILIARY_CRITERION_ID:
             raise ValueError("SGV-EVIDENCE-CRITERION-MISMATCH")
         if record.assertion is not None:
             raise ValueError("SGV-EVIDENCE-ASSERTION-MISMATCH")
+        if record.type == "approval_manifest":
+            approvals: dict[str, Any] = {}
+            for approval in contract.approvals:
+                if (
+                    not isinstance(approval.id, str)
+                    or not approval.id
+                    or approval.id in approvals
+                ):
+                    raise ValueError(
+                        "SGV-EVIDENCE-APPROVAL-DECLARATION-MISMATCH: "
+                        "approval declarations are ambiguous"
+                    )
+                approvals[approval.id] = approval
+            for approval_id in record.metadata.get("approval_ids", []):
+                approval = approvals.get(approval_id)
+                if approval is None:
+                    raise ValueError(
+                        "SGV-EVIDENCE-APPROVAL-UNDECLARED: "
+                        f"approval {approval_id} is undeclared"
+                    )
+                if not _approval_applies_to_phase(approval, phase, contract):
+                    raise ValueError(
+                        "SGV-EVIDENCE-APPROVAL-SCOPE-MISMATCH: "
+                        f"approval {approval_id} scope {approval.scope!r} "
+                        f"does not apply to phase {phase.id}"
+                    )
         return
     criterion = criteria.get(record.criterion_id)
     if criterion is None:
@@ -383,6 +448,20 @@ def _invalidate_derived_audit(root: Path) -> None:
             raise ValueError("SGV-EVIDENCE-AUDIT-INVALIDATION") from exc
 
 
+def package_policy_requirements(root: Path, contract: Any) -> dict[str, list[str]]:
+    path = root / "spec/risk-policy.json"
+    raw = read_regular_file_no_follow(path, root)
+    if not verify_sealed_artifact(root, "spec/risk-policy.json", data=raw):
+        raise ValueError("SGV-EVIDENCE-POLICY-MISMATCH")
+    try:
+        policy = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("SGV-EVIDENCE-POLICY-MISMATCH") from exc
+    if not isinstance(policy, dict) or not isinstance(policy.get("risk_tags"), dict):
+        raise ValueError("SGV-EVIDENCE-POLICY-MISMATCH")
+    return mandatory_evidence_requirements(contract, policy)
+
+
 class EvidenceStore:
     def __init__(self, root: str | Path):
         self.root = Path(root)
@@ -397,7 +476,14 @@ class EvidenceStore:
                 contract, state, _ = _load_contract_and_state(self.root)
                 if state.lifecycle not in {"RUNNING", "AUDITING"}:
                     raise ValueError("SGV-EVIDENCE-STATE-MISMATCH")
-                validate_record_against_contract(record, contract, state)
+                validate_record_against_contract(
+                    record,
+                    contract,
+                    state,
+                    policy_requirements=package_policy_requirements(
+                        self.root, contract
+                    ),
+                )
                 records = read_evidence(self.path, root=self.root)
                 if any(item.evidence_id == record.evidence_id for item in records):
                     raise ValueError("SGV-EVIDENCE-DUPLICATE-ID")

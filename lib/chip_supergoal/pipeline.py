@@ -7,6 +7,7 @@ import re
 from typing import Callable
 
 from .diagnostics import Diagnostic, diagnostic_metadata
+from .delivery import ReceiptValidationError, delivery_receipt_required
 from .model import Contract, canonical_json, contract_from_dict, to_plain
 from .normalize import semantic_errors
 from .policy import load_risk_policy, risk_policy_errors
@@ -116,6 +117,26 @@ def _semantic_diagnostics(contract: Contract, artifact: str) -> list[Diagnostic]
         )
         for error in semantic_errors(contract)
     ]
+
+
+def _delivery_diagnostics(contract: Contract, artifact: str) -> list[Diagnostic]:
+    try:
+        delivery_receipt_required(contract.delivery.data)
+    except ReceiptValidationError as exc:
+        return [
+            _diagnostic(
+                "SGV-CONTRACT-SEMANTIC",
+                artifact=artifact,
+                pointer="/delivery/receipt_policy",
+                message=str(exc),
+                remediation=(
+                    "Disable the receipt requirement or declare an enabled transport "
+                    "and nonempty target."
+                ),
+                stage="semantic",
+            )
+        ]
+    return []
 
 
 def _terminal_injection_diagnostics(
@@ -246,6 +267,7 @@ def validate_contract_source(
 
     try:
         diagnostics = _semantic_diagnostics(resolved.contract, artifact)
+        diagnostics.extend(_delivery_diagnostics(resolved.contract, artifact))
         diagnostics.extend(_terminal_injection_diagnostics(resolved.contract, artifact))
     except (AttributeError, KeyError, TypeError, ValueError):
         return ContractPipelineResult(None, (_malformed_diagnostic(artifact),))

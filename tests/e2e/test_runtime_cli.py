@@ -108,6 +108,49 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
                 revision = state["state_revision"]
         return state
 
+    def compile_delivery_package(self, *, final=False):
+        data = json.loads(
+            (ROOT / "examples/brownfield-feature/CONTRACT.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        data["profile"] = "chip-private"
+        data["risks"] = []
+        data["delivery"] = {
+            "items": ["artifact.zip"] if final else [],
+            "receipt_policy": {"required": True},
+            "review_pack_required": not final,
+            "target": "current-thread",
+            "transport": "telegram",
+        }
+        data["phases"][0]["risk_tags"] = []
+        data["phases"][0]["rpd"] = {"required": False, "focus": []}
+        data["compatibility"].pop("research_gate", None)
+        label = "final" if final else "review"
+        source = self.parent / f"{label}-delivery-source.json"
+        source.write_text(json.dumps(data), encoding="utf-8")
+        compiled = self.parent / f"{label}-delivery-compiled"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/sgctl.py"),
+                "compile",
+                str(source),
+                "--out",
+                str(compiled),
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.package = (
+            self.parent / f"{label} delivery relocated path" / ".supergoal" / "slug"
+        )
+        self.package.parent.mkdir(parents=True)
+        shutil.move(compiled, self.package)
+        self.script = self.package / "scripts/sgctl.py"
+
     def evidence_payload(self):
         contract_bytes = (self.package / "CONTRACT.json").read_bytes()
         contract = json.loads(contract_bytes)
@@ -188,6 +231,96 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
         error = json.loads(result.stderr)
         self.assertEqual(error["ok"], False)
         self.assertTrue(error["code"].startswith("SGV-"))
+
+    def test_nonfinite_blocker_json_is_rejected_without_runtime_mutation(self):
+        events = self.package / "runtime/events.jsonl"
+        state = self.package / "runtime/STATE.json"
+        before_events = events.read_bytes()
+        before_state = state.read_bytes()
+        result = self.run_cli(
+            "state-transition",
+            "--expected-revision",
+            "1",
+            "--blocker-json",
+            '{"value":NaN}',
+            expected=1,
+        )
+        self.assertIn("SGV-STATE-ILLEGAL-UPDATE", result.stderr)
+        self.assertEqual(events.read_bytes(), before_events)
+        self.assertEqual(state.read_bytes(), before_state)
+
+    def test_relocated_review_receipt_producer_is_canonical_and_reuse_rejects_forgery(self):
+        self.compile_delivery_package()
+        missing = self.run_cli(
+            "delivery-review-check",
+            "--target",
+            "current-thread",
+            expected=10,
+        )
+        self.assertEqual(json.loads(missing.stdout)["status"], "missing")
+
+        auditing = self.progress_to_auditing()
+        payload = self.evidence_payload()
+        self.run_cli(
+            "record-evidence", "--input", "-", input=json.dumps(payload)
+        )
+        contract = json.loads((self.package / "CONTRACT.json").read_text("utf-8"))
+        active_files = sorted(
+            name
+            for name in contract["delivery"]["files"]
+            if name != "RESEARCH.md" or (self.package / name).exists()
+        )
+        args = ["delivery-review-record", "--target", "current-thread"]
+        for name in active_files:
+            args.extend(["--message-id", f"msg-{name}"])
+        receipt = json.loads(self.run_cli(*args).stdout)
+        self.assertEqual(receipt["goal_id"], contract["goal"]["id"])
+        self.assertEqual(receipt["files"], sorted(active_files))
+        self.assertEqual(
+            receipt["message_ids"], [f"msg-{name}" for name in active_files]
+        )
+        self.assertRegex(
+            receipt["sent_at"],
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$",
+        )
+        report = json.loads(self.run_cli("audit").stdout)
+        self.assertTrue(report["can_complete"], report["issues"])
+        self.assertEqual(report["delivery_status"], "verified")
+
+        receipt_path = self.package / "out/review-md-files-delivery-receipt.json"
+        receipt["goal_id"] = "forged-goal"
+        forged_bytes = (
+            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        receipt_path.write_bytes(forged_bytes)
+        rejected = self.run_cli(
+            "delivery-review-check",
+            "--target",
+            "current-thread",
+            expected=1,
+        )
+        self.assertIn("SGV-DELIVERY-RECEIPT-INVALID", rejected.stderr)
+        self.run_cli(*args, expected=1)
+        self.assertEqual(receipt_path.read_bytes(), forged_bytes)
+
+    def test_final_delivery_producer_fails_closed_without_task6_result_authority(self):
+        self.compile_delivery_package(final=True)
+        archive = self.parent / "external-artifact.zip"
+        archive.write_bytes(b"not a Task 6 canonical archive")
+        result = self.run_cli(
+            "delivery-final-check",
+            "--target",
+            "current-thread",
+            "--archive",
+            str(archive),
+            expected=1,
+        )
+        self.assertIn(
+            "SGV-DELIVERY-ARCHIVE-AUTHORITY-UNAVAILABLE", result.stderr
+        )
+        self.assertFalse(
+            (self.package / "out/final-artifacts-delivery-receipt.json").exists()
+        )
 
 
 if __name__ == "__main__":

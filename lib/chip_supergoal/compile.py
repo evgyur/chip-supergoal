@@ -31,7 +31,7 @@ from .portable import (
 from .profiles import ResolvedContract
 from .render import phase_entries_in_ordinal_order, render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
 from .research import render_research_markdown, research_report, research_required, research_gate
-from .state import State, StateStore
+from .state import State, StateStore, state_json_bytes
 from .validate import validate_package
 
 
@@ -190,7 +190,7 @@ def _assert_pristine_runtime(root: Path, contract: Contract) -> None:
         item["path"] for item in MUTABLE_PATHS if not item["required"]
     ]
     if (
-        state != expected
+        state_json_bytes(state) != state_json_bytes(expected)
         or evidence != []
         or len(events) != 1
         or events[0].get("event_type") != "state_initialized"

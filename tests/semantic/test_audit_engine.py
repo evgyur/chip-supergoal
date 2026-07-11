@@ -2,6 +2,8 @@ import hashlib
 import json
 import tempfile
 import unittest
+import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 
@@ -28,8 +30,10 @@ class AuditEngineTest(unittest.TestCase):
         data["loop"] = {}
         if final_delivery:
             data["delivery"] = {
-                "items": ["artifact.zip"],
+                "items": ["THINKING.md", "ROADMAP.md"],
+                "receipt_policy": {"required": True},
                 "target": "current-thread",
+                "transport": "telegram",
             }
         elif review_delivery:
             data["delivery"] = {
@@ -40,8 +44,10 @@ class AuditEngineTest(unittest.TestCase):
                     "LAUNCH_GOAL.md",
                 ],
                 "items": [],
+                "receipt_policy": {"required": True},
                 "review_pack_required": True,
                 "target": "current-thread",
+                "transport": "telegram",
             }
         else:
             data["delivery"] = {}
@@ -136,17 +142,65 @@ class AuditEngineTest(unittest.TestCase):
         self.assertFalse(report.can_complete)
         self.assertEqual(report.delivery_status, "missing")
 
-    def test_required_delivery_receipt_is_identity_bound(self):
-        contract = self.contract(final_delivery=True)
+    def test_legacy_explicit_review_pack_requirement_cannot_be_silently_disabled(self):
+        data = json.loads(canonical_json(self.contract(review_delivery=True)))
+        data["delivery"].pop("receipt_policy")
+        contract = contract_from_dict(data)
         root, _, state, events = self.authority(contract)
+        report = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertFalse(report.can_complete)
+        self.assertEqual(report.delivery_status, "missing")
+
+    def test_delivery_items_are_informational_without_explicit_receipt_policy(self):
+        data = json.loads(
+            (ROOT / "examples/brownfield-feature/CONTRACT.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        data["risks"] = []
+        data["phases"][0]["risk_tags"] = []
+        data["phases"][0]["rpd"] = {"required": False, "focus": []}
+        data["loop"] = {}
+        data["delivery"] = {
+            "items": ["informational-summary.md"],
+            "receipt_policy": {"required": False},
+            "transport": "none",
+        }
+        contract = contract_from_dict(data)
+        root, _, state, events = self.authority(contract)
+        report = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertTrue(report.can_complete, report.issues)
+        self.assertEqual(report.delivery_status, "not_required")
+
+    def write_final_receipt(
+        self,
+        root,
+        state,
+        events,
+        *,
+        archive="external-artifact.zip",
+        digest="d" * 64,
+    ):
         receipt_path = root / "out/final-artifacts-delivery-receipt.json"
-        receipt_path.parent.mkdir(parents=True)
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
         receipt = {
-            "archive": "external-artifact.zip",
+            "archive": archive,
             "contract_revision": state.contract_revision,
             "contract_sha256": state.contract_sha256,
             "goal_id": state.goal_id,
-            "hash": "d" * 64,
+            "hash": digest,
             "kind": "final-artifacts",
             "message_id": "msg-1",
             "ok": True,
@@ -159,16 +213,115 @@ class AuditEngineTest(unittest.TestCase):
             encoding="utf-8",
             newline="\n",
         )
-        valid = audit_contract(
+        return receipt_path, receipt
+
+    def write_review_receipt(self, root, state, sent_at):
+        declared = sorted(
+            [
+                "THINKING.md",
+                "LOOP_DESIGN.md",
+                "ROADMAP.md",
+                "LAUNCH_GOAL.md",
+            ]
+        )
+        for name in declared:
+            (root / name).write_text(name + "\n", encoding="utf-8", newline="\n")
+        hashes = {
+            name: hashlib.sha256((name + "\n").encode("utf-8")).hexdigest()
+            for name in declared
+        }
+        receipt = {
+            "contract_revision": state.contract_revision,
+            "contract_sha256": state.contract_sha256,
+            "files": declared,
+            "goal_id": state.goal_id,
+            "hashes": hashes,
+            "kind": "review-md-files",
+            "message_ids": [f"msg-{index}" for index, _ in enumerate(declared, 1)],
+            "ok": True,
+            "pack_version": "review_pack_v2",
+            "sent": True,
+            "sent_at": sent_at,
+            "target": "current-thread",
+        }
+        receipt_path = root / "out/review-md-files-delivery-receipt.json"
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(
+            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        return receipt_path, receipt
+
+    def test_shaped_final_receipt_fails_closed_without_archive_authority(self):
+        contract = self.contract(final_delivery=True)
+        root, _, state, events = self.authority(contract)
+        archive = root / "out/arbitrary.zip"
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        archive.write_bytes(b"not the declared result")
+        self.write_final_receipt(
+            root,
+            state,
+            events,
+            archive="out/arbitrary.zip",
+            digest="d" * 64,
+        )
+        report = audit_contract(
             contract,
             self.evidence(contract, state, events),
             state=state,
             events=events,
             package_root=root,
         )
-        self.assertTrue(valid.can_complete, valid.issues)
-        self.assertEqual(valid.delivery_status, "verified")
+        self.assertFalse(report.can_complete)
+        self.assertEqual(report.delivery_status, "invalid")
+        self.assertTrue(
+            any("archive authority" in issue.message for issue in report.issues),
+            report.issues,
+        )
 
+    def test_final_receipt_cannot_name_a_nonexistent_archive(self):
+        contract = self.contract(final_delivery=True)
+        root, _, state, events = self.authority(contract)
+        self.write_final_receipt(root, state, events, archive="missing.zip")
+        report = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertFalse(report.can_complete)
+        self.assertEqual(report.delivery_status, "invalid")
+
+    def test_final_receipt_cannot_claim_an_archive_content_subset(self):
+        contract = self.contract(final_delivery=True)
+        root, _, state, events = self.authority(contract)
+        archive = root / "out/subset.zip"
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(archive, "w") as zipped:
+            zipped.writestr("THINKING.md", "only one declared item\n")
+        self.write_final_receipt(
+            root,
+            state,
+            events,
+            archive="out/subset.zip",
+            digest=hashlib.sha256(archive.read_bytes()).hexdigest(),
+        )
+        report = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertFalse(report.can_complete)
+        self.assertEqual(report.delivery_status, "invalid")
+
+    def test_final_receipt_remains_contract_identity_bound(self):
+        contract = self.contract(final_delivery=True)
+        root, _, state, events = self.authority(contract)
+        receipt_path, receipt = self.write_final_receipt(root, state, events)
         receipt["goal_id"] = "wrong-goal"
         receipt_path.write_text(
             json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -184,6 +337,62 @@ class AuditEngineTest(unittest.TestCase):
         )
         self.assertFalse(forged.can_complete)
         self.assertEqual(forged.delivery_status, "invalid")
+
+    def test_review_receipt_sent_at_uses_deterministic_audit_freshness(self):
+        contract = self.contract(review_delivery=True)
+        root, _, state, events = self.authority(contract)
+        anchor = datetime.strptime(
+            events[-1]["timestamp"], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=timezone.utc)
+
+        inclusive = (anchor - timedelta(seconds=86400)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        self.write_review_receipt(root, state, inclusive)
+        fresh = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertTrue(fresh.can_complete, fresh.issues)
+
+        stale = (anchor - timedelta(seconds=86401)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        self.write_review_receipt(root, state, stale)
+        expired = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertFalse(expired.can_complete)
+        self.assertEqual(expired.delivery_status, "invalid")
+
+    def test_review_receipt_requires_canonical_full_file_order(self):
+        contract = self.contract(review_delivery=True)
+        root, _, state, events = self.authority(contract)
+        receipt_path, receipt = self.write_review_receipt(
+            root, state, events[-1]["timestamp"]
+        )
+        receipt["files"] = list(reversed(receipt["files"]))
+        receipt_path.write_text(
+            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        report = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertFalse(report.can_complete)
+        self.assertEqual(report.delivery_status, "invalid")
 
     def test_review_delivery_rejects_receipt_for_only_existing_subset(self):
         contract = self.contract(review_delivery=True)

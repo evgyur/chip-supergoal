@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 from datetime import datetime, timezone
@@ -122,10 +123,107 @@ def now_rfc3339_z_seconds() -> str:
     )
 
 
+def _validate_strict_json_value(value: object) -> None:
+    if value is None or isinstance(value, str) or type(value) is bool:
+        return
+    if type(value) is int:
+        return
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise ValueError("non-finite JSON numbers are forbidden")
+        return
+    if isinstance(value, list):
+        for item in value:
+            _validate_strict_json_value(item)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("JSON object keys must be strings")
+            _validate_strict_json_value(item)
+        return
+    raise ValueError(f"unsupported JSON value type: {type(value).__name__}")
+
+
+def canonical_json_value_bytes(value: object) -> bytes:
+    """Serialize a value with exact JSON type identity and finite numbers."""
+
+    _validate_strict_json_value(value)
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def strict_json_loads(data: str | bytes | bytearray) -> Any:
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON constant is forbidden: {value}")
+
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON object key: {key}")
+            result[key] = value
+        return result
+
+    value = json.loads(
+        data,
+        parse_constant=reject_constant,
+        object_pairs_hook=reject_duplicate_keys,
+    )
+    _validate_strict_json_value(value)
+    return value
+
+
+def canonical_genesis_phase_id(
+    phase_ids: set[str] | None,
+    phase_dependencies: dict[str, set[str]] | None,
+    phase_ordinals: dict[str, int] | None,
+) -> str | None:
+    """Return the contract's deterministic dependency-ready genesis phase."""
+
+    if phase_ids is None or phase_dependencies is None or phase_ordinals is None:
+        return None
+    ready = [
+        phase_id
+        for phase_id in phase_ids
+        if not phase_dependencies.get(phase_id, set())
+        and phase_id in phase_ordinals
+    ]
+    if not ready:
+        return None
+    return min(ready, key=lambda phase_id: (phase_ordinals[phase_id], phase_id))
+
+
+def _transitive_dependent_phases(
+    phase_id: str,
+    phase_dependencies: dict[str, set[str]] | None,
+) -> set[str]:
+    invalidated = {phase_id}
+    dependencies = phase_dependencies or {}
+    changed = True
+    while changed:
+        changed = False
+        for candidate, required in dependencies.items():
+            if candidate not in invalidated and required & invalidated:
+                invalidated.add(candidate)
+                changed = True
+    return invalidated
+
+
 def canonical_event_payload(event: dict[str, Any]) -> bytes:
     payload = {key: value for key, value in event.items() if key != "event_sha256"}
+    _validate_strict_json_value(payload)
     return json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
 
 
@@ -134,20 +232,30 @@ def event_hash(event: dict[str, Any]) -> str:
 
 
 def canonical_event_line(event: dict[str, Any]) -> bytes:
+    _validate_strict_json_value(event)
     return (
         json.dumps(
             event,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
+            allow_nan=False,
         ).encode("utf-8")
         + b"\n"
     )
 
 
 def canonical_state_bytes(state: dict[str, Any]) -> bytes:
+    _validate_strict_json_value(state)
     return (
-        json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        json.dumps(
+            state,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        + "\n"
     ).encode("utf-8")
 
 
@@ -175,8 +283,8 @@ def read_events(
     events: list[dict[str, Any]] = []
     for raw_line in raw_lines:
         try:
-            event = json.loads(raw_line.decode("utf-8"))
-        except (UnicodeError, json.JSONDecodeError) as exc:
+            event = strict_json_loads(raw_line.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("event journal contains malformed JSON") from exc
         if not isinstance(event, dict) or canonical_event_line(event) != raw_line + b"\n":
             raise ValueError("event journal line is not canonical JSON")
@@ -191,6 +299,10 @@ def _basic_state_errors(state: object, label: str) -> list[str]:
     if set(state) != STATE_FIELDS:
         errors.append(f"{label} target state fields mismatch")
         return errors
+    try:
+        canonical_json_value_bytes(state)
+    except (TypeError, ValueError):
+        errors.append(f"{label} target state is not strict JSON")
     if state.get("schema_version") != "3.0":
         errors.append(f"{label} state schema mismatch")
     if not isinstance(state.get("goal_id"), str) or not state["goal_id"]:
@@ -233,6 +345,7 @@ def verify_event_chain(
     contract_revision: int | None = None,
     phase_ids: set[str] | None = None,
     phase_dependencies: dict[str, set[str]] | None = None,
+    phase_ordinals: dict[str, int] | None = None,
 ) -> list[str]:
     """Validate hashes and all journal semantics through one fail-closed path."""
 
@@ -242,6 +355,9 @@ def verify_event_chain(
     previous_state: dict[str, Any] | None = None
     completed_phases: set[str] = set()
     genesis_identity: tuple[object, object, object] | None = None
+    canonical_genesis = canonical_genesis_phase_id(
+        phase_ids, phase_dependencies, phase_ordinals
+    )
 
     for index, event in enumerate(events, 1):
         label = f"event {index}"
@@ -255,7 +371,12 @@ def verify_event_chain(
             errors.append(f"{label} id is not sequential")
         if event.get("prev_event_sha256") != previous_hash:
             errors.append(f"{label} prev hash mismatch")
-        if event.get("event_sha256") != event_hash(event):
+        try:
+            expected_event_hash = event_hash(event)
+        except (TypeError, ValueError):
+            expected_event_hash = None
+            errors.append(f"{label} event is not strict JSON")
+        if event.get("event_sha256") != expected_event_hash:
             errors.append(f"{label} hash mismatch")
         if not isinstance(event.get("event_sha256"), str) or not _SHA256.fullmatch(
             event["event_sha256"]
@@ -292,7 +413,11 @@ def verify_event_chain(
         }
         if any(event.get(key) != value for key, value in expected_identity.items()):
             errors.append(f"{label} target state identity mismatch")
-        if event.get("state_sha256") != _state_hash(state):
+        try:
+            expected_state_hash = _state_hash(state)
+        except (TypeError, ValueError):
+            expected_state_hash = None
+        if event.get("state_sha256") != expected_state_hash:
             errors.append(f"{label} target state hash mismatch")
         if not isinstance(event.get("state_sha256"), str) or not _SHA256.fullmatch(
             event["state_sha256"]
@@ -331,10 +456,32 @@ def verify_event_chain(
                 errors.append("event 1 genesis attempt must be 0")
             if state.get("audit_round") != 0:
                 errors.append("event 1 genesis audit round must be 0")
+            if phase_ordinals is not None and canonical_genesis is None:
+                errors.append("event 1 contract has no canonical genesis phase")
+            elif canonical_genesis is not None and phase != canonical_genesis:
+                errors.append(
+                    f"event 1 canonical genesis phase must be {canonical_genesis}"
+                )
         elif previous_state is not None:
             expected_revision = previous_state.get("state_revision", 0) + 1
             if state.get("state_revision") != expected_revision:
                 errors.append(f"{label} state revision must advance by exactly one")
+            previous_semantic = {
+                key: value
+                for key, value in previous_state.items()
+                if key != "state_revision"
+            }
+            current_semantic = {
+                key: value for key, value in state.items() if key != "state_revision"
+            }
+            try:
+                semantic_noop = canonical_json_value_bytes(
+                    current_semantic
+                ) == canonical_json_value_bytes(previous_semantic)
+            except (TypeError, ValueError):
+                semantic_noop = False
+            if semantic_noop:
+                errors.append(f"{label} state_update is a semantic no-op")
             old_lifecycle = previous_state.get("lifecycle")
             new_lifecycle = state.get("lifecycle")
             if old_lifecycle in TERMINAL_LIFECYCLES:
@@ -363,6 +510,20 @@ def verify_event_chain(
             old_phase = previous_state.get("current_phase_id")
             old_status = previous_state.get("phase_status")
             new_status = state.get("phase_status")
+            audit_remediation = (
+                old_lifecycle == "AUDITING"
+                and new_lifecycle == "RUNNING"
+                and phase in completed_phases
+                and new_status in {"EXECUTING", "VERIFYING"}
+            )
+            if (
+                old_lifecycle == "AUDITING"
+                and new_lifecycle == "RUNNING"
+                and not audit_remediation
+            ):
+                errors.append(
+                    f"{label} audit remediation must reopen a completed phase"
+                )
             if new_status == "COMPLETE" and new_lifecycle not in {
                 "RUNNING",
                 "AUDITING",
@@ -392,12 +553,6 @@ def verify_event_chain(
                 ):
                     errors.append(f"{label} phase status edge is illegal")
             if old_phase != phase:
-                audit_remediation = (
-                    old_lifecycle == "AUDITING"
-                    and new_lifecycle == "RUNNING"
-                    and phase in completed_phases
-                    and new_status in {"EXECUTING", "VERIFYING"}
-                )
                 if not audit_remediation and (
                     old_lifecycle != "RUNNING" or new_lifecycle != "RUNNING"
                 ):
@@ -410,6 +565,8 @@ def verify_event_chain(
                     "EXECUTING",
                 }:
                     errors.append(f"{label} advanced phase status is invalid")
+                if not audit_remediation and phase in completed_phases:
+                    errors.append(f"{label} advanced phase is already complete")
                 dependencies = (phase_dependencies or {}).get(str(phase), set())
                 if not audit_remediation and not dependencies.issubset(
                     completed_phases
@@ -422,6 +579,10 @@ def verify_event_chain(
                     errors.append(
                         f"{label} all declared phases must be complete before AUDITING"
                     )
+            if audit_remediation and isinstance(phase, str):
+                completed_phases.difference_update(
+                    _transitive_dependent_phases(phase, phase_dependencies)
+                )
 
         if state.get("phase_status") == "COMPLETE" and isinstance(phase, str):
             completed_phases.add(phase)
@@ -454,6 +615,7 @@ def append_event(
     timestamp: str | None = None,
     phase_ids: set[str] | None = None,
     phase_dependencies: dict[str, set[str]] | None = None,
+    phase_ordinals: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     event_path = Path(path)
     event_path.parent.mkdir(parents=True, exist_ok=True)
@@ -463,6 +625,7 @@ def append_event(
             events,
             phase_ids=phase_ids,
             phase_dependencies=phase_dependencies,
+            phase_ordinals=phase_ordinals,
         )
     previous = events[-1]["event_sha256"] if events else None
     target_state = dict(state)
@@ -486,6 +649,7 @@ def append_event(
         [*events, event],
         phase_ids=phase_ids,
         phase_dependencies=phase_dependencies,
+        phase_ordinals=phase_ordinals,
     )
     line = canonical_event_line(event)
     if not events:

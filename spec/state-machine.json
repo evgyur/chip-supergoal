@@ -2,9 +2,11 @@
   "audit_entry_requires_all_phases_complete": true,
   "audit_remediation": {
     "from": "AUDITING",
+    "invalidates": "reopened_phase_and_all_transitive_dependents",
     "reopen_statuses": ["EXECUTING", "VERIFYING"],
     "target": "any_completed_phase",
-    "to": "RUNNING"
+    "to": "RUNNING",
+    "verification": "all_invalidated_phases_must_be_recompleted_before_audit_reentry"
   },
   "auditing_done_invariant": {
     "blocker": null,
@@ -92,7 +94,12 @@
   "genesis": {
     "event_type": "state_initialized",
     "lifecycle": "COMPILED",
+    "phase": "lowest_ordinal_dependency_ready_contract_phase",
     "state_revision": 1
+  },
+  "phase_advance": {
+    "lifecycle": "RUNNING",
+    "target": "not_yet_completed_dependency_ready_phase"
   },
   "phase_statuses": [
     "PENDING",
@@ -108,6 +115,7 @@
     "terminal_freeze": ["AUDITING", "DONE"]
   },
   "same_lifecycle_event_type": "state_update",
+  "semantic_noop_updates_allowed": false,
   "terminal_lifecycles": [
     "DONE",
     "HANDOFF"

@@ -98,10 +98,13 @@ all RPD focus values.
 
 `SUPERGOAL_PHASE_START`, `SUPERGOAL_STATUS`, `SUPERGOAL_PHASE_VERIFY`,
 `RPD_PHASE_REVIEW`, and `SUPERGOAL_PHASE_DONE` are transcript compatibility
-markers. They do not replace evidence records or state transitions. Do not stop
-at numbered phase boundaries while a dependency-ready phase remains and no
-contract-declared boundary blocks progress. Weak blockers are forbidden: a
-blocker must point to the exact contract record that makes it blocking.
+markers. They do not replace evidence records or state transitions.
+Do not stop at numbered phase boundaries while a dependency-ready phase remains
+and no contract-declared boundary blocks progress. Weak blockers are forbidden:
+a blocker must point to the exact contract record that makes it blocking.
+Inside `RUNNING`, phase advancement may select only a dependency-ready phase
+that is not already complete; completed phases reopen only through explicit
+audit remediation.
 
 When the host forces a cutoff before authoritative completion, the compatible
 yield footer is:
@@ -149,7 +152,9 @@ pre-terminal external archive, but the archive does not create terminal
 authority. `AUDITING` and `DONE` keep the active phase `COMPLETE` and unblocked.
 When an audit finds a repairable gap, `AUDITING -> RUNNING` may reopen any
 previously completed phase as `EXECUTING` or `VERIFYING`; the next audit entry
-starts a new audit round.
+starts a new audit round. Reopening invalidates completion of that phase and
+every transitively dependent phase, all of which must be completed again before
+audit re-entry.
 The audit and terminal record also bind to the current sealed package inventory;
 missing manifests, generated drift, symlinks, junctions, or hash mismatches
 invalidate completion.

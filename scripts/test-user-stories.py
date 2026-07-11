@@ -25,7 +25,7 @@ def only_launch_template_has_body():
             except UnicodeDecodeError: continue
             for i,line in enumerate(s.splitlines(),1):
                 if line.startswith('SUPERGOAL_GOAL_BODY:'):
-                    hits.append(str(p.relative_to(ROOT)))
+                    hits.append(p.relative_to(ROOT).as_posix())
     return hits == ['templates/LAUNCH_GOAL.md']
 def validate_phase_script_has(strict_words):
     s=text('scripts/validate-phase.sh')
@@ -61,12 +61,12 @@ CHECKS = {
 'SG-015': lambda: ref_has('references/research-and-architecture-gates.md','RESEARCH.md') and exists('templates/RESEARCH.md'),
 'SG-016': lambda: ref_has('references/architect-plus-lite.md','Architect+ lite') and exists('references/architecture-decision-supergoal.md'),
 'SG-017': lambda: contains('SKILL.md','as many phases as the task requires') and ref_has('references/phase-design.md','phase'),
-'SG-018': lambda: contains('templates/STATE.md','Current phase','Engineering check status','Live status snapshot','Delivery state'),
+'SG-018': lambda: contains('templates/STATE.md','runtime/STATE.json','authority','generated human-readable projection') and contains('lib/chip_supergoal/state.py','Current phase:','State revision:','Phase status:','Attempt:','Audit round:','Blocker:'),
 'SG-019': lambda: protocol_has('SUPERGOAL_PHASE_START','SUPERGOAL_STATUS','SUPERGOAL_PHASE_VERIFY','AUDIT_START','BLOCKED_BY_APPROVAL','SUPERGOAL_RUN_COMPLETE'),
-'SG-020': lambda: protocol_has('do not stop at numbered phase boundaries','Weak blockers are forbidden','SUPERGOAL_TURN_YIELD'),
-'SG-021': lambda: protocol_has('Continuation over status-only') and ref_has('references/standing-goal-continuation-completion.md','not a request for another status summary'),
+'SG-020': lambda: protocol_has('Do not stop','at numbered phase boundaries','Weak blockers are forbidden','SUPERGOAL_TURN_YIELD'),
+'SG-021': lambda: protocol_has('Select the current phase from `runtime/STATE.json`','execute the work items and commands exactly') and ref_has('references/standing-goal-continuation-completion.md','not a request for another status summary'),
 'SG-022': lambda: ref_has('references/repeated-complete-continuations.md','stop the loop') and exists('references/repeated-completed-wrapper-guard.md'),
-'SG-023': lambda: protocol_has('BLOCKED_BY_APPROVAL','READY_FOR_DELETE_APPROVAL'),
+'SG-023': lambda: protocol_has('BLOCKED_BY_APPROVAL','exact class and scope match the current action') and ref_has('references/execution-state-machine.md','READY_FOR_DELETE_APPROVAL'),
 'SG-024': lambda: protocol_has('FAILURE_PROBE','FAILURE_ESCALATE','FAILURE_HANDOFF'),
 'SG-025': lambda: contains('SKILL.md','Preflight smoke','PREFLIGHT_GREEN','PREFLIGHT_RED'),
 'SG-026': lambda: script_has('scripts/repo-state.sh','name_status_for_path','git diff --name-status') and exists('references/repo-state-comparison.md'),
@@ -83,7 +83,7 @@ CHECKS = {
 'SG-037': lambda: all(exists(p) for p in ['references/production-safety.md','references/production-deploy-gates.md','references/process-integrity-production-runs.md']),
 'SG-038': lambda: all(exists(p) for p in ['references/gateway-restart-live-proof.md','references/gateway-restart-proof-and-bogus-goal.md','references/gateway-goal-startup-recovery.md']),
 'SG-039': lambda: exists('references/goal-identity-and-audit-lookup.md') and exists('references/standing-goal-disambiguation-and-audit-lookup.md'),
-'SG-040': lambda: exists('references/supergoal-status-snapshots.md') and contains('templates/STATE.md','Live status snapshot') and protocol_has('SUPERGOAL_STATUS'),
+'SG-040': lambda: ref_has('references/supergoal-status-snapshots.md','Live status snapshot') and protocol_has('SUPERGOAL_STATUS','do not replace evidence records or state transitions'),
 'SG-041': lambda: script_has('scripts/probe-dev-history-contracts.py','Dev-history') or exists('scripts/probe-dev-history-contracts.py'),
 'SG-042': lambda: exists('scripts/probe-upstream-goal-compat.py') and exists('references/upstream-goal-compatibility.md'),
 'SG-043': lambda: script_has('scripts/detect-env.sh','gh auth status'),

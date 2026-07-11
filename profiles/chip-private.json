@@ -7,6 +7,9 @@
       "LAUNCH_GOAL.md",
       "RESEARCH.md"
     ],
+    "receipt_policy": {
+      "required": true
+    },
     "review_pack_required": true,
     "target": "current-thread",
     "transport": "telegram"

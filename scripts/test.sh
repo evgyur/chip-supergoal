@@ -489,7 +489,7 @@ bash scripts/validate-phase.sh "$template_filled" >/dev/null
 pass "phase template validates after fill"
 
 grep -q 'SUPERGOAL_TURN_YIELD' templates/PROTOCOL.md || fail "protocol missing forced-yield marker"
-grep -q 'do not stop at numbered phase boundaries' templates/PROTOCOL.md || fail "protocol missing continuous-execution rule"
+grep -qi 'do not stop at numbered phase boundaries' templates/PROTOCOL.md || fail "protocol missing continuous-execution rule"
 grep -q 'Weak blockers are forbidden' templates/PROTOCOL.md || fail "protocol missing weak-blocker guard"
 if grep -q 'run at most one numbered phase per assistant turn' templates/PROTOCOL.md; then
   fail "protocol still contains obsolete one-phase-per-turn rule"

@@ -2,6 +2,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
@@ -43,6 +44,7 @@ class AuditBoundaryRegressionTest(unittest.TestCase):
         root = Path(temporary.name)
         digest = hashlib.sha256(canonical_json(contract).encode("utf-8")).hexdigest()
         store = StateStore(root)
+        phases = sorted(contract.phases, key=lambda phase: (phase.ordinal, phase.id))
         store.initialize(
             State(
                 goal_id=contract.goal.id,
@@ -50,7 +52,7 @@ class AuditBoundaryRegressionTest(unittest.TestCase):
                 contract_revision=contract.contract_revision,
                 state_revision=1,
                 lifecycle="COMPILED",
-                current_phase_id="P01",
+                current_phase_id=phases[0].id,
                 phase_status="PENDING",
             )
         )
@@ -67,14 +69,41 @@ class AuditBoundaryRegressionTest(unittest.TestCase):
                 phase_status="EXECUTING" if lifecycle == "RUNNING" else None,
             )
             revision = state.state_revision
-        state = store.update(expected_revision=revision, phase_status="COMPLETE")
-        revision = state.state_revision
+        for index, phase in enumerate(phases):
+            if index:
+                state = store.update(
+                    expected_revision=revision,
+                    phase_id=phase.id,
+                    phase_status="EXECUTING",
+                )
+                revision = state.state_revision
+            state = store.update(expected_revision=revision, phase_status="COMPLETE")
+            revision = state.state_revision
         state = store.transition("AUDITING", expected_revision=revision)
         events = read_events(store.events)
         anchor = datetime.strptime(
             events[-1]["timestamp"], "%Y-%m-%dT%H:%M:%SZ"
         ).replace(tzinfo=timezone.utc)
         return state, events, anchor
+
+    def approval_record(self, state, anchor, *, evidence_id, phase_id, approval_ids):
+        return EvidenceRecord(
+            evidence_id=evidence_id,
+            goal_id=state.goal_id,
+            contract_sha256=state.contract_sha256,
+            contract_revision=state.contract_revision,
+            phase_id=phase_id,
+            criterion_id="__phase__",
+            type="approval_manifest",
+            producer="approval-gate",
+            captured_at=_stamp(anchor),
+            fresh_until="audit_end",
+            replayable=False,
+            result="pass",
+            redaction="passed",
+            artifact_sha256="e" * 64,
+            metadata={"approval_ids": approval_ids},
+        )
 
     def evidence(
         self,
@@ -384,6 +413,108 @@ class AuditBoundaryRegressionTest(unittest.TestCase):
         )
         report = self.audit(contract, state, events, [approval])
         self.assertTrue(report.can_complete, report.issues)
+
+    def test_approval_manifest_binds_every_id_to_its_declared_phase_and_full_set(self):
+        data = json.loads(
+            (ROOT / "examples/brownfield-feature/CONTRACT.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        data["risks"] = []
+        first = data["phases"][0]
+        first["criteria"] = []
+        first["commands"] = []
+        first["deliverables"] = []
+        first["risk_tags"] = []
+        first["rpd"] = {"required": False, "focus": []}
+        second = deepcopy(first)
+        second["id"] = "P02"
+        second["ordinal"] = 2
+        second["depends_on"] = ["P01"]
+        data["phases"].append(second)
+        data["approvals"] = [
+            {
+                "class_name": "release",
+                "id": "APP-P1",
+                "required": True,
+                "scope": "P01",
+            },
+            {
+                "class_name": "release",
+                "id": "APP-P2",
+                "required": True,
+                "scope": "P02",
+            },
+        ]
+        contract = contract_from_dict(data)
+        state, events, anchor = self.auditing_journal(contract)
+        p1 = self.approval_record(
+            state,
+            anchor,
+            evidence_id="EVD-APP-P1",
+            phase_id="P01",
+            approval_ids=["APP-P1"],
+        )
+        cross_phase_with_undeclared = self.approval_record(
+            state,
+            anchor,
+            evidence_id="EVD-APP-FORGED",
+            phase_id="P01",
+            approval_ids=["APP-P2", "UNDECLARED"],
+        )
+        forged = self.audit(
+            contract, state, events, [p1, cross_phase_with_undeclared]
+        )
+        self.assertFalse(forged.can_complete)
+        self.assertTrue(
+            any(
+                "approval" in issue.message
+                and ("undeclared" in issue.message or "scope" in issue.message)
+                for issue in forged.issues
+            ),
+            forged.issues,
+        )
+
+        p2 = self.approval_record(
+            state,
+            anchor,
+            evidence_id="EVD-APP-P2",
+            phase_id="P02",
+            approval_ids=["APP-P2"],
+        )
+        partial = self.audit(contract, state, events, [p2])
+        self.assertFalse(partial.can_complete)
+        accepted = self.audit(contract, state, events, [p1, p2])
+        self.assertTrue(accepted.can_complete, accepted.issues)
+
+    def test_policy_and_rpd_metadata_reject_invented_labels(self):
+        contract = self.contract(policy=True)
+        state, events, anchor = self.auditing_journal(contract)
+        policy = json.loads((ROOT / "spec/risk-policy.json").read_text(encoding="utf-8"))
+        forged = self.evidence(
+            contract,
+            state,
+            anchor,
+            metadata={
+                "policy_evidence": [
+                    "negative_authorization_fixture",
+                    "invented-policy-label",
+                ],
+                "rpd_focus": ["security", "integration", "invented-focus"],
+            },
+        )
+        report = self.audit(
+            contract,
+            state,
+            events,
+            [forged],
+            policy=policy,
+        )
+        self.assertFalse(report.can_complete)
+        self.assertTrue(
+            any("undeclared" in issue.message for issue in report.issues),
+            report.issues,
+        )
 
     def test_policy_and_rpd_evidence_are_derived_from_metadata(self):
         contract = self.contract(policy=True)

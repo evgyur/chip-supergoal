@@ -89,6 +89,12 @@ class CompileFailClosedTest(unittest.TestCase):
         data = self.fixture()
         private_locator = "C:/private/operator-notes.txt"
         data["profile"] = "public-clean"
+        data["delivery"] = {
+            "items": ["informational-summary.md"],
+            "receipt_policy": {"required": True},
+            "target": "private-thread",
+            "transport": "telegram",
+        }
         data["source_set"] = [
             {
                 "id": "SRC-001",
@@ -110,6 +116,45 @@ class CompileFailClosedTest(unittest.TestCase):
             emitted = (output / "CONTRACT.json").read_text(encoding="utf-8")
             self.assertNotIn(private_locator, emitted)
             self.assertIn("[redacted]", emitted)
+            emitted_contract = json.loads(emitted)
+            self.assertEqual(
+                emitted_contract["delivery"]["items"],
+                ["informational-summary.md"],
+            )
+            self.assertEqual(emitted_contract["delivery"]["transport"], "none")
+            self.assertFalse(
+                emitted_contract["delivery"]["receipt_policy"]["required"]
+            )
+            self.assertNotIn("target", emitted_contract["delivery"])
+
+    def test_required_receipt_policy_rejects_disabled_transport_or_missing_target(self):
+        disabled = self.fixture()
+        disabled["profile"] = "base"
+        disabled["delivery"] = {
+            "items": ["artifact.zip"],
+            "receipt_policy": {"required": True},
+            "transport": "none",
+        }
+        missing_target = self.fixture()
+        missing_target["profile"] = "base"
+        missing_target["delivery"] = {
+            "items": ["artifact.zip"],
+            "receipt_policy": {"required": True},
+            "transport": "telegram",
+        }
+        for label, data in (
+            ("disabled transport", disabled),
+            ("missing target", missing_target),
+        ):
+            with self.subTest(label=label):
+                result = validate_contract_source(
+                    json.dumps(data).encode("utf-8"), resource_root=ROOT
+                )
+                self.assertFalse(result.ok)
+                self.assertIn(
+                    "SGV-CONTRACT-SEMANTIC",
+                    {diagnostic.code for diagnostic in result.diagnostics},
+                )
 
     def test_validate_and_compile_have_diagnostic_parity_for_every_gate(self):
         cases = {}

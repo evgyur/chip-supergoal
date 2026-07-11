@@ -157,6 +157,73 @@ class JournalAuthorityRegressionTest(unittest.TestCase):
             self.assertEqual(updated.attempt, 1)
             self.assertEqual(read_events(store.events)[-1]["event_type"], "state_update")
 
+    def test_json_type_change_is_not_misclassified_as_semantic_noop(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = StateStore(td)
+            store.initialize(
+                State(
+                    goal_id="sg-20260625-state-test",
+                    contract_sha256=DIGEST,
+                    contract_revision=1,
+                    state_revision=1,
+                    lifecycle="COMPILED",
+                    current_phase_id="P01",
+                    phase_status="PENDING",
+                )
+            )
+            revision = 1
+            for lifecycle in (
+                "PLAN_REVIEWED",
+                "PREFLIGHT_GREEN",
+                "READY_TO_DISPATCH",
+                "RUNNING",
+            ):
+                state = store.transition(
+                    lifecycle,
+                    expected_revision=revision,
+                    phase_status="EXECUTING" if lifecycle == "RUNNING" else None,
+                )
+                revision = state.state_revision
+            numbered = store.update(
+                expected_revision=revision,
+                blocker={"retryable": 1},
+            )
+            boolean = store.update(
+                expected_revision=numbered.state_revision,
+                blocker={"retryable": True},
+            )
+            self.assertIs(boolean.blocker["retryable"], True)
+            self.assertEqual(verify_event_chain(read_events(store.events)), [])
+
+    def test_nonfinite_blocker_is_rejected_without_committing_journal(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = StateStore(td)
+            store.initialize(
+                State(
+                    goal_id="sg-20260625-state-test",
+                    contract_sha256=DIGEST,
+                    contract_revision=1,
+                    state_revision=1,
+                    lifecycle="COMPILED",
+                    current_phase_id="P01",
+                    phase_status="PENDING",
+                )
+            )
+            before_events = store.events.read_bytes()
+            before_state = store.state_json.read_bytes()
+            for label, value in (
+                ("NaN", float("nan")),
+                ("positive infinity", float("inf")),
+                ("negative infinity", float("-inf")),
+            ):
+                with self.subTest(label=label), self.assertRaises(ValueError):
+                    store.update(
+                        expected_revision=1,
+                        blocker={"value": value},
+                    )
+                self.assertEqual(store.events.read_bytes(), before_events)
+                self.assertEqual(store.state_json.read_bytes(), before_state)
+
 
 class EvidenceAuditAuthorityRegressionTest(unittest.TestCase):
     def contract(self):

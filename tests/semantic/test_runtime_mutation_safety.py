@@ -15,9 +15,20 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 from chip_supergoal.audit import audit_package
 from chip_supergoal.compile import compile_contract_file
-from chip_supergoal.evidence import EvidenceRecord, EvidenceStore, read_evidence
-from chip_supergoal.events import append_event, read_events
-from chip_supergoal.state import StateStore, read_state, render_state_md, write_state_atomic
+from chip_supergoal.evidence import (
+    EvidenceRecord,
+    EvidenceStore,
+    evidence_json_bytes,
+    read_evidence,
+)
+from chip_supergoal.events import (
+    append_event,
+    canonical_state_bytes,
+    event_hash,
+    read_events,
+    verify_event_chain,
+)
+from chip_supergoal.state import State, StateStore, read_state, render_state_md, write_state_atomic
 from chip_supergoal.terminal import finalize_package, validate_terminal_package
 from chip_supergoal.validate import validate_package
 
@@ -256,6 +267,12 @@ class RuntimeMutationSafetyTest(unittest.TestCase):
             expected_revision=phase_two.state_revision,
             phase_status="COMPLETE",
         )
+        with self.assertRaisesRegex(ValueError, "already complete|advance"):
+            store.update(
+                expected_revision=phase_two.state_revision,
+                phase_id="P01",
+                phase_status="EXECUTING",
+            )
         auditing = store.transition(
             "AUDITING", expected_revision=phase_two.state_revision
         )
@@ -267,6 +284,140 @@ class RuntimeMutationSafetyTest(unittest.TestCase):
         )
         self.assertEqual(reopened.current_phase_id, "P01")
         self.assertEqual(reopened.phase_status, "EXECUTING")
+        phase_one_redone = store.update(
+            expected_revision=reopened.state_revision,
+            phase_status="COMPLETE",
+        )
+        with self.assertRaisesRegex(ValueError, "all declared phases"):
+            store.transition(
+                "AUDITING", expected_revision=phase_one_redone.state_revision
+            )
+        phase_two_redone = store.update(
+            expected_revision=phase_one_redone.state_revision,
+            phase_id="P02",
+            phase_status="EXECUTING",
+        )
+        phase_two_redone = store.update(
+            expected_revision=phase_two_redone.state_revision,
+            phase_status="COMPLETE",
+        )
+        auditing_again = store.transition(
+            "AUDITING", expected_revision=phase_two_redone.state_revision
+        )
+        self.assertEqual(auditing_again.audit_round, 2)
+
+    def test_contract_bound_genesis_requires_lowest_ordinal_ready_phase(self):
+        root = self.package(two_phases=True)
+        initial = read_state(root / "runtime/STATE.json", root=root)
+        for path in (
+            root / "runtime/events.jsonl",
+            root / "runtime/STATE.json",
+            root / "STATE.md",
+        ):
+            path.unlink()
+        forged = State.from_dict(
+            {**initial.to_dict(), "current_phase_id": "P02"}
+        )
+        with self.assertRaisesRegex(ValueError, "GENESIS-INVALID"):
+            StateStore(root).initialize(forged)
+
+    def test_rehashed_noncanonical_genesis_and_noop_update_are_rejected(self):
+        root = self.package(two_phases=True)
+        genesis = deepcopy(read_events(root / "runtime/events.jsonl", root=root)[0])
+        genesis["phase_id"] = "P02"
+        genesis["state"]["current_phase_id"] = "P02"
+        genesis["state_sha256"] = hashlib.sha256(
+            canonical_state_bytes(genesis["state"])
+        ).hexdigest()
+        genesis["event_sha256"] = event_hash(genesis)
+        genesis_errors = verify_event_chain(
+            [genesis],
+            phase_ids={"P01", "P02"},
+            phase_dependencies={"P01": set(), "P02": {"P01"}},
+            phase_ordinals={"P01": 1, "P02": 2},
+        )
+        self.assertTrue(
+            any("canonical genesis" in error for error in genesis_errors),
+            genesis_errors,
+        )
+
+        running = self.progress(root)
+        events = read_events(root / "runtime/events.jsonl", root=root)
+        forged_update = deepcopy(events[-1])
+        forged_update["event_id"] = f"EVT-{len(events) + 1:06d}"
+        forged_update["prev_event_sha256"] = events[-1]["event_sha256"]
+        forged_update["state_revision"] += 1
+        forged_update["state"]["state_revision"] += 1
+        forged_update["event_type"] = "state_update"
+        forged_update["state_sha256"] = hashlib.sha256(
+            canonical_state_bytes(forged_update["state"])
+        ).hexdigest()
+        forged_update["event_sha256"] = event_hash(forged_update)
+        noop_errors = verify_event_chain([*events, forged_update])
+        self.assertTrue(
+            any("no-op" in error for error in noop_errors),
+            noop_errors,
+        )
+
+    def test_state_store_rejects_same_valued_semantic_noop(self):
+        root = self.package()
+        auditing = self.progress(root, auditing=True)
+        before = (root / "runtime/events.jsonl").read_bytes()
+        with self.assertRaisesRegex(ValueError, "ILLEGAL-UPDATE|NOOP"):
+            StateStore(root).update(
+                expected_revision=auditing.state_revision,
+                phase_id=auditing.current_phase_id,
+                phase_status=auditing.phase_status,
+                blocker=auditing.blocker,
+                attempt=auditing.attempt,
+            )
+        self.assertEqual((root / "runtime/events.jsonl").read_bytes(), before)
+
+    def test_validator_uses_strict_json_types_for_state_projection_identity(self):
+        root = self.package()
+        running = self.progress(root)
+        authoritative = StateStore(root).update(
+            expected_revision=running.state_revision,
+            blocker={"retryable": 1},
+        )
+        forged = State.from_dict(
+            {**authoritative.to_dict(), "blocker": {"retryable": True}}
+        )
+        (root / "runtime/STATE.json").write_bytes(
+            canonical_state_bytes(forged.to_dict())
+        )
+        (root / "STATE.md").write_text(
+            render_state_md(forged), encoding="utf-8", newline="\n"
+        )
+        diagnostics = validate_package(root)
+        self.assertTrue(
+            any(
+                item.code == "SGV-PACKAGE-STATE-RECOVERY-REQUIRED"
+                for item in diagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_package_validator_rejects_invented_policy_evidence_metadata(self):
+        root = self.package()
+        self.progress(root)
+        forged = EvidenceRecord.from_dict(
+            {
+                **self.record(root, "EVD-INVENTED-POLICY").to_dict(),
+                "metadata": {"policy_evidence": ["invented-policy-label"]},
+            }
+        )
+        (root / "runtime/evidence.json").write_bytes(
+            evidence_json_bytes([forged])
+        )
+        diagnostics = validate_package(root)
+        self.assertTrue(
+            any(
+                item.code == "SGV-PACKAGE-EVIDENCE-MALFORMED"
+                for item in diagnostics
+            ),
+            diagnostics,
+        )
 
     def test_terminal_freezes_mutations_and_concurrent_finalize_is_identical(self):
         root = self.package()

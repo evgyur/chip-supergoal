@@ -16,10 +16,16 @@ from chip_supergoal.validate import validate_contract_file, validate_loop_design
 from chip_supergoal.compile import CompileSafetyError, compile_contract_file
 from chip_supergoal.migrate import migrate_v2_package
 from chip_supergoal.diagnostics import ContractValidationError, diagnostics_to_json
+from chip_supergoal.delivery import (
+    check_review_delivery,
+    record_review_delivery,
+    require_final_delivery_authority,
+)
 from chip_supergoal.model import load_contract
 from chip_supergoal.research import research_report, validate_research_gate
 from chip_supergoal.audit import audit_json_bytes, audit_package
 from chip_supergoal.evidence import EvidenceRecord, record_evidence
+from chip_supergoal.events import strict_json_loads
 from chip_supergoal.state import State, StateStore, read_state, recover_from_events
 from chip_supergoal.terminal import finalize_package, validate_terminal_package
 
@@ -76,7 +82,12 @@ def _run_runtime(args) -> int:
         current = read_state(store.state_json, root=root)
         blocker = None
         if args.blocker_json is not None:
-            blocker = json.loads(args.blocker_json)
+            try:
+                blocker = strict_json_loads(args.blocker_json)
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise ValueError(
+                    "SGV-STATE-ILLEGAL-UPDATE: blocker must be strict JSON"
+                ) from exc
             if not isinstance(blocker, dict):
                 raise ValueError("SGV-STATE-ILLEGAL-UPDATE: blocker must be an object")
         if args.to is None or args.to == current.lifecycle:
@@ -109,13 +120,39 @@ def _run_runtime(args) -> int:
     if args.cmd == "record-evidence":
         raw = sys.stdin.buffer.read() if args.input == "-" else Path(args.input).read_bytes()
         try:
-            payload = json.loads(raw)
-        except (UnicodeError, json.JSONDecodeError) as exc:
+            payload = strict_json_loads(raw)
+        except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("SGV-EVIDENCE-MALFORMED: input is not JSON") from exc
         record = EvidenceRecord.from_dict(payload)
         record_evidence(root, record)
         _json_stdout(record.to_dict())
         return 0
+    if args.cmd == "delivery-review-check":
+        receipt = check_review_delivery(root, target=args.target)
+        if receipt is None:
+            _json_stdout({"status": "missing"})
+            return 10
+        _json_stdout(receipt)
+        return 0
+    if args.cmd == "delivery-review-record":
+        receipt = record_review_delivery(
+            root,
+            target=args.target,
+            message_ids=args.message_id,
+            force=args.force,
+        )
+        _json_stdout(receipt)
+        return 0
+    if args.cmd in {"delivery-final-check", "delivery-final-record"}:
+        require_final_delivery_authority(
+            root,
+            target=args.target,
+            archive=args.archive,
+        )
+        raise ValueError(
+            "SGV-DELIVERY-ARCHIVE-AUTHORITY-UNAVAILABLE: "
+            "Task 6 canonical result validation is not available"
+        )
     if args.cmd == "audit":
         sys.stdout.buffer.write(audit_json_bytes(audit_package(root)))
         return 0
@@ -160,12 +197,31 @@ def main(argv=None) -> int:
     p = sub.add_parser("record-evidence")
     p.add_argument("root", nargs="?", default=None)
     p.add_argument("--input", required=True)
+    p = sub.add_parser("delivery-review-check")
+    p.add_argument("root", nargs="?", default=None)
+    p.add_argument("--target", required=True)
+    p = sub.add_parser("delivery-review-record")
+    p.add_argument("root", nargs="?", default=None)
+    p.add_argument("--target", required=True)
+    p.add_argument("--message-id", action="append", default=[])
+    p.add_argument("--force", action="store_true")
+    for command in ("delivery-final-check", "delivery-final-record"):
+        p = sub.add_parser(command)
+        p.add_argument("root", nargs="?", default=None)
+        p.add_argument("--target", required=True)
+        p.add_argument("--archive", required=True)
+        if command == "delivery-final-record":
+            p.add_argument("--message-id", required=True)
     args = parser.parse_args(argv)
     if args.cmd in {
         "state-show",
         "state-transition",
         "state-recover",
         "record-evidence",
+        "delivery-review-check",
+        "delivery-review-record",
+        "delivery-final-check",
+        "delivery-final-record",
         "audit",
         "finalize",
         "validate-terminal",

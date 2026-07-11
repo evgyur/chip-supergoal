@@ -12,6 +12,7 @@ from typing import Any
 from .delivery import (
     REQUIRED_REVIEW_FILES,
     ReceiptValidationError,
+    delivery_receipt_required,
     read_receipt,
     validate_final_receipt,
     validate_review_receipt,
@@ -312,16 +313,45 @@ def _record_freshness_issue(
     return None
 
 
+def _receipt_freshness_issue(
+    sent_at: str, *, anchor: str, max_age: int
+) -> str | None:
+    anchor_time = parse_rfc3339_z_seconds(anchor)
+    sent = parse_rfc3339_z_seconds(sent_at)
+    if sent > anchor_time + timedelta(seconds=MAX_FUTURE_SKEW_SECONDS):
+        return "sent_at exceeds the 300-second future-skew allowance"
+    effective_sent = min(sent, anchor_time)
+    if (anchor_time - effective_sent).total_seconds() > max_age:
+        return f"sent_at exceeds the {max_age}-second maximum age"
+    return None
+
+
 def _delivery_status(
     contract: Contract,
     state: State,
     package_root: Path | None,
+    *,
+    audit_anchor: str,
+    default_max_age: int,
 ) -> tuple[str, list[AuditIssue]]:
     delivery = contract.delivery.data
+    try:
+        receipts_required = delivery_receipt_required(delivery)
+    except ReceiptValidationError as exc:
+        return "invalid", [
+            AuditIssue("AUDIT_CORRUPTION", f"delivery receipt policy is invalid: {exc}")
+        ]
+    if not receipts_required:
+        return "not_required", []
     review_required = delivery.get("review_pack_required") is True
     final_required = bool(delivery.get("items"))
     if not review_required and not final_required:
-        return "not_required", []
+        return "invalid", [
+            AuditIssue(
+                "AUDIT_CORRUPTION",
+                "required delivery receipt policy has no review pack or final items",
+            )
+        ]
     if package_root is None:
         return "missing", [
             AuditIssue("AUDIT_GAP", "required delivery cannot be verified without package artifacts")
@@ -362,6 +392,17 @@ def _delivery_status(
             validate_review_receipt(
                 receipt, state=state, target=target, hashes=hashes
             )
+            if receipt["files"] != files:
+                raise ReceiptValidationError(
+                    "receipt file order is not the canonical full set"
+                )
+            freshness = _receipt_freshness_issue(
+                receipt["sent_at"],
+                anchor=audit_anchor,
+                max_age=default_max_age,
+            )
+            if freshness is not None:
+                raise ReceiptValidationError(freshness)
         except FileNotFoundError:
             issues.append(AuditIssue("AUDIT_GAP", "required review delivery receipt is missing"))
         except (OSError, ValueError, ReceiptValidationError) as exc:
@@ -440,6 +481,7 @@ def audit_contract(
     try:
         phase_ids = {phase.id for phase in contract.phases}
         dependencies = {phase.id: set(phase.depends_on) for phase in contract.phases}
+        ordinals = {phase.id: phase.ordinal for phase in contract.phases}
         validate_event_journal(
             events,
             goal_id=contract.goal.id,
@@ -447,6 +489,7 @@ def audit_contract(
             contract_revision=contract.contract_revision,
             phase_ids=phase_ids,
             phase_dependencies=dependencies,
+            phase_ordinals=ordinals,
         )
     except (JournalCorruptionError, ValueError) as exc:
         issues.append(AuditIssue("AUDIT_CORRUPTION", f"event journal is invalid: {exc}"))
@@ -463,6 +506,16 @@ def audit_contract(
     except ValueError as exc:
         default_max_age, overrides = DEFAULT_MAX_AGE_SECONDS, {}
         issues.append(AuditIssue("AUDIT_CORRUPTION", f"freshness policy is invalid: {exc}"))
+
+    phases_with_policy = any(phase.risk_tags for phase in contract.phases)
+    policy_requirements: dict[str, list[str]] = {}
+    if phases_with_policy and risk_policy is None:
+        issues.append(AuditIssue("AUDIT_CORRUPTION", "risk policy is unavailable"))
+    elif risk_policy is not None:
+        try:
+            policy_requirements = mandatory_evidence_requirements(contract, risk_policy)
+        except Exception as exc:
+            issues.append(AuditIssue("AUDIT_CORRUPTION", f"risk policy is invalid: {exc}"))
 
     valid_by_criterion: dict[tuple[str, str], list[EvidenceRecord]] = {}
     criteria_by_key = {
@@ -493,7 +546,12 @@ def audit_contract(
             continue
         seen_ids.add(record.evidence_id)
         try:
-            validate_record_against_contract(record, contract, state)
+            validate_record_against_contract(
+                record,
+                contract,
+                state,
+                policy_requirements=policy_requirements,
+            )
         except ValueError as exc:
             issues.append(
                 AuditIssue(
@@ -558,15 +616,6 @@ def audit_contract(
             if any(record.type == "command_result" and record.replayable for record in records):
                 deterministic += 1
 
-    phases_with_policy = any(phase.risk_tags for phase in contract.phases)
-    policy_requirements: dict[str, list[str]] = {}
-    if phases_with_policy and risk_policy is None:
-        issues.append(AuditIssue("AUDIT_CORRUPTION", "risk policy is unavailable"))
-    elif risk_policy is not None:
-        try:
-            policy_requirements = mandatory_evidence_requirements(contract, risk_policy)
-        except Exception as exc:
-            issues.append(AuditIssue("AUDIT_CORRUPTION", f"risk policy is invalid: {exc}"))
     policy_by_phase: dict[str, set[str]] = {}
     rpd_by_phase: dict[str, set[str]] = {}
     approval_ids: set[str] = set()
@@ -611,6 +660,8 @@ def audit_contract(
         contract,
         state,
         Path(package_root) if package_root is not None else None,
+        audit_anchor=anchor,
+        default_max_age=default_max_age,
     )
     issues.extend(delivery_issues)
     rpd_required = any(phase.rpd.required for phase in contract.phases)

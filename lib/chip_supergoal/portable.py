@@ -210,17 +210,33 @@ def _read_regular_file_posix(target: Path, root: Path, relative: Path) -> bytes:
 if os.name == "nt":
     _GENERIC_READ = 0x80000000
     _GENERIC_WRITE = 0x40000000
+    _DELETE_ACCESS = 0x00010000
+    _SYNCHRONIZE_ACCESS = 0x00100000
+    _FILE_READ_DATA = 0x00000001
+    _FILE_WRITE_DATA = 0x00000002
     _FILE_APPEND_DATA = 0x00000004
+    _FILE_TRAVERSE = 0x00000020
+    _FILE_READ_ATTRIBUTES = 0x00000080
     _FILE_SHARE_READ = 0x00000001
     _FILE_SHARE_WRITE = 0x00000002
     _FILE_SHARE_DELETE = 0x00000004
     _OPEN_EXISTING = 3
+    _FILE_ATTRIBUTE_NORMAL = 0x00000080
     _FILE_ATTRIBUTE_DIRECTORY = 0x00000010
     _FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
     _FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
     _FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
     _FILE_TYPE_DISK = 0x0001
     _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+    _FILE_DISPOSITION_INFO_CLASS = 4
+    _FILE_RENAME_INFORMATION_CLASS_NT = 10
+    _FILE_OPEN = 1
+    _FILE_CREATE = 2
+    _FILE_DIRECTORY_FILE = 0x00000001
+    _FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020
+    _FILE_NON_DIRECTORY_FILE = 0x00000040
+    _FILE_OPEN_REPARSE_POINT_NT = 0x00200000
+    _OBJ_CASE_INSENSITIVE = 0x00000040
 
     class _ByHandleFileInformation(ctypes.Structure):
         _fields_ = [
@@ -234,6 +250,47 @@ if os.name == "nt":
             ("nNumberOfLinks", wintypes.DWORD),
             ("nFileIndexHigh", wintypes.DWORD),
             ("nFileIndexLow", wintypes.DWORD),
+        ]
+
+    class _FileRenameInfo(ctypes.Structure):
+        _fields_ = [
+            ("ReplaceIfExists", ctypes.c_ubyte),
+            ("RootDirectory", wintypes.HANDLE),
+            ("FileNameLength", wintypes.DWORD),
+            ("FileName", wintypes.WCHAR * 1),
+        ]
+
+    class _FileDispositionInfo(ctypes.Structure):
+        _fields_ = [("DeleteFile", ctypes.c_ubyte)]
+
+    class _UnicodeString(ctypes.Structure):
+        _fields_ = [
+            ("Length", wintypes.USHORT),
+            ("MaximumLength", wintypes.USHORT),
+            ("Buffer", wintypes.LPWSTR),
+        ]
+
+    class _ObjectAttributes(ctypes.Structure):
+        _fields_ = [
+            ("Length", wintypes.ULONG),
+            ("RootDirectory", wintypes.HANDLE),
+            ("ObjectName", ctypes.POINTER(_UnicodeString)),
+            ("Attributes", wintypes.ULONG),
+            ("SecurityDescriptor", wintypes.LPVOID),
+            ("SecurityQualityOfService", wintypes.LPVOID),
+        ]
+
+    class _IoStatusValue(ctypes.Union):
+        _fields_ = [
+            ("Status", ctypes.c_long),
+            ("Pointer", wintypes.LPVOID),
+        ]
+
+    class _IoStatusBlock(ctypes.Structure):
+        _anonymous_ = ("Value",)
+        _fields_ = [
+            ("Value", _IoStatusValue),
+            ("Information", ctypes.c_size_t),
         ]
 
     _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -268,6 +325,42 @@ if os.name == "nt":
     _GetFileType = _kernel32.GetFileType
     _GetFileType.argtypes = [wintypes.HANDLE]
     _GetFileType.restype = wintypes.DWORD
+    _SetFileInformationByHandle = _kernel32.SetFileInformationByHandle
+    _SetFileInformationByHandle.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+    ]
+    _SetFileInformationByHandle.restype = wintypes.BOOL
+    _ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+    _NtCreateFile = _ntdll.NtCreateFile
+    _NtCreateFile.argtypes = [
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.ULONG,
+        ctypes.POINTER(_ObjectAttributes),
+        ctypes.POINTER(_IoStatusBlock),
+        ctypes.POINTER(ctypes.c_longlong),
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.LPVOID,
+        wintypes.ULONG,
+    ]
+    _NtCreateFile.restype = ctypes.c_long
+    _NtSetInformationFile = _ntdll.NtSetInformationFile
+    _NtSetInformationFile.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(_IoStatusBlock),
+        wintypes.LPVOID,
+        wintypes.ULONG,
+        ctypes.c_int,
+    ]
+    _NtSetInformationFile.restype = ctypes.c_long
+    _RtlNtStatusToDosError = _ntdll.RtlNtStatusToDosError
+    _RtlNtStatusToDosError.argtypes = [ctypes.c_long]
+    _RtlNtStatusToDosError.restype = wintypes.ULONG
 
 
 def _windows_handle_value(handle: object) -> int:
@@ -311,12 +404,12 @@ def _open_windows_verified(
     flags = _FILE_FLAG_OPEN_REPARSE_POINT
     access = 0
     share = _FILE_SHARE_READ | _FILE_SHARE_WRITE
+    if share_delete:
+        share |= _FILE_SHARE_DELETE
     if directory:
         flags |= _FILE_FLAG_BACKUP_SEMANTICS
     else:
         access = _GENERIC_READ
-        if share_delete:
-            share |= _FILE_SHARE_DELETE
     if desired_access is not None:
         access = desired_access
     handle = _CreateFileW(
@@ -346,6 +439,305 @@ def _open_windows_verified(
     except BaseException:
         _CloseHandle(handle)
         raise
+
+
+def _raise_windows_ntstatus(status: int) -> None:
+    error = _RtlNtStatusToDosError(status)
+    raise ctypes.WinError(error)
+
+
+def _validate_windows_handle(
+    handle: object,
+    path: Path,
+    *,
+    directory: bool,
+) -> Path:
+    information = _ByHandleFileInformation()
+    if not _GetFileInformationByHandle(handle, ctypes.byref(information)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    attributes = information.dwFileAttributes
+    if attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+        raise UnsafeFileError(
+            path, "symlink or reparse point rejected", kind="symlink"
+        )
+    is_directory = bool(attributes & _FILE_ATTRIBUTE_DIRECTORY)
+    if is_directory != directory:
+        raise UnsafeFileError(
+            path, "node type does not match the requested file type"
+        )
+    if not directory and _GetFileType(handle) != _FILE_TYPE_DISK:
+        raise UnsafeFileError(path, "target is not a regular disk file")
+    return _windows_final_path(handle)
+
+
+def _open_windows_relative_verified(
+    parent_handle: object,
+    name: str,
+    *,
+    directory: bool,
+    create: bool = False,
+    desired_access: int | None = None,
+) -> tuple[object, Path]:
+    """Open one child relative to an already verified directory handle."""
+
+    if (
+        not name
+        or Path(name).name != name
+        or any(separator in name for separator in ("/", "\\"))
+    ):
+        raise ValueError("Windows relative open requires one child name")
+    encoded = name.encode("utf-16-le")
+    name_buffer = ctypes.create_unicode_buffer(name)
+    unicode_name = _UnicodeString(
+        Length=len(encoded),
+        MaximumLength=len(encoded) + ctypes.sizeof(ctypes.c_wchar),
+        Buffer=ctypes.cast(name_buffer, wintypes.LPWSTR),
+    )
+    attributes = _ObjectAttributes(
+        Length=ctypes.sizeof(_ObjectAttributes),
+        RootDirectory=wintypes.HANDLE(_windows_handle_value(parent_handle)),
+        ObjectName=ctypes.pointer(unicode_name),
+        Attributes=_OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor=None,
+        SecurityQualityOfService=None,
+    )
+    handle = wintypes.HANDLE()
+    status_block = _IoStatusBlock()
+    if desired_access is None:
+        desired_access = _FILE_READ_ATTRIBUTES | _SYNCHRONIZE_ACCESS
+        if directory:
+            desired_access |= _FILE_TRAVERSE
+        else:
+            desired_access |= _FILE_READ_DATA
+    options = _FILE_SYNCHRONOUS_IO_NONALERT | _FILE_OPEN_REPARSE_POINT_NT
+    options |= _FILE_DIRECTORY_FILE if directory else _FILE_NON_DIRECTORY_FILE
+    status = _NtCreateFile(
+        ctypes.byref(handle),
+        desired_access,
+        ctypes.byref(attributes),
+        ctypes.byref(status_block),
+        None,
+        _FILE_ATTRIBUTE_NORMAL if create and not directory else 0,
+        _FILE_SHARE_READ | _FILE_SHARE_WRITE | _FILE_SHARE_DELETE,
+        _FILE_CREATE if create else _FILE_OPEN,
+        options,
+        None,
+        0,
+    )
+    if status < 0:
+        _raise_windows_ntstatus(status)
+    try:
+        logical_path = _windows_final_path(parent_handle) / name
+        return handle, _validate_windows_handle(
+            handle, logical_path, directory=directory
+        )
+    except BaseException:
+        _CloseHandle(handle)
+        raise
+
+
+def _windows_descriptor_handle(descriptor: int) -> object:
+    return wintypes.HANDLE(msvcrt.get_osfhandle(descriptor))
+
+
+def _windows_file_identity(handle: object) -> tuple[int, int]:
+    information = _ByHandleFileInformation()
+    if not _GetFileInformationByHandle(handle, ctypes.byref(information)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    index = (information.nFileIndexHigh << 32) | information.nFileIndexLow
+    return information.dwVolumeSerialNumber, index
+
+
+def _assert_windows_directory_chain(
+    package_root: Path,
+    parent_parts: tuple[str, ...],
+    directory_handles: list[object],
+) -> None:
+    if len(directory_handles) != len(parent_parts) + 1:
+        raise UnsafeFileError(package_root, "verified directory chain is incomplete")
+    current = package_root
+    paths = [current]
+    for component in parent_parts:
+        current /= component
+        paths.append(current)
+    for path, expected_handle in zip(paths, directory_handles):
+        reopened = None
+        try:
+            reopened, _ = _open_windows_verified(path, directory=True)
+            if _windows_file_identity(reopened) != _windows_file_identity(
+                expected_handle
+            ):
+                raise UnsafeFileError(path, "directory identity changed during operation")
+        finally:
+            if reopened is not None:
+                _CloseHandle(reopened)
+
+
+def _open_windows_directory_chain(
+    package_root: Path,
+    parent_parts: tuple[str, ...],
+    *,
+    create: bool,
+) -> list[object]:
+    """Open a root-bound parent chain without resolving child path strings."""
+
+    handles: list[object] = []
+    root_handle, _ = _open_windows_verified(
+        package_root,
+        directory=True,
+        desired_access=(
+            _FILE_TRAVERSE | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE_ACCESS
+        ),
+    )
+    handles.append(root_handle)
+    try:
+        for component in parent_parts:
+            try:
+                handle, _ = _open_windows_relative_verified(
+                    handles[-1], component, directory=True
+                )
+            except FileNotFoundError:
+                if not create:
+                    raise
+                handle, _ = _open_windows_relative_verified(
+                    handles[-1], component, directory=True, create=True
+                )
+            handles.append(handle)
+        return handles
+    except BaseException:
+        for handle in reversed(handles):
+            _CloseHandle(handle)
+        raise
+
+
+def _create_windows_temp_descriptor(
+    parent_handle: object,
+    *,
+    target_name: str,
+    package_root: Path,
+    parent_parts: tuple[str, ...],
+    directory_handles: list[object],
+) -> tuple[int, str]:
+    """Create a sibling temporary file while the verified parent stays open."""
+
+    for _ in range(128):
+        _assert_windows_directory_chain(
+            package_root, parent_parts, directory_handles
+        )
+        leaf = (
+            f".{target_name}.tmp-{os.getpid()}-"
+            f"{next(tempfile._get_candidate_names())}"
+        )
+        try:
+            handle, path = _open_windows_relative_verified(
+                parent_handle,
+                leaf,
+                directory=False,
+                create=True,
+                desired_access=(
+                    _FILE_READ_DATA
+                    | _FILE_WRITE_DATA
+                    | _FILE_READ_ATTRIBUTES
+                    | _DELETE_ACCESS
+                    | _SYNCHRONIZE_ACCESS
+                ),
+            )
+        except OSError as exc:
+            if getattr(exc, "winerror", None) in {80, 183}:
+                continue
+            raise
+        try:
+            final_path = _windows_final_path(handle)
+            if final_path.name != leaf:
+                raise UnsafeFileError(
+                    path, "temporary file escaped its verified parent"
+                )
+            descriptor = msvcrt.open_osfhandle(
+                _windows_handle_value(handle), os.O_RDWR | os.O_BINARY
+            )
+            handle = None
+            return descriptor, leaf
+        finally:
+            if handle is not None:
+                _CloseHandle(handle)
+    raise FileExistsError("could not allocate a unique atomic temporary file")
+
+
+def _write_windows_descriptor(descriptor: int, content: bytes) -> None:
+    view = memoryview(content)
+    offset = 0
+    while offset < len(view):
+        written = os.write(descriptor, view[offset:])
+        if written <= 0:
+            raise OSError("atomic temporary write made no progress")
+        offset += written
+    os.fsync(descriptor)
+
+
+def _rename_windows_descriptor(
+    descriptor: int,
+    parent_handle: object,
+    target_name: str,
+    *,
+    package_root: Path,
+    parent_parts: tuple[str, ...],
+    directory_handles: list[object],
+) -> None:
+    if (
+        not target_name
+        or Path(target_name).name != target_name
+        or any(separator in target_name for separator in ("/", "\\"))
+    ):
+        raise ValueError("atomic destination must be one relative file name")
+    encoded = target_name.encode("utf-16-le")
+    filename_offset = _FileRenameInfo.FileName.offset
+    size = ctypes.sizeof(_FileRenameInfo) + len(encoded)
+    buffer = ctypes.create_string_buffer(size)
+    information = _FileRenameInfo.from_buffer(buffer)
+    information.ReplaceIfExists = 1
+    # The target directory is the already verified handle; no mutable path is
+    # resolved during publication.
+    information.RootDirectory = wintypes.HANDLE(
+        _windows_handle_value(parent_handle)
+    )
+    information.FileNameLength = len(encoded)
+    ctypes.memmove(
+        ctypes.addressof(buffer) + filename_offset, encoded, len(encoded)
+    )
+    _assert_windows_directory_chain(
+        package_root, parent_parts, directory_handles
+    )
+    status_block = _IoStatusBlock()
+    status = _NtSetInformationFile(
+        _windows_descriptor_handle(descriptor),
+        ctypes.byref(status_block),
+        ctypes.byref(buffer),
+        size,
+        _FILE_RENAME_INFORMATION_CLASS_NT,
+    )
+    if status < 0:
+        _raise_windows_ntstatus(status)
+
+
+def _delete_windows_handle(
+    handle: object,
+    *,
+    package_root: Path | None = None,
+    parent_parts: tuple[str, ...] = (),
+    directory_handles: list[object] | None = None,
+) -> None:
+    if package_root is not None and directory_handles is not None:
+        _assert_windows_directory_chain(
+            package_root, parent_parts, directory_handles
+        )
+    information = _FileDispositionInfo(DeleteFile=True)
+    if not _SetFileInformationByHandle(
+        handle,
+        _FILE_DISPOSITION_INFO_CLASS,
+        ctypes.byref(information),
+        ctypes.sizeof(information),
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
 
 
 def _read_regular_file_windows(target: Path, root: Path, relative: Path) -> bytes:
@@ -398,34 +790,32 @@ def unlink_regular_file_no_follow(path: str | Path, root: str | Path) -> bool:
         directory_handles: list[object] = []
         file_handle: object | None = None
         try:
-            root_handle, final_root = _open_windows_verified(
-                package_root, directory=True
+            parent_parts = tuple(relative.parts[:-1])
+            directory_handles = _open_windows_directory_chain(
+                package_root, parent_parts, create=False
             )
-            directory_handles.append(root_handle)
-            current = package_root
-            for component in relative.parts[:-1]:
-                current /= component
-                handle, final_directory = _open_windows_verified(
-                    current, directory=True
+            _assert_windows_directory_chain(
+                package_root, parent_parts, directory_handles
+            )
+            try:
+                file_handle, _ = _open_windows_relative_verified(
+                    directory_handles[-1],
+                    relative.parts[-1],
+                    directory=False,
+                    desired_access=(
+                        _FILE_READ_ATTRIBUTES
+                        | _DELETE_ACCESS
+                        | _SYNCHRONIZE_ACCESS
+                    ),
                 )
-                if not _windows_contained(final_directory, final_root):
-                    _CloseHandle(handle)
-                    raise UnsafeFileError(
-                        current, "directory resolves outside the trusted root"
-                    )
-                directory_handles.append(handle)
-            if not os.path.lexists(target):
+            except FileNotFoundError:
                 return False
-            file_handle, final_target = _open_windows_verified(
-                target, directory=False
+            _delete_windows_handle(
+                file_handle,
+                package_root=package_root,
+                parent_parts=parent_parts,
+                directory_handles=directory_handles,
             )
-            if not _windows_contained(final_target, final_root):
-                raise UnsafeFileError(
-                    target, "file resolves outside the trusted root"
-                )
-            _CloseHandle(file_handle)
-            file_handle = None
-            os.unlink(target)
             return True
         except UnsafeFileError:
             raise
@@ -678,61 +1068,65 @@ def _write_bytes_atomic_windows(
     target: Path, package_root: Path, relative: Path, content: bytes
 ) -> None:
     directory_handles: list[object] = []
-    temporary: Path | None = None
     descriptor: int | None = None
+    temporary_leaf: str | None = None
+    published = False
     try:
-        root_handle, final_root = _open_windows_verified(
-            package_root, directory=True
+        parent_parts = tuple(relative.parts[:-1])
+        directory_handles = _open_windows_directory_chain(
+            package_root, parent_parts, create=True
         )
-        directory_handles.append(root_handle)
-        current = package_root
-        for component in relative.parts[:-1]:
-            current /= component
-            try:
-                handle, final_directory = _open_windows_verified(
-                    current, directory=True
-                )
-            except FileNotFoundError:
-                os.mkdir(current)
-                handle, final_directory = _open_windows_verified(
-                    current, directory=True
-                )
-            if not _windows_contained(final_directory, final_root):
-                _CloseHandle(handle)
-                raise UnsafeFileError(
-                    current, "directory resolves outside the trusted root"
-                )
-            directory_handles.append(handle)
-        if os.path.lexists(target):
-            current_target = target.lstat()
-            if (
-                not stat.S_ISREG(current_target.st_mode)
-                or stat.S_ISLNK(current_target.st_mode)
-                or is_reparse_point(current_target)
-            ):
-                raise UnsafeFileError(
-                    target, "atomic target is not a regular file"
-                )
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=f".{target.name}.tmp-", dir=target.parent
+        _assert_windows_directory_chain(
+            package_root, parent_parts, directory_handles
         )
-        temporary = Path(temporary_name)
-        with os.fdopen(descriptor, "wb") as stream:
-            descriptor = None
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, target)
-        temporary = None
+        existing_handle: object | None = None
+        try:
+            existing_handle, _ = _open_windows_relative_verified(
+                directory_handles[-1],
+                relative.parts[-1],
+                directory=False,
+            )
+        except FileNotFoundError:
+            pass
+        finally:
+            if existing_handle is not None:
+                _CloseHandle(existing_handle)
+        descriptor, temporary_leaf = _create_windows_temp_descriptor(
+            directory_handles[-1],
+            target_name=relative.parts[-1],
+            package_root=package_root,
+            parent_parts=parent_parts,
+            directory_handles=directory_handles,
+        )
+        _write_windows_descriptor(descriptor, content)
+        _rename_windows_descriptor(
+            descriptor,
+            directory_handles[-1],
+            relative.parts[-1],
+            package_root=package_root,
+            parent_parts=parent_parts,
+            directory_handles=directory_handles,
+        )
+        published = True
     except UnsafeFileError:
         raise
     except OSError as exc:
         raise _unsafe_open_error(target, exc) from exc
     finally:
         if descriptor is not None:
+            if not published:
+                try:
+                    descriptor_handle = _windows_descriptor_handle(descriptor)
+                    current_leaf = _windows_final_path(descriptor_handle).name
+                    if (
+                        temporary_leaf is not None
+                        and os.path.normcase(current_leaf)
+                        == os.path.normcase(temporary_leaf)
+                    ):
+                        _delete_windows_handle(descriptor_handle)
+                except OSError:
+                    pass
             os.close(descriptor)
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
         for handle in reversed(directory_handles):
             _CloseHandle(handle)
 

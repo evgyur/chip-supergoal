@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -34,6 +35,156 @@ def _hold_package_lock(lock_path: str, ready, release) -> None:
 
 
 class PortableRuntimeTest(unittest.TestCase):
+    def _junction(self, link: Path, target: Path) -> None:
+        result = subprocess.run(
+            ["cmd", "/d", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            self.skipTest(f"junction creation unavailable: {result.stderr}")
+
+    def _remove_junction(self, link: Path) -> None:
+        if os.path.lexists(link):
+            os.rmdir(link)
+
+    @unittest.skipUnless(os.name == "nt", "native Windows junction race regression")
+    def test_atomic_writer_cannot_publish_through_swapped_parent_junction(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            root = base / "package"
+            reports = root / "reports"
+            reports.mkdir(parents=True)
+            target = reports / "final-audit.json"
+            target.write_bytes(b"trusted-old")
+            outside = base / "outside"
+            outside.mkdir()
+            outside_target = outside / target.name
+            outside_target.write_bytes(b"outside-original")
+            parked = root / "reports-before-race"
+            original_create = portable_module._create_windows_temp_descriptor
+            swapped = False
+
+            def swap_then_create(*args, **kwargs):
+                nonlocal swapped
+                reports.rename(parked)
+                self._junction(reports, outside)
+                swapped = True
+                return original_create(*args, **kwargs)
+
+            try:
+                with mock.patch.object(
+                    portable_module,
+                    "_create_windows_temp_descriptor",
+                    side_effect=swap_then_create,
+                ):
+                    with self.assertRaises(OSError):
+                        write_bytes_atomic(target, b"trusted-new", root=root)
+                self.assertTrue(swapped)
+                self.assertEqual(outside_target.read_bytes(), b"outside-original")
+                self.assertEqual(
+                    (parked / target.name).read_bytes(), b"trusted-old"
+                )
+            finally:
+                if swapped:
+                    self._remove_junction(reports)
+
+    @unittest.skipUnless(os.name == "nt", "native Windows atomic publish regression")
+    def test_atomic_writer_does_not_delete_publish_after_post_rename_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            reports = root / "reports"
+            reports.mkdir()
+            target = reports / "final-audit.json"
+            target.write_bytes(b"trusted-old")
+            original_rename = portable_module._rename_windows_descriptor
+
+            def publish_then_fail(*args, **kwargs):
+                original_rename(*args, **kwargs)
+                raise OSError("injected immediately after native rename")
+
+            with mock.patch.object(
+                portable_module,
+                "_rename_windows_descriptor",
+                side_effect=publish_then_fail,
+            ):
+                with self.assertRaises(OSError):
+                    write_bytes_atomic(target, b"trusted-new", root=root)
+            self.assertEqual(target.read_bytes(), b"trusted-new")
+            self.assertFalse(
+                any(path.name.startswith(f".{target.name}.tmp-") for path in reports.iterdir())
+            )
+
+    @unittest.skipUnless(os.name == "nt", "native Windows handle leak regression")
+    def test_relative_open_closes_child_when_parent_final_path_lookup_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "child.txt").write_bytes(b"trusted")
+            parent_handle, _ = portable_module._open_windows_verified(
+                root, directory=True
+            )
+            original_close = portable_module._CloseHandle
+            try:
+                with mock.patch.object(
+                    portable_module,
+                    "_windows_final_path",
+                    side_effect=OSError("injected final-path failure"),
+                ), mock.patch.object(
+                    portable_module,
+                    "_CloseHandle",
+                    wraps=original_close,
+                ) as close_handle:
+                    with self.assertRaises(OSError):
+                        portable_module._open_windows_relative_verified(
+                            parent_handle,
+                            "child.txt",
+                            directory=False,
+                        )
+                    self.assertEqual(close_handle.call_count, 1)
+            finally:
+                original_close(parent_handle)
+
+    @unittest.skipUnless(os.name == "nt", "native Windows junction race regression")
+    def test_unlink_cannot_delete_through_swapped_parent_junction(self):
+        unlinker = getattr(portable_module, "unlink_regular_file_no_follow")
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            root = base / "package"
+            reports = root / "reports"
+            reports.mkdir(parents=True)
+            target = reports / "final-audit.json"
+            target.write_bytes(b"trusted")
+            outside = base / "outside"
+            outside.mkdir()
+            outside_target = outside / target.name
+            outside_target.write_bytes(b"outside-original")
+            parked = root / "reports-before-unlink-race"
+            original_open = portable_module._open_windows_relative_verified
+            swapped = False
+
+            def swap_then_open(parent_handle, name, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and not kwargs.get("directory", False):
+                    reports.rename(parked)
+                    self._junction(reports, outside)
+                    swapped = True
+                return original_open(parent_handle, name, *args, **kwargs)
+
+            try:
+                with mock.patch.object(
+                    portable_module,
+                    "_open_windows_relative_verified",
+                    side_effect=swap_then_open,
+                ):
+                    with self.assertRaises(OSError):
+                        unlinker(target, root)
+                self.assertTrue(swapped)
+                self.assertEqual(outside_target.read_bytes(), b"outside-original")
+                self.assertTrue((parked / target.name).is_file())
+            finally:
+                if swapped:
+                    self._remove_junction(reports)
+
     def test_regular_file_reader_consumes_verified_handle_not_path_reopen(self):
         reader = getattr(portable_module, "read_regular_file_no_follow", None)
         self.assertIsNotNone(reader)

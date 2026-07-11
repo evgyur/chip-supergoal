@@ -831,6 +831,9 @@ class ProfilePolicyPipelineTest(unittest.TestCase):
         self.assertEqual(resolved.contract.delivery.data["transport"], "telegram")
         self.assertEqual(resolved.contract.delivery.data["target"], "current-thread")
         self.assertTrue(resolved.contract.delivery.data["review_pack_required"])
+        self.assertTrue(
+            resolved.contract.delivery.data["receipt_policy"]["required"]
+        )
         self.assertIn("THINKING.md", resolved.contract.delivery.data["files"])
 
     def test_unknown_contract_and_phase_risk_tags_are_rejected(self):
