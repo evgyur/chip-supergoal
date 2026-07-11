@@ -36,15 +36,15 @@ Do not label the release Architect+ while any P0/P1 finding, strict semantic fai
 
 ## Alpha.4 release evidence
 
-- [x] Fresh native Windows clone: 9/9 gates; 415 tests passed, 26 expected
+- [x] Fresh native Windows clone: 9/9 gates; 426 tests passed, 27 expected
   platform/privilege skips; repository remained clean.
-- [x] Fresh WSL Ubuntu clone: 9/9 gates; 415 tests passed, 17 expected
+- [x] Fresh WSL Ubuntu clone: 9/9 gates; 426 tests passed, 22 expected
   platform skips; Unix shell-quality 7/7; repository remained clean.
 - [x] Deterministic compile: 64 immutable artifacts matched byte-for-byte,
-  manifest fingerprint `5b41052c7242a33f8230358fc6982ded4feb473de8d46ca7d89fce0bf855f416`.
+  manifest fingerprint `41f4ce1220d5a91a70c6222d747d8d3f8eaf9a143186d791691e275219232145`.
 - [x] Deterministic archive: one unchanged snapshot produced identical 70-entry,
-  752166-byte ZIPs; SHA-256
-  `3fec5e60673fc8d30b8ccea8f45bd2fa6e486afe2a5f42f6d0fadf3c2c8fd3ae`;
+  764973-byte ZIPs; SHA-256
+  `0cc461fcee2fc0e791cabca00a175b6a1efdaa5f68ff522c52fd379ef2db547f`;
   strict contract/package validation and ZIP readback passed.
 - [x] User stories 55/55; create-skill guard passed; native privacy/secret gate
   reported zero violations; the reserved live Hermes hook remained skipped and
