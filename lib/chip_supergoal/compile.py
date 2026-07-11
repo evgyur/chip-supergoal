@@ -67,7 +67,7 @@ def _load_sealed_manifest(root: Path) -> dict:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except Exception as exc:
-        raise CompileSafetyError(f"existing output manifest is malformed: {exc}") from exc
+        raise CompileSafetyError("existing output manifest is malformed") from exc
     if manifest.get("manifest_version") != "1.0" or not isinstance(manifest.get("artifacts"), list):
         raise CompileSafetyError("existing output manifest has unsupported shape")
     expected = build_manifest(root)
@@ -86,7 +86,10 @@ def _assert_safe_target(out_path: Path, contract: Contract) -> None:
         if (out_path / "out").exists():
             raise CompileSafetyError("refusing to overwrite package containing runtime delivery/output artifacts")
         _load_sealed_manifest(out_path)
-        existing = load_contract(out_path / "CONTRACT.json")
+        try:
+            existing = load_contract(out_path / "CONTRACT.json")
+        except Exception as exc:
+            raise CompileSafetyError("existing output contract is malformed") from exc
         if existing.goal.id != contract.goal.id:
             raise CompileSafetyError("refusing to overwrite a package for a different goal id")
         if canonical_json(existing) != canonical_json(contract) and contract.contract_revision != existing.contract_revision + 1:
@@ -179,11 +182,13 @@ def compile_contract(
     template_protocol: str | Path | None = None,
     contract_source: str | Path | None = None,
     resource_root: str | Path | None = None,
+    risk_policy_path: str | Path | None = None,
 ) -> Path:
     result = validate_contract_source(
         contract,
         artifact=str(contract_source or "CONTRACT.json"),
         resource_root=resource_root,
+        risk_policy_path=risk_policy_path,
     )
     return _compile_resolved(
         _resolved_or_raise(result),
@@ -199,9 +204,14 @@ def compile_contract_file(
     *,
     template_protocol: str | Path | None = None,
     resource_root: str | Path | None = None,
+    risk_policy_path: str | Path | None = None,
 ) -> Path:
     contract_path = Path(path)
-    result = contract_diagnostics(contract_path, resource_root=resource_root)
+    result = contract_diagnostics(
+        contract_path,
+        resource_root=resource_root,
+        risk_policy_path=risk_policy_path,
+    )
     return _compile_resolved(
         _resolved_or_raise(result),
         out,

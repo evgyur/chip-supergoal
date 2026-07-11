@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 import json
+from pathlib import Path
+import re
 from typing import Any, Iterable
 
 SEVERITIES = {"info", "warning", "error", "blocker", "corruption"}
@@ -14,45 +17,62 @@ class DiagnosticMetadata:
     stage: str
 
 
-_PACKAGE_SECURITY_CODES = {
-    "SGV-PACKAGE-CASE-COLLISION",
-    "SGV-PACKAGE-PATH-ESCAPE",
-    "SGV-PACKAGE-SECRET",
-    "SGV-PACKAGE-SPECIAL-FILE",
-    "SGV-PACKAGE-SYMLINK",
-    "SGV-PACKAGE-ZIP-HASH-MISMATCH",
-    "SGV-PACKAGE-ZIP-TRAVERSAL",
-}
+_CATALOG_VERSION = "1.0"
+_EXPECTED_CODE_COUNT = 71
+_CATALOG_PATH = Path(__file__).resolve().parents[2] / "spec/diagnostic-catalog.json"
+_TOP_LEVEL_KEYS = {"catalog_version", "expected_code_count", "diagnostics"}
+_ENTRY_KEYS = {"code", "invariant", "stage", "remediation_class"}
+_CODE_PATTERN = re.compile(r"^SGV-[A-Z0-9]+(?:-[A-Z0-9]+)*$")
+_INVARIANT_PATTERN = re.compile(r"^INV-[A-Z0-9]+-[0-9]{3}$")
+
+
+def load_diagnostic_catalog(path: str | Path) -> dict[str, DiagnosticMetadata]:
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("diagnostic catalog cannot be loaded") from exc
+    if not isinstance(raw, dict) or set(raw) != _TOP_LEVEL_KEYS:
+        raise ValueError("diagnostic catalog has unsupported top-level shape")
+    if raw.get("catalog_version") != _CATALOG_VERSION:
+        raise ValueError("diagnostic catalog version is unsupported")
+    if type(raw.get("expected_code_count")) is not int or raw["expected_code_count"] != _EXPECTED_CODE_COUNT:
+        raise ValueError("diagnostic catalog expected code count is invalid")
+    entries = raw.get("diagnostics")
+    if not isinstance(entries, list) or len(entries) != _EXPECTED_CODE_COUNT:
+        raise ValueError("diagnostic catalog entry count is invalid")
+
+    metadata: dict[str, DiagnosticMetadata] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != _ENTRY_KEYS:
+            raise ValueError("diagnostic catalog entry has unsupported shape")
+        code = entry.get("code")
+        invariant = entry.get("invariant")
+        stage = entry.get("stage")
+        remediation_class = entry.get("remediation_class")
+        if not isinstance(code, str) or not _CODE_PATTERN.fullmatch(code):
+            raise ValueError("diagnostic catalog code is invalid")
+        if not isinstance(invariant, str) or not _INVARIANT_PATTERN.fullmatch(invariant):
+            raise ValueError("diagnostic catalog invariant is invalid")
+        if not isinstance(stage, str) or not stage:
+            raise ValueError("diagnostic catalog stage is invalid")
+        if not isinstance(remediation_class, str) or not remediation_class:
+            raise ValueError("diagnostic catalog remediation class is invalid")
+        if code in metadata:
+            raise ValueError("diagnostic catalog contains duplicate codes")
+        metadata[code] = DiagnosticMetadata(invariant, stage)
+    return metadata
+
+
+@lru_cache(maxsize=1)
+def _runtime_diagnostic_catalog() -> dict[str, DiagnosticMetadata]:
+    return load_diagnostic_catalog(_CATALOG_PATH)
 
 
 def diagnostic_metadata(code: str) -> DiagnosticMetadata:
-    parts = code.split("-")
-    family = parts[1] if len(parts) > 1 else ""
-    if code == "SGV-CONTRACT-MALFORMED":
-        return DiagnosticMetadata("INV-VALIDATOR-001", "model")
-    if code == "SGV-CONTRACT-SEMANTIC":
-        return DiagnosticMetadata("INV-VALIDATOR-001", "semantic")
-    if family == "PROFILE":
-        return DiagnosticMetadata("INV-VALIDATOR-001", "profile")
-    if family == "RESEARCH":
-        return DiagnosticMetadata("INV-RESEARCH-001", "preflight")
-    if family == "RISK":
-        invariant = "INV-RPD-001" if len(parts) > 2 and parts[2] == "RPD" else "INV-VALIDATOR-001"
-        return DiagnosticMetadata(invariant, "policy")
-    if family == "STATE":
-        invariant = "INV-AUDIT-001" if code == "SGV-STATE-TERMINAL-REOPEN" else "INV-RECOVERY-001"
-        return DiagnosticMetadata(invariant, "runtime")
-    if code in _PACKAGE_SECURITY_CODES:
-        return DiagnosticMetadata("INV-ARCHIVE-001", "archive")
-    if code == "SGV-PACKAGE-LAUNCH-MARKER":
-        return DiagnosticMetadata("INV-LAUNCH-001", "preflight")
-    if family == "PACKAGE":
-        return DiagnosticMetadata("INV-VALIDATOR-001", "preflight")
-    if code == "SGV-LOOP-LAUNCH-BODY":
-        return DiagnosticMetadata("INV-LAUNCH-001", "preflight")
-    if family == "PHASE" and len(parts) > 2 and parts[2] == "RPD":
-        return DiagnosticMetadata("INV-RPD-001", "preflight")
-    return DiagnosticMetadata("INV-VALIDATOR-001", "preflight")
+    try:
+        return _runtime_diagnostic_catalog()[code]
+    except KeyError:
+        raise ValueError(f"unknown diagnostic code: {code}") from None
 
 
 @dataclass(frozen=True)
@@ -72,6 +92,9 @@ class Diagnostic:
             raise ValueError(f"unsupported severity: {self.severity}")
         if not self.code.startswith("SGV-"):
             raise ValueError(f"diagnostic code must start with SGV-: {self.code}")
+        metadata = diagnostic_metadata(self.code)
+        if (self.invariant_id, self.blocking_stage) != (metadata.invariant, metadata.stage):
+            raise ValueError(f"diagnostic metadata mismatch for {self.code}")
         if not self.invariant_id.startswith("INV-"):
             raise ValueError(f"invariant_id must start with INV-: {self.invariant_id}")
         for field_name in ("blocking_stage", "artifact", "pointer", "message", "remediation"):

@@ -1,5 +1,6 @@
 {
   "catalog_version": "1.0",
+  "expected_code_count": 71,
   "diagnostics": [
     {
       "code": "SGV-CONTRACT-MALFORMED",

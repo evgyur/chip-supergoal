@@ -12,8 +12,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib"))
 
-from chip_supergoal.compile import compile_contract, compile_contract_file
+from chip_supergoal.compile import build_manifest, compile_contract, compile_contract_file
+from chip_supergoal.diagnostics import ContractValidationError
 from chip_supergoal.model import contract_from_dict
+from chip_supergoal.pipeline import validate_contract_source
 from chip_supergoal.validate import validate_contract_file
 
 
@@ -238,7 +240,7 @@ class CompileFailClosedTest(unittest.TestCase):
         data["phases"][0]["depends_on"] = ["P99"]
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp) / "package"
-            with self.assertRaises(Exception) as raised:
+            with self.assertRaises(ContractValidationError) as raised:
                 compile_contract(contract_from_dict(data), output)
 
             diagnostics = getattr(raised.exception, "diagnostics", ())
@@ -275,7 +277,7 @@ class CompileFailClosedTest(unittest.TestCase):
 
             validation = validate_contract_file(source, resource_root=root)
             self.assertEqual({item.code for item in validation}, {"SGV-PROFILE-CYCLE"})
-            with self.assertRaises(Exception) as raised:
+            with self.assertRaises(ContractValidationError) as raised:
                 compile_contract_file(source, output, resource_root=root)
             self.assertEqual(
                 {item.code for item in getattr(raised.exception, "diagnostics", ())},
@@ -367,6 +369,94 @@ class CompileFailClosedTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("compile error:", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
+
+    def test_malformed_sealed_target_is_preserved_and_sanitized(self):
+        secret = "existing-private-token"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = self.write_contract(root, self.fixture())
+            output = root / "package"
+            output.mkdir()
+            malformed = self.fixture()
+            malformed["contract_revision"] = secret
+            (output / "CONTRACT.json").write_text(json.dumps(malformed), encoding="utf-8")
+            manifest = build_manifest(output)
+            (output / "MANIFEST.json").write_text(json.dumps(manifest), encoding="utf-8")
+            before = {p.relative_to(output).as_posix(): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+
+            result = self.run_sgctl("compile", str(source), "--out", str(output))
+
+            self.assertEqual(result.returncode, 1)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertNotIn(secret, result.stdout + result.stderr)
+            after = {p.relative_to(output).as_posix(): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+            self.assertEqual(after, before)
+
+    def test_deeply_malformed_sealed_target_is_preserved_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = self.write_contract(root, self.fixture())
+            output = root / "package"
+            output.mkdir()
+            (output / "CONTRACT.json").write_text("[" * 1100 + "0" + "]" * 1100, encoding="utf-8")
+            (output / "MANIFEST.json").write_text(json.dumps(build_manifest(output)), encoding="utf-8")
+            before = {p.relative_to(output).as_posix(): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+
+            result = self.run_sgctl("compile", str(source), "--out", str(output))
+
+            self.assertEqual(result.returncode, 1)
+            self.assertNotIn("Traceback", result.stderr)
+            after = {p.relative_to(output).as_posix(): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+            self.assertEqual(after, before)
+
+    def test_secret_bearing_contract_error_uses_stable_message(self):
+        secret = "contract-private-token"
+        data = self.fixture()
+        data["contract_revision"] = secret
+        result = validate_contract_source(json.dumps(data).encode(), resource_root=ROOT)
+        diagnostic = result.diagnostics[0]
+        self.assertEqual(diagnostic.message, "contract JSON or v3 model is malformed")
+        self.assertNotIn(secret, diagnostic.to_json() + diagnostic.render_human())
+
+    def test_profile_and_policy_parse_errors_use_stable_private_messages(self):
+        secret = "resource-private-token"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "profiles").mkdir()
+            (root / "spec").mkdir()
+            source = self.write_contract(root, self.fixture())
+            (root / "profiles/chip-private.json").write_text('{"' + secret, encoding="utf-8")
+            (root / "spec/risk-policy.json").write_text("{}", encoding="utf-8")
+            profile_diag = validate_contract_file(source, resource_root=root)[0]
+            self.assertEqual(profile_diag.message, "profile resolution failed")
+            self.assertNotIn(secret, profile_diag.to_json())
+
+            (root / "profiles/chip-private.json").write_text(json.dumps({"name": "chip-private", "profile_version": "1.0"}), encoding="utf-8")
+            (root / "spec/risk-policy.json").write_text('{"' + secret, encoding="utf-8")
+            policy_diag = validate_contract_file(source, resource_root=root)[0]
+            self.assertEqual(policy_diag.message, "risk policy is malformed")
+            self.assertNotIn(secret, policy_diag.to_json())
+
+    def test_custom_risk_policy_path_is_loaded_exactly(self):
+        data = self.fixture()
+        tag = "custom_unique_tag"
+        data["risks"][0]["tag"] = tag
+        data["phases"][0]["risk_tags"] = [tag]
+        data["phases"][0]["rpd"] = {"required": False, "focus": []}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = self.write_contract(root, data)
+            policy = json.loads((ROOT / "spec/risk-policy.json").read_text(encoding="utf-8"))
+            policy["risk_tags"][tag] = {"approval_class": "none", "mandatory_evidence": [], "required_rpd_focus": [], "rollback_required": False}
+            custom = root / "custom-policy.json"
+            custom.write_text(json.dumps(policy), encoding="utf-8")
+
+            self.assertIn("SGV-RISK-UNKNOWN", {d.code for d in validate_contract_file(source)})
+            self.assertEqual(validate_contract_file(source, custom), [])
+
+    def test_pipeline_result_requires_attribute_access(self):
+        result = validate_contract_source(json.dumps(self.fixture()).encode(), resource_root=ROOT)
+        self.assertFalse(hasattr(type(result), "__iter__"))
 
 
 if __name__ == "__main__":

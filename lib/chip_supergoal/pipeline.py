@@ -35,10 +35,6 @@ class ContractPipelineResult:
     def ok(self) -> bool:
         return self.resolved is not None
 
-    def __iter__(self):
-        yield self.resolved
-        yield list(self.diagnostics)
-
 
 def repository_resource_root() -> Path:
     return REPOSITORY_RESOURCE_ROOT
@@ -69,12 +65,12 @@ def _diagnostic(
     )
 
 
-def _malformed_diagnostic(artifact: str, exc: Exception) -> Diagnostic:
+def _malformed_diagnostic(artifact: str) -> Diagnostic:
     return _diagnostic(
         "SGV-CONTRACT-MALFORMED",
         artifact=artifact,
         pointer="/",
-        message=str(exc) or type(exc).__name__,
+        message="contract JSON or v3 model is malformed",
         remediation="Fix the contract JSON shape, version, and required fields.",
         stage="model",
     )
@@ -84,29 +80,24 @@ def _profile_diagnostic(artifact: str, exc: Exception) -> Diagnostic:
     text = str(exc)
     if "not found" in text:
         code = "SGV-PROFILE-NOT-FOUND"
-        message = "the selected contract profile or one of its parents was not found"
         remediation = "Select an available profile or add the missing profile resource."
     elif "inheritance cycle" in text:
         code = "SGV-PROFILE-CYCLE"
-        message = "the selected contract profile contains an inheritance cycle"
         remediation = "Remove the cycle from the profile extends chain."
     elif "maximum profile inheritance depth" in text:
         code = "SGV-PROFILE-DEPTH"
-        message = "the selected contract profile exceeds the inheritance depth limit"
         remediation = "Flatten the profile inheritance chain."
     elif "public-clean redaction" in text:
         code = "SGV-PROFILE-PUBLIC-AMBIGUITY"
-        message = "public-clean resolution cannot safely redact a private reference"
         remediation = "Remove private locators from execution-significant fields."
     else:
         code = "SGV-PROFILE-INVALID"
-        message = "the selected contract profile is invalid"
         remediation = "Fix the profile shape, version, and enforcement fields."
     return _diagnostic(
         code,
         artifact=artifact,
         pointer="/profile",
-        message=message,
+        message="profile resolution failed",
         remediation=remediation,
         stage="profile",
     )
@@ -177,6 +168,7 @@ def validate_contract_source(
     *,
     artifact: str = "CONTRACT.json",
     resource_root: str | Path | None = None,
+    risk_policy_path: str | Path | None = None,
 ) -> ContractPipelineResult:
     root = Path(resource_root) if resource_root is not None else repository_resource_root()
     try:
@@ -189,31 +181,32 @@ def validate_contract_source(
         if not isinstance(loaded, dict):
             raise ValueError("contract JSON must be an object")
         contract = contract_from_dict(loaded, strict=True)
-    except Exception as exc:
-        return ContractPipelineResult(None, (_malformed_diagnostic(artifact, exc),))
+    except Exception:
+        return ContractPipelineResult(None, (_malformed_diagnostic(artifact),))
 
     try:
         resolved = resolve_contract(contract, root / "profiles", source_bytes)
     except ProfileError as exc:
         return ContractPipelineResult(None, (_profile_diagnostic(artifact, exc),))
-    except (AttributeError, KeyError, TypeError, ValueError) as exc:
-        return ContractPipelineResult(None, (_malformed_diagnostic(artifact, exc),))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return ContractPipelineResult(None, (_malformed_diagnostic(artifact),))
 
     try:
         diagnostics = _semantic_diagnostics(resolved.contract, artifact)
-    except (AttributeError, KeyError, TypeError, ValueError) as exc:
-        return ContractPipelineResult(None, (_malformed_diagnostic(artifact, exc),))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return ContractPipelineResult(None, (_malformed_diagnostic(artifact),))
+    policy_path = Path(risk_policy_path) if risk_policy_path is not None else root / "spec/risk-policy.json"
     try:
-        policy = load_risk_policy(root / "spec/risk-policy.json")
+        policy = load_risk_policy(policy_path)
         if not isinstance(policy, dict) or not isinstance(policy.get("risk_tags"), dict):
             raise ValueError("risk policy must contain a risk_tags object")
-    except Exception as exc:
+    except Exception:
         diagnostics.append(
             _diagnostic(
                 "SGV-RISK-POLICY-MALFORMED",
-                artifact=str(root / "spec/risk-policy.json"),
+                artifact=str(policy_path),
                 pointer="/",
-                message=str(exc) or type(exc).__name__,
+                message="risk policy is malformed",
                 remediation="Restore a valid repository risk-policy.json resource.",
                 stage="policy",
             )
@@ -222,13 +215,13 @@ def validate_contract_source(
 
     try:
         diagnostics.extend(_risk_diagnostics(resolved.contract, policy, artifact))
-    except Exception as exc:
+    except Exception:
         diagnostics.append(
             _diagnostic(
                 "SGV-RISK-POLICY-MALFORMED",
-                artifact=str(root / "spec/risk-policy.json"),
+                artifact=str(policy_path),
                 pointer="/risk_tags",
-                message=str(exc) or type(exc).__name__,
+                message="risk policy is malformed",
                 remediation="Restore valid rule objects in risk-policy.json.",
                 stage="policy",
             )
@@ -244,16 +237,18 @@ def contract_diagnostics(
     path: str | Path,
     *,
     resource_root: str | Path | None = None,
+    risk_policy_path: str | Path | None = None,
 ) -> ContractPipelineResult:
     source_path = Path(path)
     try:
         source_bytes = source_path.read_bytes()
-    except Exception as exc:
+    except Exception:
         return ContractPipelineResult(
-            None, (_malformed_diagnostic(str(source_path), exc),)
+            None, (_malformed_diagnostic(str(source_path)),)
         )
     return validate_contract_source(
         source_bytes,
         artifact=str(source_path),
         resource_root=resource_root,
+        risk_policy_path=risk_policy_path,
     )

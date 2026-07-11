@@ -89,5 +89,30 @@ class SgctlSemanticValidationTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("SGV-PACKAGE-MANIFEST-HASH", {d["code"] for d in json.loads(result.stdout)})
 
+    def test_validate_package_reports_missing_generated_file_once(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            package = Path(td) / "sg"
+            compiled = self.run_sgctl("compile", "examples/brownfield-feature/CONTRACT.json", "--out", str(package))
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            (package / "THINKING.md").unlink()
+            result = self.run_sgctl("validate-package", str(package), "--format", "json")
+            missing = [d for d in json.loads(result.stdout) if d["code"] == "SGV-PACKAGE-MISSING-FILE" and d["pointer"] == "/THINKING.md"]
+            self.assertEqual(len(missing), 1, missing)
+
+    def test_validate_package_sanitizes_malformed_contract_details(self):
+        import tempfile
+        secret = "package-private-token"
+        with tempfile.TemporaryDirectory() as td:
+            package = Path(td) / "sg"
+            compiled = self.run_sgctl("compile", "examples/brownfield-feature/CONTRACT.json", "--out", str(package))
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            contract = json.loads((package / "CONTRACT.json").read_text(encoding="utf-8"))
+            contract["contract_revision"] = secret
+            (package / "CONTRACT.json").write_text(json.dumps(contract), encoding="utf-8")
+            result = self.run_sgctl("validate-package", str(package), "--format", "json")
+            self.assertIn("SGV-PACKAGE-CONTRACT-MALFORMED", {d["code"] for d in json.loads(result.stdout)})
+            self.assertNotIn(secret, result.stdout + result.stderr)
+
 if __name__ == "__main__":
     unittest.main()

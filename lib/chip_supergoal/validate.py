@@ -167,12 +167,11 @@ def validate_contract_file(
     *,
     resource_root: str | Path | None = None,
 ) -> list[Diagnostic]:
-    root = Path(resource_root) if resource_root is not None else None
-    if root is None and risk_policy_path is not None:
-        root = Path(risk_policy_path).resolve().parent.parent
+    root = Path(resource_root) if resource_root is not None else repository_resource_root()
     result = contract_diagnostics(
         path,
-        resource_root=root if root is not None else repository_resource_root(),
+        resource_root=root,
+        risk_policy_path=risk_policy_path,
     )
     return list(result.diagnostics)
 
@@ -186,8 +185,8 @@ def _expected_generated_files(root: Path) -> tuple[dict[str, bytes], list[Diagno
     try:
         contract = load_contract(root / "CONTRACT.json")
         diagnostics.extend(validate_research_gate(contract, artifact=str(root / "CONTRACT.json")))
-    except Exception as exc:
-        diagnostics.append(_diag("SGV-PACKAGE-CONTRACT-MALFORMED", "INV-VALIDATOR-001", str(root), "/CONTRACT.json", str(exc), "Regenerate the package from a valid CONTRACT.json."))
+    except Exception:
+        diagnostics.append(_diag("SGV-PACKAGE-CONTRACT-MALFORMED", "INV-VALIDATOR-001", str(root), "/CONTRACT.json", "package contract is malformed", "Regenerate the package from a valid CONTRACT.json."))
         return {}, diagnostics
     expected: dict[str, bytes] = {
         "CONTRACT.json": canonical_json(contract).encode("utf-8"),
@@ -212,8 +211,8 @@ def _manifest_records(root: Path) -> tuple[dict[str, dict], list[Diagnostic]]:
         return {}, [_diag("SGV-PACKAGE-MISSING-MANIFEST", "INV-VALIDATOR-001", str(root), "/MANIFEST.json", "missing MANIFEST.json", "Regenerate the package.")]
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        return {}, [_diag("SGV-PACKAGE-MANIFEST-MALFORMED", "INV-VALIDATOR-001", str(root), "/MANIFEST.json", str(exc), "Regenerate MANIFEST.json.")]
+    except Exception:
+        return {}, [_diag("SGV-PACKAGE-MANIFEST-MALFORMED", "INV-VALIDATOR-001", str(root), "/MANIFEST.json", "package manifest is malformed", "Regenerate MANIFEST.json.")]
     records_raw = manifest.get("artifacts")
     if manifest.get("manifest_version") != "1.0" or not isinstance(records_raw, list):
         diagnostics.append(_diag("SGV-PACKAGE-MANIFEST-SHAPE", "INV-VALIDATOR-001", str(root), "/MANIFEST.json", "manifest has unsupported shape", "Use manifest_version 1.0 with artifacts[]."))
@@ -276,4 +275,16 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
             data = p.read_bytes()
             if item.get("sha256") != _sha256_bytes(data) or item.get("bytes") != len(data) or item.get("mode") != logical_mode(rel):
                 diagnostics.append(_diag("SGV-PACKAGE-MANIFEST-HASH", "INV-VALIDATOR-001", str(r), f"/MANIFEST.json/artifacts/{rel}", f"manifest record for {rel} does not match current bytes/mode", "Regenerate MANIFEST.json from current artifact bytes."))
-    return diagnostics
+    unique: list[Diagnostic] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for diagnostic in diagnostics:
+        identity = (
+            diagnostic.code,
+            diagnostic.artifact,
+            diagnostic.pointer,
+            diagnostic.message,
+        )
+        if identity not in seen:
+            seen.add(identity)
+            unique.append(diagnostic)
+    return unique

@@ -2,6 +2,7 @@ import json
 import ast
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -62,7 +63,11 @@ class DiagnosticsAndInvariantsTest(unittest.TestCase):
         catalog_path = ROOT / "spec/diagnostic-catalog.json"
         self.assertTrue(catalog_path.is_file(), "diagnostic catalog is required")
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        self.assertEqual(set(catalog), {"catalog_version", "expected_code_count", "diagnostics"})
+        self.assertEqual(catalog["catalog_version"], "1.0")
+        self.assertEqual(catalog["expected_code_count"], 71)
         entries = catalog.get("diagnostics", [])
+        self.assertEqual(len(entries), catalog["expected_code_count"])
         catalog_codes = [entry.get("code") for entry in entries]
         self.assertEqual(len(catalog_codes), len(set(catalog_codes)))
         for entry in entries:
@@ -77,8 +82,7 @@ class DiagnosticsAndInvariantsTest(unittest.TestCase):
 
         pattern = re.compile(r"\bSGV-[A-Z0-9-]+\b")
         emitted = set()
-        paths = sorted((ROOT / "lib/chip_supergoal").glob("*.py"))
-        paths.append(ROOT / "scripts/sgctl.py")
+        paths = sorted((ROOT / "lib").rglob("*.py")) + sorted((ROOT / "scripts").rglob("*.py"))
         for path in paths:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
@@ -137,6 +141,23 @@ class DiagnosticsAndInvariantsTest(unittest.TestCase):
                 metadata = diagnostics_module.diagnostic_metadata(entry["code"])
                 self.assertEqual(metadata.invariant, entry["invariant"])
                 self.assertEqual(metadata.stage, entry["stage"])
+
+    def test_unknown_catalog_codes_and_metadata_mismatches_are_rejected(self):
+        with self.assertRaises(ValueError):
+            diagnostics_module.diagnostic_metadata("SGV-TYPO-NOT-CATALOGED")
+        with self.assertRaises(ValueError):
+            Diagnostic(code="SGV-TYPO-NOT-CATALOGED", severity="error", blocking_stage="preflight", invariant_id="INV-VALIDATOR-001", artifact="x", pointer="/", message="x", remediation="x")
+        with self.assertRaises(ValueError):
+            Diagnostic(code="SGV-CONTRACT-MALFORMED", severity="error", blocking_stage="semantic", invariant_id="INV-VALIDATOR-001", artifact="x", pointer="/", message="x", remediation="x")
+
+    def test_catalog_loader_rejects_invalid_invariant_shape(self):
+        catalog = json.loads((ROOT / "spec/diagnostic-catalog.json").read_text(encoding="utf-8"))
+        catalog["diagnostics"][0]["invariant"] = "INV-BOGUS"
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "catalog.json"
+            path.write_text(json.dumps(catalog), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                diagnostics_module.load_diagnostic_catalog(path)
 
 if __name__ == "__main__":
     unittest.main()
