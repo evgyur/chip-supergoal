@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import base64
 import binascii
@@ -13,7 +14,7 @@ import re
 import stat
 import sys
 import tempfile
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 import uuid
 import zipfile
 
@@ -294,18 +295,116 @@ def _assert_no_alias_chain(path: Path, *, include_leaf: bool) -> None:
         current = parent
 
 
+def _resolve_checked_path(path: Path, *, strict: bool, label: str) -> Path:
+    _assert_no_alias_chain(path, include_leaf=True)
+    try:
+        resolved = path.resolve(strict=strict)
+    except (OSError, RuntimeError) as exc:
+        raise ArchiveSecurityError(
+            f"SGV-PACKAGE-PATH-ESCAPE: {label} cannot be resolved"
+        ) from exc
+    _assert_no_alias_chain(resolved, include_leaf=True)
+    return resolved
+
+
+def _same_bound_path(left: str | Path, right: str | Path) -> bool:
+    left_bound = _resolve_checked_path(
+        _absolute(left), strict=False, label="archive path"
+    )
+    right_bound = _resolve_checked_path(
+        _absolute(right), strict=False, label="archive path"
+    )
+    return _path_key(left_bound) == _path_key(right_bound)
+
+
+@contextmanager
+def _archive_operation_lock(
+    package_root: Path,
+    package_identity: RootIdentity,
+    namespace_root_identity: RootIdentity,
+) -> Iterator[None]:
+    lock = package_operation_lock(
+        package_root,
+        expected_root_identity=package_identity,
+        expected_namespace_root_identity=namespace_root_identity,
+    )
+    try:
+        lock.__enter__()
+    except UnsafeFileError as exc:
+        raise ArchiveSecurityError(
+            f"{_classify_unsafe(exc)}: package root changed before archive lock"
+        ) from exc
+    try:
+        yield
+    finally:
+        lock.__exit__(None, None, None)
+
+
 def _prepare_paths(
-    root: str | Path, archive: str | Path, result: str | Path
-) -> tuple[Path, Path, Path]:
-    package_root = _absolute(root)
-    destination = _absolute(archive)
-    result_path = _absolute(result)
+    root: str | Path,
+    archive: str | Path,
+    result: str | Path,
+    *,
+    expected_root_identity: RootIdentity | None = None,
+    expected_namespace_root_identity: RootIdentity | None = None,
+) -> tuple[Path, Path, Path, RootIdentity, RootIdentity]:
+    lexical_root = _absolute(root)
+    lexical_destination = _absolute(archive)
+    lexical_result = _absolute(result)
+    _assert_no_alias_chain(lexical_root, include_leaf=True)
+    _assert_no_alias_chain(lexical_destination, include_leaf=True)
+    _assert_no_alias_chain(lexical_result, include_leaf=True)
+    _assert_regular_root(lexical_root)
+    lexical_expected_result = lexical_root / ARCHIVE_RESULT_PATH
+    if _path_key(lexical_result) != _path_key(lexical_expected_result):
+        raise ArchiveSecurityError(
+            "SGV-PACKAGE-PATH-ESCAPE: archive result must be "
+            f"{ARCHIVE_RESULT_PATH}"
+        )
+
+    try:
+        lexical_identity = capture_root_identity(lexical_root)
+        if (
+            expected_root_identity is not None
+            and lexical_identity != expected_root_identity
+        ):
+            raise ArchiveSecurityError(
+                "SGV-PACKAGE-PATH-ESCAPE: package root identity changed before path binding"
+            )
+        package_root = _resolve_checked_path(
+            lexical_root, strict=True, label="package root"
+        )
+        result_path = _resolve_checked_path(
+            lexical_result, strict=False, label="archive result"
+        )
+        destination = _resolve_checked_path(
+            lexical_destination, strict=False, label="archive destination"
+        )
+        namespace_root_identity = capture_root_identity(package_root.parent)
+        if (
+            expected_namespace_root_identity is not None
+            and namespace_root_identity != expected_namespace_root_identity
+        ):
+            raise ArchiveSecurityError(
+                "SGV-PACKAGE-PATH-ESCAPE: package namespace identity changed before path binding"
+            )
+        if (
+            capture_root_identity(lexical_root) != lexical_identity
+            or capture_root_identity(package_root) != lexical_identity
+        ):
+            raise ArchiveSecurityError(
+                "SGV-PACKAGE-PATH-ESCAPE: package root changed while paths were bound"
+            )
+    except UnsafeFileError as exc:
+        raise ArchiveSecurityError(
+            f"{_classify_unsafe(exc)}: package root cannot be bound"
+        ) from exc
+
     _assert_regular_root(package_root)
     expected_result = package_root / ARCHIVE_RESULT_PATH
     if _path_key(result_path) != _path_key(expected_result):
         raise ArchiveSecurityError(
-            "SGV-PACKAGE-PATH-ESCAPE: archive result must be "
-            f"{ARCHIVE_RESULT_PATH}"
+            "SGV-PACKAGE-PATH-ESCAPE: archive result namespace changed while paths were bound"
         )
     if _is_within(destination, package_root):
         raise ArchiveSecurityError(
@@ -316,23 +415,10 @@ def _prepare_paths(
         raise ArchiveSecurityError(
             "SGV-PACKAGE-ARCHIVE-INSIDE-ROOT: archive destination is a reserved package control path"
         )
-    # Resolving existing aliases catches case/junction/symlink paths that are
-    # lexically external but physically enter the package.
-    try:
-        if _is_within(destination.resolve(strict=False), package_root.resolve(strict=True)):
-            raise ArchiveSecurityError(
-                "SGV-PACKAGE-ARCHIVE-INSIDE-ROOT: archive destination aliases package root"
-            )
-    except OSError as exc:
-        raise ArchiveSecurityError(
-            "SGV-PACKAGE-PATH-ESCAPE: archive destination cannot be resolved"
-        ) from exc
     if _path_key(destination) == _path_key(result_path):
         raise ArchiveSecurityError(
             "SGV-PACKAGE-ARCHIVE-INSIDE-ROOT: archive and result paths alias"
         )
-    _assert_no_alias_chain(destination, include_leaf=True)
-    _assert_no_alias_chain(result_path, include_leaf=True)
     if os.path.lexists(destination):
         current = destination.lstat()
         if not stat.S_ISREG(current.st_mode):
@@ -345,7 +431,13 @@ def _prepare_paths(
             raise ArchiveSecurityError(
                 "SGV-PACKAGE-SPECIAL-FILE: archive result is not a regular file"
             )
-    return package_root, destination, result_path
+    return (
+        package_root,
+        destination,
+        result_path,
+        lexical_identity,
+        namespace_root_identity,
+    )
 
 
 def _bounded_snapshot_inventory(
@@ -764,6 +856,14 @@ def _assert_zipfile_compatibility() -> None:
         unicode_probe = zipfile.ZipInfo("ü.txt")
         ascii_encoded, ascii_flags = hook(ascii_probe)
         unicode_encoded, unicode_flags = hook(unicode_probe)
+        custom_ascii_encoded, custom_ascii_flags = (
+            _Utf8ZipInfo("a.txt")._encodeFilenameFlags()
+        )
+        custom_unicode_encoded, custom_unicode_flags = (
+            _Utf8ZipInfo("ü.txt")._encodeFilenameFlags()
+        )
+        probe_name = "ü-probe.txt"
+        probe_name_bytes = probe_name.encode("utf-8")
         probe_stream = io.BytesIO()
         with zipfile.ZipFile(
             probe_stream,
@@ -771,28 +871,62 @@ def _assert_zipfile_compatibility() -> None:
             compression=zipfile.ZIP_STORED,
             allowZip64=False,
         ) as probe_zip:
-            probe_zip.writestr(_Utf8ZipInfo("probe.txt"), b"")
+            probe_zip.writestr(_Utf8ZipInfo(probe_name), b"")
         probe_bytes = probe_stream.getvalue()
+        local = probe_bytes.find(b"PK\x03\x04")
         central = probe_bytes.find(b"PK\x01\x02")
-        local_flags = int.from_bytes(probe_bytes[6:8], "little")
+        local_flags = (
+            int.from_bytes(probe_bytes[local + 6 : local + 8], "little")
+            if local >= 0
+            else -1
+        )
+        local_name_length = (
+            int.from_bytes(probe_bytes[local + 26 : local + 28], "little")
+            if local >= 0
+            else -1
+        )
+        local_name = (
+            probe_bytes[local + 30 : local + 30 + local_name_length]
+            if local_name_length >= 0
+            else b""
+        )
         central_flags = (
             int.from_bytes(probe_bytes[central + 8 : central + 10], "little")
             if central >= 0
             else -1
         )
+        central_name_length = (
+            int.from_bytes(probe_bytes[central + 28 : central + 30], "little")
+            if central >= 0
+            else -1
+        )
+        central_name = (
+            probe_bytes[central + 46 : central + 46 + central_name_length]
+            if central_name_length >= 0
+            else b""
+        )
     except Exception as exc:
         raise ArchiveSecurityError(
             "SGV-PACKAGE-ZIP-HASH-MISMATCH: unsupported zipfile filename hook"
         ) from exc
+    supported_base_unicode = {
+        ("ü.txt".encode("utf-8"), 0x800),
+        ("ü.txt".encode("cp437"), 0),
+    }
     if (
         sys.version_info[:2] < (3, 11)
         or parameters != ["self"]
         or ascii_encoded != b"a.txt"
         or ascii_flags != 0
-        or unicode_encoded != "ü.txt".encode("utf-8")
-        or unicode_flags != 0x800
+        or (unicode_encoded, unicode_flags) not in supported_base_unicode
+        or custom_ascii_encoded != b"a.txt"
+        or custom_ascii_flags != 0x800
+        or custom_unicode_encoded != "ü.txt".encode("utf-8")
+        or custom_unicode_flags != 0x800
         or local_flags != 0x800
         or central_flags != 0x800
+        or local_name != probe_name_bytes
+        or central_name != probe_name_bytes
     ):
         raise ArchiveSecurityError(
             "SGV-PACKAGE-ZIP-HASH-MISMATCH: incompatible zipfile filename hook"
@@ -2013,8 +2147,14 @@ def _recover_publication_locked(
     *,
     requested_destination: Path | None = None,
     prefer_rollback: bool = False,
+    expected_package_identity: RootIdentity | None = None,
 ) -> dict[str, Any] | None:
     package_identity = capture_root_identity(package_root)
+    if (
+        expected_package_identity is not None
+        and package_identity != expected_package_identity
+    ):
+        raise _recovery_required("package root identity changed before recovery")
     loaded = _read_publication_intent(package_root, package_identity)
     if loaded is None:
         return None
@@ -2022,7 +2162,7 @@ def _recover_publication_locked(
     destination = _absolute(intent["destination_path"])
     if (
         requested_destination is not None
-        and _path_key(destination) != _path_key(requested_destination)
+        and not _same_bound_path(destination, requested_destination)
     ):
         raise _recovery_required(
             "pending publication belongs to a different destination"
@@ -2650,7 +2790,7 @@ def require_archive_result(
     if archive is not None:
         requested = _absolute(archive)
         recorded = _absolute(result["archive_identity"]["absolute_path"])
-        if _path_key(requested) != _path_key(recorded):
+        if not _same_bound_path(requested, recorded):
             raise ArchiveSecurityError(
                 "SGV-DELIVERY-ARCHIVE-MISSING: requested archive differs from canonical result"
             )
@@ -2669,7 +2809,7 @@ def require_archive_result_with_bytes(
     if archive is not None:
         requested = _absolute(archive)
         recorded = _absolute(result["archive_identity"]["absolute_path"])
-        if _path_key(requested) != _path_key(recorded):
+        if not _same_bound_path(requested, recorded):
             raise ArchiveSecurityError(
                 "SGV-DELIVERY-ARCHIVE-MISSING: requested archive differs from canonical result"
             )
@@ -2686,20 +2826,49 @@ def deterministic_zip(
         raise ArchiveSecurityError(
             "SGV-PACKAGE-PATH-ESCAPE: archive snapshots cannot use partial allowlists"
         )
-    package_root = _absolute(root)
-    destination = _absolute(archive)
-    result_path = _absolute(manifest)
-    _assert_regular_root(package_root)
-    with package_operation_lock(package_root):
+    (
+        package_root,
+        destination,
+        result_path,
+        package_identity,
+        namespace_root_identity,
+    ) = _prepare_paths(root, archive, manifest)
+    with _archive_operation_lock(
+        package_root,
+        package_identity,
+        namespace_root_identity,
+    ):
+        (
+            package_root,
+            destination,
+            result_path,
+            rebound_identity,
+            rebound_namespace_identity,
+        ) = _prepare_paths(
+            package_root,
+            destination,
+            result_path,
+            expected_root_identity=package_identity,
+            expected_namespace_root_identity=namespace_root_identity,
+        )
+        if (
+            rebound_identity != package_identity
+            or rebound_namespace_identity != namespace_root_identity
+        ):
+            raise ArchiveSecurityError(
+                "SGV-PACKAGE-PATH-ESCAPE: package root identity changed after archive lock"
+            )
         # Resolve any prior durable intent under the same package-wide lock.
         _recover_publication_locked(
-            package_root, requested_destination=destination
-        )
-        package_root, destination, result_path = _prepare_paths(
-            package_root, destination, result_path
+            package_root,
+            requested_destination=destination,
+            expected_package_identity=package_identity,
         )
         assert_runtime_mutable(package_root)
-        package_identity = capture_root_identity(package_root)
+        if capture_root_identity(package_root) != package_identity:
+            raise ArchiveSecurityError(
+                "SGV-PACKAGE-PATH-ESCAPE: package root changed after recovery"
+            )
         captures, _ = _capture_snapshot(
             package_root, root_identity=package_identity
         )

@@ -553,6 +553,40 @@ class PortableRuntimeTest(unittest.TestCase):
 
             self.assertEqual(outside.read_bytes(), b"")
 
+    def test_package_lock_rejects_invalid_one_byte_content_after_acquire(self):
+        with tempfile.TemporaryDirectory() as td:
+            lock_path = Path(td) / "state.lock"
+            lock_path.write_bytes(b"x")
+
+            with self.assertRaisesRegex(UnsafeFileError, "lock file byte is invalid"):
+                with package_lock(lock_path):
+                    self.fail("invalid lock content was accepted")
+
+            self.assertEqual(lock_path.read_bytes(), b"x")
+
+    def test_package_lock_revalidates_size_after_acquire(self):
+        with tempfile.TemporaryDirectory() as td:
+            lock_path = Path(td) / "state.lock"
+            lock_path.write_bytes(b"\0")
+            original_acquire = portable_module._acquire_nonblocking
+
+            def acquire_then_grow(stream) -> None:
+                original_acquire(stream)
+                with lock_path.open("ab") as writer:
+                    writer.write(b"x")
+
+            with mock.patch.object(
+                portable_module,
+                "_acquire_nonblocking",
+                side_effect=acquire_then_grow,
+            ), self.assertRaisesRegex(
+                UnsafeFileError, "lock file must contain one byte"
+            ):
+                with package_lock(lock_path):
+                    self.fail("resized lock content was accepted")
+
+            self.assertEqual(lock_path.read_bytes(), b"\0x")
+
     def test_contended_lock_times_out_against_second_process(self):
         with tempfile.TemporaryDirectory() as td:
             lock_path = Path(td) / "state.lock"
@@ -637,6 +671,23 @@ class PortableRuntimeTest(unittest.TestCase):
             self.assertEqual(lock_path.parent, root.parent.resolve())
             self.assertFalse(lock_path.is_relative_to(root.resolve()))
             self.assertEqual(lock_path.read_bytes(), b"\0")
+
+    def test_operation_lock_requires_complete_expected_identity_binding(self):
+        operation_lock = portable_module.package_operation_lock
+        identity = portable_module.RootIdentity("test", 1, 2)
+        for kwargs in (
+            {"expected_root_identity": identity},
+            {"expected_namespace_root_identity": identity},
+        ):
+            with self.subTest(kwargs=tuple(kwargs)), tempfile.TemporaryDirectory() as td:
+                root = Path(td) / "package"
+                namespace_lock = Path(td) / ".package.operation.lock"
+                with self.assertRaisesRegex(
+                    ValueError, "expected identities must be supplied together"
+                ):
+                    with operation_lock(root, **kwargs):
+                        pass
+                self.assertFalse(namespace_lock.exists())
 
     def test_compiled_package_identity_lock_prevents_rename_split_brain(self):
         operation_lock = portable_module.package_operation_lock

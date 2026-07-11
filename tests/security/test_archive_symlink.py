@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,13 +15,110 @@ sys.path.insert(0, str(ROOT / "lib"))
 import chip_supergoal.archive as archive_module
 from chip_supergoal.archive import ArchiveSecurityError, deterministic_zip
 from chip_supergoal.compile import compile_contract_file
-from chip_supergoal.portable import UnsafeFileError
+from chip_supergoal.portable import (
+    UnsafeFileError,
+    package_operation_lock_path,
+)
 
 
 SOURCE = ROOT / "examples" / "brownfield-feature" / "CONTRACT.json"
 
 
 class ArchiveSymlinkSecurity(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "native Windows ancestor junction regression")
+    def test_archive_rejects_ancestor_junction_before_creating_locks(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            trusted_parent = parent / "trusted"
+            trusted_parent.mkdir()
+            package = compile_contract_file(SOURCE, trusted_parent / "package")
+            internal_lock = package / "runtime/operation.lock"
+            internal_lock.unlink()
+            namespace_lock = package_operation_lock_path(package)
+            if namespace_lock.exists():
+                namespace_lock.unlink()
+            alias_parent = parent / "alias-parent"
+            completed = subprocess.run(
+                [
+                    "cmd",
+                    "/d",
+                    "/c",
+                    "mklink",
+                    "/J",
+                    str(alias_parent),
+                    str(trusted_parent),
+                ],
+                text=True,
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if completed.returncode != 0:
+                self.skipTest(f"junction creation unavailable: {completed.stderr}")
+            alias_package = alias_parent / "package"
+            try:
+                with self.assertRaisesRegex(
+                    ArchiveSecurityError, "SGV-PACKAGE-SYMLINK"
+                ):
+                    deterministic_zip(
+                        alias_package,
+                        parent / "archive.zip",
+                        alias_package / "out/final-artifacts-manifest.json",
+                    )
+            finally:
+                alias_parent.rmdir()
+
+            self.assertFalse(namespace_lock.exists())
+            self.assertFalse(internal_lock.exists())
+            self.assertFalse((parent / "archive.zip").exists())
+
+    @unittest.skipUnless(os.name == "nt", "native Windows junction root regression")
+    def test_archive_cli_rejects_junction_root_before_path_canonicalization(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            package = compile_contract_file(SOURCE, parent / "package")
+            junction = parent / "package-junction"
+            completed = subprocess.run(
+                ["cmd", "/d", "/c", "mklink", "/J", str(junction), str(package)],
+                text=True,
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if completed.returncode != 0:
+                self.skipTest(f"junction creation unavailable: {completed.stderr}")
+            destination = parent / "archive.zip"
+            result_path = junction / "out/final-artifacts-manifest.json"
+            try:
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(junction / "scripts/sgctl.py"),
+                        "archive",
+                        str(junction),
+                        "--out",
+                        str(destination),
+                        "--manifest",
+                        str(result_path),
+                    ],
+                    cwd=parent,
+                    text=True,
+                    capture_output=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=False,
+                )
+            finally:
+                junction.rmdir()
+
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("SGV-PACKAGE-SYMLINK", result.stderr)
+            self.assertNotIn("SGV-PACKAGE-PATH-ESCAPE", result.stderr)
+            self.assertFalse(destination.exists())
+            self.assertFalse((package / "out/final-artifacts-manifest.json").exists())
+
     def test_archive_rejects_real_symlink_escape_when_fixture_is_available(self):
         with tempfile.TemporaryDirectory() as td:
             parent = Path(td)

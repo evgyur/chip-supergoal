@@ -769,8 +769,8 @@ def _validate_mutable_plane(
             invalid = _package_bytes(root, lock_path) != b"\0"
         # validate_package holds operation.lock while this body runs.  On
         # Windows a byte-range lock intentionally blocks a second read handle;
-        # package_operation_lock already verified the one-byte content before
-        # acquiring it, so only the node type is checked here.
+        # package_operation_lock already verified the one-byte content after
+        # acquiring it and before yielding, so only the node type is checked here.
         if invalid:
             diagnostics.append(
                 _mutable_diagnostic(

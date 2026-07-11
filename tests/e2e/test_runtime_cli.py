@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib"))
 
 from chip_supergoal.goalmanager_sim import GoalManagerSimulator
+from chip_supergoal.archive import require_archive_result
 from chip_supergoal.portable import package_operation_lock
 from chip_supergoal.state import StateStore
 
@@ -71,6 +72,66 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         self.assertNotIn("Traceback", result.stdout + result.stderr)
         return result
+
+    @unittest.skipUnless(os.name == "nt", "native Windows path namespace regression")
+    def test_archive_accepts_consistent_subst_namespace(self):
+        drive = None
+        for letter in reversed("PQRSTUVWXYZ"):
+            candidate = f"{letter}:"
+            if not Path(candidate + "\\").exists():
+                mapped = subprocess.run(
+                    ["subst", candidate, str(self.parent)],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=False,
+                )
+                if mapped.returncode == 0:
+                    drive = candidate
+                    break
+        if drive is None:
+            self.skipTest("no drive letter is available for a SUBST fixture")
+
+        def remove_mapping() -> None:
+            subprocess.run(
+                ["subst", drive, "/D"],
+                capture_output=True,
+                check=False,
+            )
+
+        self.addCleanup(remove_mapping)
+        alias_package = Path(f"{drive}/relocated path/.supergoal/slug")
+        alias_script = alias_package / "scripts/sgctl.py"
+        alias_archive = Path(f"{drive}/external-artifact.zip")
+        alias_manifest = alias_package / "out/final-artifacts-manifest.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(alias_script),
+                "archive",
+                "--out",
+                str(alias_archive),
+                "--manifest",
+                str(alias_manifest),
+            ],
+            cwd=f"{drive}\\",
+            env=self.env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(alias_archive.is_file())
+        self.assertTrue(alias_manifest.is_file())
+        loaded = require_archive_result(alias_package, alias_archive)
+        self.assertEqual(
+            loaded["archive_sha256"],
+            hashlib.sha256(alias_archive.read_bytes()).hexdigest(),
+        )
 
     def test_validate_package_lock_contention_is_stable_diagnostic(self):
         entered = threading.Event()

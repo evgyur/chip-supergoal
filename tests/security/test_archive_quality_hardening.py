@@ -196,6 +196,20 @@ class ZipfileCompatibilityGuardTest(unittest.TestCase):
         ):
             archive_module._assert_zipfile_compatibility()
 
+    def test_cp437_base_hook_is_safe_when_custom_writer_stays_utf8(self):
+        def cp437_hook(self):
+            try:
+                return self.filename.encode("ascii"), self.flag_bits
+            except UnicodeEncodeError:
+                return self.filename.encode("cp437"), self.flag_bits
+
+        with mock.patch.object(
+            archive_module.zipfile.ZipInfo,
+            "_encodeFilenameFlags",
+            cp437_hook,
+        ):
+            archive_module._assert_zipfile_compatibility()
+
     def test_writer_probe_rejects_subclass_hook_that_drops_utf8_flag(self):
         capture = archive_module.CapturedFile("a.txt", b"x", "0644", (0, 0, 1, 0))
         manifest = archive_module._canonical_json_bytes(
@@ -216,6 +230,279 @@ class ZipfileCompatibilityGuardTest(unittest.TestCase):
 
 
 class RootIdentityRaceTest(unittest.TestCase):
+    def test_namespace_parent_swap_before_lock_has_no_side_effects(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            trusted_parent = base / "trusted"
+            attacker_parent = base / "attacker"
+            parked_parent = base / "trusted-parked"
+            trusted_parent.mkdir()
+            attacker_parent.mkdir()
+            package = compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                trusted_parent / "package",
+            )
+            compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                attacker_parent / "package",
+            )
+            trusted_namespace_lock = package_operation_lock_path(package)
+            attacker_namespace_lock = (
+                attacker_parent / trusted_namespace_lock.name
+            )
+            if trusted_namespace_lock.exists():
+                trusted_namespace_lock.unlink()
+            if attacker_namespace_lock.exists():
+                attacker_namespace_lock.unlink()
+            destination = base / "archive.zip"
+            result_path = package / archive_module.ARCHIVE_RESULT_PATH
+            original_lock = archive_module.package_operation_lock
+            swapped = False
+
+            def swap_then_lock(*args, **kwargs):
+                nonlocal swapped
+                if not swapped:
+                    trusted_parent.rename(parked_parent)
+                    if os.name == "nt":
+                        linked = subprocess.run(
+                            [
+                                "cmd",
+                                "/d",
+                                "/c",
+                                "mklink",
+                                "/J",
+                                str(trusted_parent),
+                                str(attacker_parent),
+                            ],
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            errors="replace",
+                            check=False,
+                        )
+                        if linked.returncode != 0:
+                            parked_parent.rename(trusted_parent)
+                            self.skipTest(
+                                f"junction creation unavailable: {linked.stderr}"
+                            )
+                    else:
+                        trusted_parent.symlink_to(
+                            attacker_parent, target_is_directory=True
+                        )
+                    swapped = True
+                return original_lock(*args, **kwargs)
+
+            try:
+                with mock.patch.object(
+                    archive_module,
+                    "package_operation_lock",
+                    side_effect=swap_then_lock,
+                ), self.assertRaisesRegex(
+                    ArchiveSecurityError,
+                    "SGV-PACKAGE-(?:PATH-ESCAPE|SYMLINK)",
+                ):
+                    archive_module.deterministic_zip(
+                        package,
+                        destination,
+                        result_path,
+                    )
+            finally:
+                if swapped and os.path.lexists(trusted_parent):
+                    if os.name == "nt":
+                        os.rmdir(trusted_parent)
+                    else:
+                        trusted_parent.unlink()
+
+            self.assertTrue(swapped)
+            self.assertFalse(attacker_namespace_lock.exists())
+            self.assertFalse(destination.exists())
+            self.assertFalse(
+                (attacker_parent / "package" / archive_module.ARCHIVE_RESULT_PATH).exists()
+            )
+            self.assertFalse(
+                (parked_parent / "package" / archive_module.ARCHIVE_RESULT_PATH).exists()
+            )
+
+    @unittest.skipIf(os.name == "nt", "POSIX permits renaming an open locked tree")
+    def test_package_swap_after_first_bind_is_rejected_by_original_identity(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            package = compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                base / "package",
+            )
+            replacement = compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                base / "replacement",
+            )
+            parked = base / "package-parked"
+            destination = base / "archive.zip"
+            result_path = package / archive_module.ARCHIVE_RESULT_PATH
+            original_prepare = archive_module._prepare_paths
+            prepare_calls = 0
+
+            def swap_before_second_bind(*args, **kwargs):
+                nonlocal prepare_calls
+                prepare_calls += 1
+                if prepare_calls == 2:
+                    package.rename(parked)
+                    replacement.rename(package)
+                return original_prepare(*args, **kwargs)
+
+            with mock.patch.object(
+                archive_module,
+                "_prepare_paths",
+                side_effect=swap_before_second_bind,
+            ), self.assertRaisesRegex(
+                ArchiveSecurityError, "SGV-PACKAGE-PATH-ESCAPE"
+            ):
+                archive_module.deterministic_zip(
+                    package,
+                    destination,
+                    result_path,
+                )
+
+            self.assertEqual(prepare_calls, 2)
+            self.assertFalse(destination.exists())
+            self.assertFalse(
+                (package / archive_module.ARCHIVE_RESULT_PATH).exists()
+            )
+            self.assertFalse(
+                (parked / archive_module.ARCHIVE_RESULT_PATH).exists()
+            )
+
+    @unittest.skipUnless(os.name == "nt", "native Windows SUBST alias regression")
+    def test_subst_alias_cannot_hide_reserved_namespace_lock_destination(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            trusted = base / "trusted"
+            trusted.mkdir()
+            compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                trusted / "package",
+            )
+            drive = None
+            for letter in reversed("PQRSTUVWXYZ"):
+                candidate = f"{letter}:"
+                if Path(candidate + "\\").exists():
+                    continue
+                mapped = subprocess.run(
+                    ["subst", candidate, str(trusted)],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=False,
+                )
+                if mapped.returncode == 0:
+                    drive = candidate
+                    break
+            if drive is None:
+                self.skipTest("no drive letter is available for a SUBST fixture")
+
+            alias_package = Path(f"{drive}/package")
+            reserved = alias_package.parent / f".{alias_package.name}.operation.lock"
+            try:
+                with self.assertRaisesRegex(
+                    ArchiveSecurityError, "SGV-PACKAGE-ARCHIVE-INSIDE-ROOT"
+                ):
+                    archive_module._prepare_paths(
+                        alias_package,
+                        reserved,
+                        alias_package / archive_module.ARCHIVE_RESULT_PATH,
+                    )
+            finally:
+                subprocess.run(
+                    ["subst", drive, "/D"],
+                    capture_output=True,
+                    check=False,
+                )
+
+    @unittest.skipUnless(os.name == "nt", "native Windows SUBST remap regression")
+    def test_archive_binds_subst_namespace_before_lock_and_recovery(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            trusted = base / "trusted"
+            attacker = base / "attacker"
+            trusted.mkdir()
+            attacker.mkdir()
+            compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                trusted / "package",
+            )
+            compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                attacker / "package",
+            )
+            drive = None
+            for letter in reversed("PQRSTUVWXYZ"):
+                candidate = f"{letter}:"
+                if Path(candidate + "\\").exists():
+                    continue
+                mapped = subprocess.run(
+                    ["subst", candidate, str(trusted)],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=False,
+                )
+                if mapped.returncode == 0:
+                    drive = candidate
+                    break
+            if drive is None:
+                self.skipTest("no drive letter is available for a SUBST fixture")
+
+            alias_package = Path(f"{drive}/package")
+            alias_destination = Path(f"{drive}/archive.zip")
+            alias_result = alias_package / archive_module.ARCHIVE_RESULT_PATH
+            original_recover = archive_module._recover_publication_locked
+            remapped = False
+
+            def remap_then_recover(*args, **kwargs):
+                nonlocal remapped
+                if not remapped:
+                    subprocess.run(
+                        ["subst", drive, "/D"],
+                        capture_output=True,
+                        check=True,
+                    )
+                    subprocess.run(
+                        ["subst", drive, str(attacker)],
+                        capture_output=True,
+                        check=True,
+                    )
+                    remapped = True
+                return original_recover(*args, **kwargs)
+
+            try:
+                with mock.patch.object(
+                    archive_module,
+                    "_recover_publication_locked",
+                    side_effect=remap_then_recover,
+                ):
+                    archive_module.deterministic_zip(
+                        alias_package,
+                        alias_destination,
+                        alias_result,
+                    )
+            finally:
+                subprocess.run(
+                    ["subst", drive, "/D"],
+                    capture_output=True,
+                    check=False,
+                )
+
+            self.assertTrue(remapped)
+            self.assertTrue((trusted / "archive.zip").is_file())
+            self.assertTrue(
+                (trusted / "package" / archive_module.ARCHIVE_RESULT_PATH).is_file()
+            )
+            self.assertFalse((attacker / "archive.zip").exists())
+            self.assertFalse(
+                (attacker / "package" / archive_module.ARCHIVE_RESULT_PATH).exists()
+            )
+
     def test_rooted_read_write_delete_reject_nonleaf_ancestor_replacement(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)

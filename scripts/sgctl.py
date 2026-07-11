@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True
 
+_SCRIPT_PACKAGE_ROOT = Path(
+    os.path.abspath(os.fspath(Path(__file__).parent.parent))
+)
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 
@@ -85,7 +89,11 @@ def _runtime_error(exc: Exception) -> int:
 
 
 def _runtime_root(args) -> Path:
-    return Path(getattr(args, "root", None) or ROOT).resolve(strict=False)
+    raw_root = getattr(args, "root", None) or _SCRIPT_PACKAGE_ROOT
+    lexical_root = Path(os.path.abspath(os.fspath(raw_root)))
+    if getattr(args, "cmd", None) == "archive":
+        return lexical_root
+    return lexical_root.resolve(strict=False)
 
 
 def _delivery_authorization_from_json(raw: str) -> dict:

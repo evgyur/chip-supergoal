@@ -472,6 +472,7 @@ if os.name == "nt":
     _FILE_RENAME_INFORMATION_CLASS_NT = 10
     _FILE_OPEN = 1
     _FILE_CREATE = 2
+    _FILE_OPEN_IF = 3
     _FILE_DIRECTORY_FILE = 0x00000001
     _FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020
     _FILE_NON_DIRECTORY_FILE = 0x00000040
@@ -716,6 +717,7 @@ def _open_windows_relative_verified(
     *,
     directory: bool,
     create: bool = False,
+    create_if_missing: bool = False,
     desired_access: int | None = None,
     share_mode: int | None = None,
 ) -> tuple[object, Path]:
@@ -754,15 +756,24 @@ def _open_windows_relative_verified(
     options |= _FILE_DIRECTORY_FILE if directory else _FILE_NON_DIRECTORY_FILE
     if share_mode is None:
         share_mode = _FILE_SHARE_READ | _FILE_SHARE_WRITE | _FILE_SHARE_DELETE
+    if create and create_if_missing:
+        raise ValueError("relative open cannot combine create modes")
+    disposition = (
+        _FILE_CREATE
+        if create
+        else _FILE_OPEN_IF
+        if create_if_missing
+        else _FILE_OPEN
+    )
     status = _NtCreateFile(
         ctypes.byref(handle),
         desired_access,
         ctypes.byref(attributes),
         ctypes.byref(status_block),
         None,
-        _FILE_ATTRIBUTE_NORMAL if create and not directory else 0,
+        _FILE_ATTRIBUTE_NORMAL if (create or create_if_missing) and not directory else 0,
         share_mode,
-        _FILE_CREATE if create else _FILE_OPEN,
+        disposition,
         options,
         None,
         0,
@@ -2636,18 +2647,29 @@ def _open_lock_file(path: Path) -> BinaryIO:
 
 @contextmanager
 def _open_contained_lock_file(
-    path: str | Path, root: str | Path
+    path: str | Path,
+    root: str | Path,
+    *,
+    root_identity: RootIdentity | None = None,
+    create: bool = False,
 ) -> Iterator[BinaryIO]:
     target, package_root, relative = _contained_relative(path, root)
     if os.name == "nt":
         directory_handles: list[object] = []
         file_handle: object | None = None
+        descriptor: int | None = None
         stream: BinaryIO | None = None
         try:
             try:
                 root_handle, final_root = _open_windows_verified(
                     package_root, directory=True
                 )
+                if root_identity is not None:
+                    _require_root_identity(
+                        _windows_root_identity(root_handle),
+                        root_identity,
+                        package_root,
+                    )
                 directory_handles.append(root_handle)
                 current = package_root
                 for component in relative.parts[:-1]:
@@ -2662,26 +2684,85 @@ def _open_contained_lock_file(
                             "lock directory resolves outside the trusted root",
                         )
                     directory_handles.append(handle)
-                file_handle, final_target = _open_windows_verified(
-                    target,
-                    directory=False,
-                    desired_access=_GENERIC_READ | _GENERIC_WRITE,
-                    share_delete=True,
+                parent_parts = tuple(relative.parts[:-1])
+                _assert_windows_directory_chain(
+                    package_root, parent_parts, directory_handles
+                )
+                try:
+                    before = target.lstat()
+                    if (
+                        not stat.S_ISREG(before.st_mode)
+                        or stat.S_ISLNK(before.st_mode)
+                        or is_reparse_point(before)
+                    ):
+                        raise UnsafeFileError(
+                            target, "lock path is not a regular file"
+                        )
+                    descriptor = os.open(
+                        target, os.O_RDWR | os.O_BINARY
+                    )
+                except FileNotFoundError:
+                    if not create:
+                        raise
+                    try:
+                        file_handle, _ = _open_windows_relative_verified(
+                            directory_handles[-1],
+                            relative.parts[-1],
+                            create_if_missing=True,
+                            directory=False,
+                            desired_access=(
+                                _FILE_READ_DATA
+                                | _FILE_WRITE_DATA
+                                | _FILE_READ_ATTRIBUTES
+                                | _SYNCHRONIZE_ACCESS
+                            ),
+                            share_mode=(
+                                _FILE_SHARE_READ
+                                | _FILE_SHARE_WRITE
+                                | _FILE_SHARE_DELETE
+                            ),
+                        )
+                        descriptor = msvcrt.open_osfhandle(
+                            _windows_handle_value(file_handle),
+                            os.O_RDWR | os.O_BINARY,
+                        )
+                        file_handle = None
+                    except PermissionError:
+                        descriptor = os.open(
+                            target, os.O_RDWR | os.O_BINARY
+                        )
+                opened = os.fstat(descriptor)
+                current = target.lstat()
+                if (
+                    not stat.S_ISREG(opened.st_mode)
+                    or not stat.S_ISREG(current.st_mode)
+                    or stat.S_ISLNK(current.st_mode)
+                    or is_reparse_point(current)
+                    or (opened.st_dev, opened.st_ino)
+                    != (current.st_dev, current.st_ino)
+                ):
+                    raise UnsafeFileError(
+                        target, "lock path changed while opening"
+                    )
+                final_target = _windows_final_path(
+                    msvcrt.get_osfhandle(descriptor)
+                )
+                _assert_windows_directory_chain(
+                    package_root, parent_parts, directory_handles
                 )
                 if not _windows_contained(final_target, final_root):
                     raise UnsafeFileError(
                         target, "lock file resolves outside the trusted root"
                     )
-                descriptor = msvcrt.open_osfhandle(
-                    _windows_handle_value(file_handle), os.O_RDWR | os.O_BINARY
-                )
-                file_handle = None
                 stream = os.fdopen(descriptor, "r+b", buffering=0)
-                if os.fstat(stream.fileno()).st_size != 1:
+                descriptor = None
+                opened_size = os.fstat(stream.fileno()).st_size
+                if opened_size == 0 and create:
+                    stream.write(b"\0")
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                elif opened_size != 1:
                     raise UnsafeFileError(target, "lock file must contain one byte")
-                stream.seek(0)
-                if stream.read(1) != b"\0":
-                    raise UnsafeFileError(target, "lock file byte is invalid")
             except UnsafeFileError:
                 raise
             except OSError as exc:
@@ -2690,6 +2771,8 @@ def _open_contained_lock_file(
         finally:
             if stream is not None:
                 stream.close()
+            if descriptor is not None:
+                os.close(descriptor)
             if file_handle is not None:
                 _CloseHandle(file_handle)
             for handle in reversed(directory_handles):
@@ -2698,6 +2781,8 @@ def _open_contained_lock_file(
 
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     file_flags = os.O_RDWR | os.O_NOFOLLOW
+    if create:
+        file_flags |= os.O_CREAT
     if hasattr(os, "O_CLOEXEC"):
         directory_flags |= os.O_CLOEXEC
         file_flags |= os.O_CLOEXEC
@@ -2708,24 +2793,49 @@ def _open_contained_lock_file(
         try:
             root_fd = os.open(package_root, directory_flags)
             directory_fds.append(root_fd)
+            if root_identity is not None:
+                _require_root_identity(
+                    _posix_root_identity(os.fstat(root_fd)),
+                    root_identity,
+                    package_root,
+                )
             current_fd = root_fd
             for component in relative.parts[:-1]:
                 current_fd = os.open(component, directory_flags, dir_fd=current_fd)
                 directory_fds.append(current_fd)
-            file_fd = os.open(relative.parts[-1], file_flags, dir_fd=current_fd)
+            file_fd = os.open(
+                relative.parts[-1],
+                file_flags,
+                0o644,
+                dir_fd=current_fd,
+            )
             opened = os.fstat(file_fd)
-            if not stat.S_ISREG(opened.st_mode) or opened.st_size != 1:
+            if not stat.S_ISREG(opened.st_mode):
                 raise UnsafeFileError(
                     target, "lock file must be a one-byte regular file"
                 )
             stream = os.fdopen(file_fd, "r+b", buffering=0)
             file_fd = None
-            stream.seek(0)
-            if stream.read(1) != b"\0":
-                raise UnsafeFileError(target, "lock file byte is invalid")
+            if opened.st_size == 0 and create:
+                stream.write(b"\0")
+                stream.flush()
+                os.fsync(stream.fileno())
+            elif opened.st_size != 1:
+                raise UnsafeFileError(
+                    target, "lock file must be a one-byte regular file"
+                )
         except UnsafeFileError:
             raise
         except OSError as exc:
+            if root_identity is not None:
+                try:
+                    _require_root_identity(
+                        capture_root_identity(package_root),
+                        root_identity,
+                        package_root,
+                    )
+                except UnsafeFileError as root_exc:
+                    raise root_exc from exc
             raise _unsafe_open_error(target, exc) from exc
         yield stream
     finally:
@@ -2739,12 +2849,23 @@ def _open_contained_lock_file(
 
 @contextmanager
 def _open_lock_stream(
-    path: Path, root: str | Path | None
+    path: Path,
+    root: str | Path | None,
+    *,
+    root_identity: RootIdentity | None = None,
+    create: bool = False,
 ) -> Iterator[BinaryIO]:
     if root is not None:
-        with _open_contained_lock_file(path, root) as stream:
+        with _open_contained_lock_file(
+            path,
+            root,
+            root_identity=root_identity,
+            create=create,
+        ) as stream:
             yield stream
         return
+    if root_identity is not None:
+        raise ValueError("root_identity requires a rooted package lock")
     stream = _open_lock_file(path)
     try:
         yield stream
@@ -2848,33 +2969,73 @@ def package_operation_lock(
     *,
     timeout: float = 10.0,
     retry_interval: float = 0.05,
+    expected_root_identity: RootIdentity | None = None,
+    expected_namespace_root_identity: RootIdentity | None = None,
 ) -> Iterator[None]:
-    package_root = Path(root).resolve(strict=False)
-    namespace_lock = package_operation_lock_path(package_root)
-    with package_lock(
-        namespace_lock,
-        timeout=timeout,
-        retry_interval=retry_interval,
+    if (expected_root_identity is None) != (
+        expected_namespace_root_identity is None
     ):
+        raise ValueError(
+            "expected identities must be supplied together"
+        )
+    package_root = (
+        Path(os.path.abspath(os.fspath(root)))
+        if expected_root_identity is not None
+        else Path(root).resolve(strict=False)
+    )
+    if expected_namespace_root_identity is not None:
+        namespace_root = package_root.parent
+        namespace_lock = namespace_root / f".{package_root.name}.operation.lock"
+        namespace_context = package_lock(
+            namespace_lock,
+            root=namespace_root,
+            root_identity=expected_namespace_root_identity,
+            create=True,
+            timeout=timeout,
+            retry_interval=retry_interval,
+        )
+    else:
+        namespace_lock = package_operation_lock_path(package_root)
+        namespace_context = package_lock(
+            namespace_lock,
+            timeout=timeout,
+            retry_interval=retry_interval,
+        )
+    with namespace_context:
+        if expected_root_identity is not None:
+            _require_root_identity(
+                capture_root_identity(package_root),
+                expected_root_identity,
+                package_root,
+            )
         if not (
             package_root.is_dir() and (package_root / "MANIFEST.json").is_file()
         ):
             yield
             return
+        active_identity = (
+            expected_root_identity or capture_root_identity(package_root)
+        )
         identity_lock = package_identity_lock_path(package_root)
         if not os.path.lexists(identity_lock):
             write_bytes_atomic(
                 identity_lock,
                 b"\0",
                 root=package_root,
-                root_identity=capture_root_identity(package_root),
+                root_identity=active_identity,
             )
         with package_lock(
             identity_lock,
             root=package_root,
+            root_identity=active_identity,
             timeout=timeout,
             retry_interval=retry_interval,
         ):
+            _require_root_identity(
+                capture_root_identity(package_root),
+                active_identity,
+                package_root,
+            )
             yield
 
 
@@ -2916,11 +3077,18 @@ def package_lock(
     path: str | Path,
     *,
     root: str | Path | None = None,
+    root_identity: RootIdentity | None = None,
+    create: bool = False,
     timeout: float = 10.0,
     retry_interval: float = 0.05,
 ) -> Iterator[None]:
     lock_path = Path(path)
-    with _open_lock_stream(lock_path, root) as stream:
+    with _open_lock_stream(
+        lock_path,
+        root,
+        root_identity=root_identity,
+        create=create,
+    ) as stream:
         acquired = False
         deadline = time.monotonic() + max(timeout, 0.0)
         busy_errors = {errno.EACCES, errno.EAGAIN}
@@ -2931,6 +3099,18 @@ def package_lock(
                 try:
                     _acquire_nonblocking(stream)
                     acquired = True
+                    size_before = os.fstat(stream.fileno()).st_size
+                    stream.seek(0)
+                    lock_byte = stream.read(1)
+                    size_after = os.fstat(stream.fileno()).st_size
+                    if size_before != 1 or size_after != 1:
+                        raise UnsafeFileError(
+                            lock_path, "lock file must contain one byte"
+                        )
+                    if lock_byte != b"\0":
+                        raise UnsafeFileError(
+                            lock_path, "lock file byte is invalid"
+                        )
                     break
                 except OSError as exc:
                     if exc.errno not in busy_errors:
