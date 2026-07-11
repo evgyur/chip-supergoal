@@ -155,6 +155,26 @@ class TerminalAuthoritySecurityTest(unittest.TestCase):
                 finalize_package(root)
             self.assertFalse((root / "reports/terminal-record.txt").exists())
 
+    def test_terminal_freeze_rejects_pending_delivery_transaction(self):
+        from chip_supergoal.terminal import finalize_package, validate_terminal_package
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "package"
+            compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                root,
+                template_protocol=ROOT / "templates/PROTOCOL.md",
+                resource_root=ROOT,
+            )
+            reservation = root / "runtime/review-delivery-reservation.json"
+            reservation.write_text("{}\n", encoding="utf-8", newline="\n")
+            for operation in (finalize_package, validate_terminal_package):
+                with self.subTest(operation=operation.__name__), self.assertRaisesRegex(
+                    ValueError, "SGV-DELIVERY-SEND-PENDING"
+                ):
+                    operation(root)
+            self.assertFalse((root / "reports/terminal-record.txt").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

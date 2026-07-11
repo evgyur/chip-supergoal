@@ -25,6 +25,7 @@ from .events import (
 )
 from .model import canonical_json, contract_from_dict
 from .portable import (
+    assert_no_pending_delivery_reservations,
     package_lock,
     package_operation_lock,
     read_regular_file_no_follow,
@@ -284,9 +285,14 @@ def _terminal_path(root: Path) -> Path:
     return root / "reports" / "terminal-record.txt"
 
 
-def assert_runtime_mutable(root: str | Path) -> None:
+def assert_runtime_mutable(
+    root: str | Path, *, allow_delivery_reservation: str | None = None
+) -> None:
     if os.path.lexists(_terminal_path(Path(root))):
         raise ValueError("SGV-STATE-TERMINAL-FROZEN")
+    assert_no_pending_delivery_reservations(
+        root, allow_kind=allow_delivery_reservation
+    )
 
 
 def _invalidate_derived_audit(root: Path) -> None:

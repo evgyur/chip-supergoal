@@ -145,6 +145,76 @@ and assertion. Approval and delivery records are auxiliary evidence: they may
 satisfy their own policy gates but never substitute for criterion proof. Bind
 phase-scoped auxiliary records with `criterion_id: "__phase__"`, including on
 phases that declare no criteria.
+
+Create the final delivery archive through the package-local Python authority;
+the ZIP destination must be outside the package and the result path is fixed:
+
+```text
+python scripts/sgctl.py archive <package-root> --out <absolute-external-zip> --manifest <package-root>/out/final-artifacts-manifest.json
+```
+
+If publication was interrupted, run `python scripts/sgctl.py archive-recover
+<package-root>` before validation, audit, finalization, or a new archive. If it
+reports an orphan or partial atomic temporary, first stop every publisher and
+run `python scripts/sgctl.py archive-quarantine <package-root>
+--confirm-aborted`; this preserves the bytes outside active transaction paths.
+Then run `archive-recover` again (or `archive` when no canonical intent existed).
+Never delete or hand-edit the publication intent, stage, backup, result,
+quarantine, or receipt.
+
+Review delivery uses the same reservation protocol. Exit `10` from
+`delivery-review-check` creates a durable authorization and a validated external
+snapshot. Pass that envelope to `delivery-review-send <package-root> --target
+<declared-target> --authorization-json <check-output>`, then finish with
+`delivery-review-record`. Python validates and copies the exact authorized bytes
+into its transport boundary before starting the configured command; a pathname
+returned by a prior validation is never transport authority. After every real
+send, the bounded single-line id is persisted before the next file. A retry
+resumes only files without durable progress; the transport must honor
+`SUPERGOAL_SEND_IDEMPOTENCY_KEY` for the unavoidable send/progress crash window.
+`delivery-review-files` is diagnostic metadata and prints logical pending names,
+not paths that may be sent.
+
+Before transporting the ZIP, run:
+
+```text
+python scripts/sgctl.py delivery-final-check <package-root> --target <declared-target> --archive <absolute-external-zip>
+```
+
+Exit `0` means the exact target+archive generation already has a valid receipt
+and must not be sent again. Exit `10` emits a `send_required` JSON envelope
+containing a generation-bound authorization and captures a reservation-owned
+transport snapshot. Run `delivery-final-send <package-root> --target
+<declared-target> --authorization-json <check-output>`; never send the mutable
+archive argument or a staged pathname directly. Python keeps a verified
+read-only Windows handle or a verified anonymous POSIX copy authoritative
+through process creation, then durably records the returned id. Exactly one
+logical transport send may proceed. Preserve the check output byte-for-byte and
+pass it to `delivery-final-record` as `--authorization-json <check-output>`
+together with the same root, target, and archive; the durable id is recovered
+from the reservation. Any intervening state, package-root, review-file, target,
+force mode, or archive-generation change invalidates the authorization instead
+of rebinding an id to bytes that were not sent. `delivery-final-file` returns
+only the logical artifact name and is not egress authority. Any other check exit
+is a fail-closed error. The Unix delivery wrappers perform this handoff
+automatically.
+
+An active reservation freezes state, evidence, audit, archive, and terminal
+mutation. Inspect it with `delivery-reservation-show <package-root> --kind
+<review-md-files|final-artifacts>`. If transport definitely did not occur,
+cancel only with the exact authorization plus `delivery-reservation-cancel
+--confirm-not-sent`. If transport occurred, never cancel or re-check/send: use
+the durable progress/message id to run the matching record command. A
+`record_required` reservation already contains the receipt intent, so rerunning
+the record command completes publication without another send. Terminal
+finalization rejects every pending reservation or transaction temp.
+
+Receipt freshness is evaluated against the deterministic
+audit anchor and the contract's delivery-ack freshness override/default; wall
+clock retries do not extend it. The archive, result, transport receipt, and
+their shell wrappers are delivery evidence only: none creates `DONE` state,
+audit authority, terminal authority, or terminal markers.
+
 Only an unchanged clean audit authorizes `state-transition --to DONE`; that
 transition immediately recomputes the audit against the DONE revision. Run
 `finalize` only after that recomputation. Required delivery receipts may bind a

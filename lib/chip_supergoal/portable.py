@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import ctypes
+from dataclasses import dataclass
 import errno
 import hashlib
 import json
@@ -26,11 +27,15 @@ EXECUTABLE_WRAPPERS = frozenset(
         "scripts/summarize-repo.sh",
         "scripts/validate-loop-design.sh",
         "scripts/validate-phase.sh",
+        "templates/delivery/package-final-artifacts.sh",
+        "templates/delivery/send-final-artifacts.sh",
+        "templates/delivery/send-review-md-files.sh",
     }
 )
 
 RUNTIME_MODULES = (
     "__init__.py",
+    "archive.py",
     "audit.py",
     "compile.py",
     "delivery.py",
@@ -68,9 +73,14 @@ RUNTIME_TEMPLATES = (
     "ROADMAP.md",
     "STATE.md",
     "delivery/final-artifacts-delivery-receipt.schema.json",
+    "delivery/package-final-artifacts.sh",
     "delivery/review-md-files-delivery-receipt.schema.json",
+    "delivery/send-final-artifacts.sh",
+    "delivery/send-review-md-files.sh",
 )
 RUNTIME_SPEC_FILES = (
+    "archive-manifest.schema.json",
+    "archive-result.schema.json",
     "risk-policy.json",
     "diagnostic-catalog.json",
     "contract.schema.json",
@@ -83,6 +93,7 @@ RUNTIME_SPEC_FILES = (
     "state.schema.json",
 )
 RUNTIME_PROFILES = ("base.json", "public-clean.json", "chip-private.json")
+DELIVERY_RESERVATION_KINDS = frozenset({"review-md-files", "final-artifacts"})
 SEALED_RUNTIME_PATHS = frozenset(
     [f"scripts/{name}" for name in RUNTIME_SCRIPTS]
     + [f"lib/chip_supergoal/{name}" for name in RUNTIME_MODULES]
@@ -98,11 +109,19 @@ MUTABLE_PATHS = (
     {"path": "runtime/events.jsonl", "required": True, "validation": "event_chain_identity_revision"},
     {"path": "runtime/evidence.json", "required": True, "validation": "evidence_json_array"},
     {"path": "runtime/state.lock", "required": False, "validation": "one_byte_lock"},
+    {"path": "runtime/operation.lock", "required": False, "validation": "one_byte_lock"},
+    {"path": "runtime/archive-publication.json", "required": False, "validation": "archive_publication_intent"},
+    {"path": "runtime/review-delivery-reservation.json", "required": False, "validation": "delivery_reservation"},
+    {"path": "runtime/final-delivery-reservation.json", "required": False, "validation": "delivery_reservation"},
+    {"path": "runtime/review-delivery-reservation.pending.json", "required": False, "validation": "delivery_transaction"},
+    {"path": "runtime/final-delivery-reservation.pending.json", "required": False, "validation": "delivery_transaction"},
     {"path": "reports/final-audit.json", "required": False, "validation": "final_audit_json"},
     {"path": "reports/final-audit.md", "required": False, "validation": "final_audit_projection"},
     {"path": "reports/terminal-record.txt", "required": False, "validation": "terminal_record"},
     {"path": "out/review-md-files-delivery-receipt.json", "required": False, "validation": "review_delivery_receipt"},
     {"path": "out/final-artifacts-delivery-receipt.json", "required": False, "validation": "final_delivery_receipt"},
+    {"path": "out/review-md-files-delivery-receipt.pending.json", "required": False, "validation": "delivery_transaction"},
+    {"path": "out/final-artifacts-delivery-receipt.pending.json", "required": False, "validation": "delivery_transaction"},
     {"path": "out/final-artifacts-manifest.json", "required": False, "validation": "archive_result"},
 )
 MUTABLE_PATH_NAMES = frozenset(item["path"] for item in MUTABLE_PATHS)
@@ -117,13 +136,26 @@ def is_reparse_point(stat_result: os.stat_result) -> bool:
     return bool(attributes & marker)
 
 
-def iter_tree_no_follow(root: str | Path) -> Iterator[tuple[Path, os.stat_result]]:
+def iter_tree_no_follow(
+    root: str | Path, *, max_entries: int | None = None
+) -> Iterator[tuple[Path, os.stat_result]]:
     package_root = Path(root)
     pending = [package_root]
+    observed = 0
     while pending:
         directory = pending.pop()
         with os.scandir(directory) as iterator:
-            entries = sorted(iterator, key=lambda item: item.name)
+            entries = []
+            for entry in iterator:
+                observed += 1
+                if max_entries is not None and observed > max_entries:
+                    raise UnsafeFileError(
+                        package_root,
+                        "tree entry count exceeds bounded enumeration limit",
+                        kind="limit",
+                    )
+                entries.append(entry)
+            entries.sort(key=lambda item: item.name)
         child_directories: list[Path] = []
         for entry in entries:
             path = Path(entry.path)
@@ -149,6 +181,28 @@ class UnsafeFileError(OSError):
         super().__init__(f"unsafe package file {self.path}: {reason}")
 
 
+@dataclass(frozen=True)
+class RootIdentity:
+    platform: str
+    volume_or_device: int
+    file_index_or_inode: int
+
+
+def _posix_root_identity(stat_result: os.stat_result) -> RootIdentity:
+    return RootIdentity("posix", int(stat_result.st_dev), int(stat_result.st_ino))
+
+
+def _require_root_identity(
+    actual: RootIdentity,
+    expected: RootIdentity | None,
+    root: Path,
+) -> None:
+    if expected is not None and actual != expected:
+        raise UnsafeFileError(
+            root, "trusted root physical identity changed", kind="escape"
+        )
+
+
 def _contained_relative(path: str | Path, root: str | Path) -> tuple[Path, Path, Path]:
     package_root = Path(os.path.abspath(root))
     target = Path(os.path.abspath(path))
@@ -171,7 +225,35 @@ def _unsafe_open_error(path: Path, exc: BaseException) -> UnsafeFileError:
     return UnsafeFileError(path, "regular file could not be opened without following links")
 
 
-def _read_regular_file_posix(target: Path, root: Path, relative: Path) -> bytes:
+def _read_bounded_stream(
+    stream: BinaryIO, path: Path, max_bytes: int | None
+) -> bytes:
+    if max_bytes is None:
+        return stream.read()
+    if type(max_bytes) is not int or max_bytes < 0:
+        raise ValueError("max_bytes must be a non-negative integer")
+    chunks: list[bytes] = []
+    remaining = max_bytes + 1
+    while remaining:
+        chunk = stream.read(min(1024 * 1024, remaining))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    data = b"".join(chunks)
+    if len(data) > max_bytes:
+        raise UnsafeFileError(path, "regular file exceeds bounded read limit", kind="limit")
+    return data
+
+
+def _read_regular_file_posix(
+    target: Path,
+    root: Path,
+    relative: Path,
+    *,
+    max_bytes: int | None,
+    root_identity: RootIdentity | None,
+) -> bytes:
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     file_flags = os.O_RDONLY | os.O_NOFOLLOW
     if hasattr(os, "O_CLOEXEC"):
@@ -180,10 +262,19 @@ def _read_regular_file_posix(target: Path, root: Path, relative: Path) -> bytes:
     directory_fds: list[int] = []
     file_fd: int | None = None
     try:
-        root_fd = os.open(root, directory_flags)
+        try:
+            root_fd = os.open(root, directory_flags)
+        except OSError as exc:
+            if root_identity is not None:
+                raise UnsafeFileError(
+                    root, "trusted root could not be reopened", kind="escape"
+                ) from exc
+            raise
         directory_fds.append(root_fd)
-        if not stat.S_ISDIR(os.fstat(root_fd).st_mode):
+        root_stat = os.fstat(root_fd)
+        if not stat.S_ISDIR(root_stat.st_mode):
             raise UnsafeFileError(root, "trusted root is not a directory")
+        _require_root_identity(_posix_root_identity(root_stat), root_identity, root)
         current_fd = root_fd
         for component in relative.parts[:-1]:
             current_fd = os.open(component, directory_flags, dir_fd=current_fd)
@@ -191,11 +282,16 @@ def _read_regular_file_posix(target: Path, root: Path, relative: Path) -> bytes:
             if not stat.S_ISDIR(os.fstat(current_fd).st_mode):
                 raise UnsafeFileError(target, "path component is not a directory")
         file_fd = os.open(relative.parts[-1], file_flags, dir_fd=current_fd)
-        if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+        opened_stat = os.fstat(file_fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
             raise UnsafeFileError(target, "target is not a regular file")
+        if max_bytes is not None and opened_stat.st_size > max_bytes:
+            raise UnsafeFileError(
+                target, "regular file exceeds bounded read limit", kind="limit"
+            )
         with os.fdopen(file_fd, "rb") as stream:
             file_fd = None
-            return stream.read()
+            return _read_bounded_stream(stream, target, max_bytes)
     except UnsafeFileError:
         raise
     except OSError as exc:
@@ -477,6 +573,7 @@ def _open_windows_relative_verified(
     directory: bool,
     create: bool = False,
     desired_access: int | None = None,
+    share_mode: int | None = None,
 ) -> tuple[object, Path]:
     """Open one child relative to an already verified directory handle."""
 
@@ -511,6 +608,8 @@ def _open_windows_relative_verified(
             desired_access |= _FILE_READ_DATA
     options = _FILE_SYNCHRONOUS_IO_NONALERT | _FILE_OPEN_REPARSE_POINT_NT
     options |= _FILE_DIRECTORY_FILE if directory else _FILE_NON_DIRECTORY_FILE
+    if share_mode is None:
+        share_mode = _FILE_SHARE_READ | _FILE_SHARE_WRITE | _FILE_SHARE_DELETE
     status = _NtCreateFile(
         ctypes.byref(handle),
         desired_access,
@@ -518,7 +617,7 @@ def _open_windows_relative_verified(
         ctypes.byref(status_block),
         None,
         _FILE_ATTRIBUTE_NORMAL if create and not directory else 0,
-        _FILE_SHARE_READ | _FILE_SHARE_WRITE | _FILE_SHARE_DELETE,
+        share_mode,
         _FILE_CREATE if create else _FILE_OPEN,
         options,
         None,
@@ -548,6 +647,46 @@ def _windows_file_identity(handle: object) -> tuple[int, int]:
     return information.dwVolumeSerialNumber, index
 
 
+def _windows_root_identity(handle: object) -> RootIdentity:
+    volume, index = _windows_file_identity(handle)
+    return RootIdentity("windows", int(volume), int(index))
+
+
+def capture_root_identity(root: str | Path) -> RootIdentity:
+    """Capture a directory identity from one verified opened fd/handle."""
+
+    package_root = Path(os.path.abspath(root))
+    if os.name == "nt":
+        handle: object | None = None
+        try:
+            handle, _ = _open_windows_verified(package_root, directory=True)
+            return _windows_root_identity(handle)
+        except UnsafeFileError:
+            raise
+        except OSError as exc:
+            raise _unsafe_open_error(package_root, exc) from exc
+        finally:
+            if handle is not None:
+                _CloseHandle(handle)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(package_root, flags)
+        current = os.fstat(descriptor)
+        if not stat.S_ISDIR(current.st_mode):
+            raise UnsafeFileError(package_root, "trusted root is not a directory")
+        return _posix_root_identity(current)
+    except UnsafeFileError:
+        raise
+    except OSError as exc:
+        raise _unsafe_open_error(package_root, exc) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
 def _assert_windows_directory_chain(
     package_root: Path,
     parent_parts: tuple[str, ...],
@@ -563,11 +702,22 @@ def _assert_windows_directory_chain(
     for path, expected_handle in zip(paths, directory_handles):
         reopened = None
         try:
-            reopened, _ = _open_windows_verified(path, directory=True)
+            try:
+                reopened, _ = _open_windows_verified(path, directory=True)
+            except OSError as exc:
+                raise UnsafeFileError(
+                    path,
+                    "directory could not be reopened during identity check",
+                    kind="escape",
+                ) from exc
             if _windows_file_identity(reopened) != _windows_file_identity(
                 expected_handle
             ):
-                raise UnsafeFileError(path, "directory identity changed during operation")
+                raise UnsafeFileError(
+                    path,
+                    "directory identity changed during operation",
+                    kind="escape",
+                )
         finally:
             if reopened is not None:
                 _CloseHandle(reopened)
@@ -578,19 +728,32 @@ def _open_windows_directory_chain(
     parent_parts: tuple[str, ...],
     *,
     create: bool,
+    root_identity: RootIdentity | None = None,
 ) -> list[object]:
     """Open a root-bound parent chain without resolving child path strings."""
 
     handles: list[object] = []
-    root_handle, _ = _open_windows_verified(
-        package_root,
-        directory=True,
-        desired_access=(
-            _FILE_TRAVERSE | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE_ACCESS
-        ),
-    )
+    try:
+        root_handle, _ = _open_windows_verified(
+            package_root,
+            directory=True,
+            desired_access=(
+                _FILE_TRAVERSE | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE_ACCESS
+            ),
+        )
+    except OSError as exc:
+        if root_identity is not None:
+            raise UnsafeFileError(
+                package_root,
+                "trusted root could not be reopened",
+                kind="escape",
+            ) from exc
+        raise
     handles.append(root_handle)
     try:
+        _require_root_identity(
+            _windows_root_identity(root_handle), root_identity, package_root
+        )
         for component in parent_parts:
             try:
                 handle, _ = _open_windows_relative_verified(
@@ -617,14 +780,16 @@ def _create_windows_temp_descriptor(
     package_root: Path,
     parent_parts: tuple[str, ...],
     directory_handles: list[object],
+    requested_leaf: str | None = None,
 ) -> tuple[int, str]:
     """Create a sibling temporary file while the verified parent stays open."""
 
-    for _ in range(128):
+    attempts = 1 if requested_leaf is not None else 128
+    for _ in range(attempts):
         _assert_windows_directory_chain(
             package_root, parent_parts, directory_handles
         )
-        leaf = (
+        leaf = requested_leaf or (
             f".{target_name}.tmp-{os.getpid()}-"
             f"{next(tempfile._get_candidate_names())}"
         )
@@ -644,6 +809,8 @@ def _create_windows_temp_descriptor(
             )
         except OSError as exc:
             if getattr(exc, "winerror", None) in {80, 183}:
+                if requested_leaf is not None:
+                    raise
                 continue
             raise
         try:
@@ -663,14 +830,19 @@ def _create_windows_temp_descriptor(
     raise FileExistsError("could not allocate a unique atomic temporary file")
 
 
-def _write_windows_descriptor(descriptor: int, content: bytes) -> None:
+def _write_windows_descriptor(
+    descriptor: int, content: bytes, *, target: Path, temporary: Path
+) -> None:
     view = memoryview(content)
     offset = 0
     while offset < len(view):
-        written = os.write(descriptor, view[offset:])
+        written = os.write(descriptor, view[offset : offset + 64 * 1024])
         if written <= 0:
             raise OSError("atomic temporary write made no progress")
         offset += written
+        _atomic_write_progress_checkpoint(
+            target, temporary, offset, len(view)
+        )
     os.fsync(descriptor)
 
 
@@ -740,30 +912,46 @@ def _delete_windows_handle(
         raise ctypes.WinError(ctypes.get_last_error())
 
 
-def _read_regular_file_windows(target: Path, root: Path, relative: Path) -> bytes:
+def _read_regular_file_windows(
+    target: Path,
+    root: Path,
+    relative: Path,
+    *,
+    max_bytes: int | None,
+    root_identity: RootIdentity | None,
+) -> bytes:
     directory_handles: list[object] = []
     file_handle: object | None = None
     try:
-        root_handle, final_root = _open_windows_verified(root, directory=True)
-        directory_handles.append(root_handle)
-        current = root
-        for component in relative.parts[:-1]:
-            current /= component
-            handle, final_directory = _open_windows_verified(current, directory=True)
-            if not _windows_contained(final_directory, final_root):
-                _CloseHandle(handle)
-                raise UnsafeFileError(current, "directory resolves outside the trusted root")
-            directory_handles.append(handle)
-        file_handle, final_target = _open_windows_verified(target, directory=False)
-        if not _windows_contained(final_target, final_root):
-            raise UnsafeFileError(target, "file resolves outside the trusted root")
+        parent_parts = tuple(relative.parts[:-1])
+        directory_handles = _open_windows_directory_chain(
+            root,
+            parent_parts,
+            create=False,
+            root_identity=root_identity,
+        )
+        _assert_windows_directory_chain(root, parent_parts, directory_handles)
+        file_handle, _ = _open_windows_relative_verified(
+            directory_handles[-1],
+            relative.parts[-1],
+            directory=False,
+            desired_access=(
+                _FILE_READ_DATA | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE_ACCESS
+            ),
+        )
+        _assert_windows_directory_chain(root, parent_parts, directory_handles)
         descriptor = msvcrt.open_osfhandle(
             _windows_handle_value(file_handle),
             os.O_RDONLY | os.O_BINARY,
         )
         file_handle = None
         with os.fdopen(descriptor, "rb") as stream:
-            return stream.read()
+            opened_stat = os.fstat(stream.fileno())
+            if max_bytes is not None and opened_stat.st_size > max_bytes:
+                raise UnsafeFileError(
+                    target, "regular file exceeds bounded read limit", kind="limit"
+                )
+            return _read_bounded_stream(stream, target, max_bytes)
     except UnsafeFileError:
         raise
     except OSError as exc:
@@ -775,14 +963,131 @@ def _read_regular_file_windows(target: Path, root: Path, relative: Path) -> byte
             _CloseHandle(handle)
 
 
-def read_regular_file_no_follow(path: str | Path, root: str | Path) -> bytes:
+def read_regular_file_no_follow(
+    path: str | Path,
+    root: str | Path,
+    *,
+    max_bytes: int | None = None,
+    root_identity: RootIdentity | None = None,
+) -> bytes:
     target, package_root, relative = _contained_relative(path, root)
     if os.name == "nt":
-        return _read_regular_file_windows(target, package_root, relative)
-    return _read_regular_file_posix(target, package_root, relative)
+        return _read_regular_file_windows(
+            target,
+            package_root,
+            relative,
+            max_bytes=max_bytes,
+            root_identity=root_identity,
+        )
+    return _read_regular_file_posix(
+        target,
+        package_root,
+        relative,
+        max_bytes=max_bytes,
+        root_identity=root_identity,
+    )
 
 
-def unlink_regular_file_no_follow(path: str | Path, root: str | Path) -> bool:
+@contextmanager
+def open_stable_transport_file(
+    path: str | Path,
+    root: str | Path,
+    *,
+    root_identity: RootIdentity | None = None,
+) -> Iterator[tuple[BinaryIO, str, tuple[int, ...]]]:
+    """Hold the verified file object used by a transport subprocess.
+
+    POSIX children receive an inherited descriptor path, so replacing the
+    pathname cannot change bytes in flight.  Windows keeps a read-share-only
+    handle open, which prevents concurrent replacement while the child reopens
+    the advertised path for reading.
+    """
+
+    target, package_root, relative = _contained_relative(path, root)
+    if os.name == "nt":
+        directory_handles: list[object] = []
+        file_handle: object | None = None
+        stream: BinaryIO | None = None
+        try:
+            parent_parts = tuple(relative.parts[:-1])
+            directory_handles = _open_windows_directory_chain(
+                package_root,
+                parent_parts,
+                create=False,
+                root_identity=root_identity,
+            )
+            _assert_windows_directory_chain(
+                package_root, parent_parts, directory_handles
+            )
+            file_handle, final_path = _open_windows_relative_verified(
+                directory_handles[-1],
+                relative.parts[-1],
+                directory=False,
+                desired_access=(
+                    _FILE_READ_DATA | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE_ACCESS
+                ),
+                share_mode=_FILE_SHARE_READ,
+            )
+            descriptor = msvcrt.open_osfhandle(
+                _windows_handle_value(file_handle), os.O_RDONLY | os.O_BINARY
+            )
+            file_handle = None
+            stream = os.fdopen(descriptor, "rb", buffering=0)
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise UnsafeFileError(target, "transport target is not regular")
+            yield stream, str(final_path), ()
+        finally:
+            if stream is not None:
+                stream.close()
+            if file_handle is not None:
+                _CloseHandle(file_handle)
+            for handle in reversed(directory_handles):
+                _CloseHandle(handle)
+        return
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+    directory_fds: list[int] = []
+    file_fd: int | None = None
+    stream: BinaryIO | None = None
+    try:
+        root_fd = os.open(package_root, directory_flags)
+        directory_fds.append(root_fd)
+        _require_root_identity(
+            _posix_root_identity(os.fstat(root_fd)), root_identity, package_root
+        )
+        current_fd = root_fd
+        for component in relative.parts[:-1]:
+            current_fd = os.open(component, directory_flags, dir_fd=current_fd)
+            directory_fds.append(current_fd)
+        file_fd = os.open(relative.parts[-1], file_flags, dir_fd=current_fd)
+        if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+            raise UnsafeFileError(target, "transport target is not regular")
+        stream = os.fdopen(file_fd, "rb", buffering=0)
+        file_fd = None
+        descriptor_path = (
+            Path("/proc/self/fd")
+            if Path("/proc/self/fd").is_dir()
+            else Path("/dev/fd")
+        ) / str(stream.fileno())
+        yield stream, str(descriptor_path), (stream.fileno(),)
+    finally:
+        if stream is not None:
+            stream.close()
+        if file_fd is not None:
+            os.close(file_fd)
+        for descriptor in reversed(directory_fds):
+            os.close(descriptor)
+
+
+def unlink_regular_file_no_follow(
+    path: str | Path,
+    root: str | Path,
+    *,
+    root_identity: RootIdentity | None = None,
+) -> bool:
     """Unlink one contained regular file without following parent aliases."""
 
     target, package_root, relative = _contained_relative(path, root)
@@ -792,7 +1097,10 @@ def unlink_regular_file_no_follow(path: str | Path, root: str | Path) -> bool:
         try:
             parent_parts = tuple(relative.parts[:-1])
             directory_handles = _open_windows_directory_chain(
-                package_root, parent_parts, create=False
+                package_root,
+                parent_parts,
+                create=False,
+                root_identity=root_identity,
             )
             _assert_windows_directory_chain(
                 package_root, parent_parts, directory_handles
@@ -832,8 +1140,20 @@ def unlink_regular_file_no_follow(path: str | Path, root: str | Path) -> bool:
         directory_flags |= os.O_CLOEXEC
     directory_fds: list[int] = []
     try:
-        root_fd = os.open(package_root, directory_flags)
+        try:
+            root_fd = os.open(package_root, directory_flags)
+        except OSError as exc:
+            if root_identity is not None:
+                raise UnsafeFileError(
+                    package_root,
+                    "trusted root could not be reopened",
+                    kind="escape",
+                ) from exc
+            raise
         directory_fds.append(root_fd)
+        _require_root_identity(
+            _posix_root_identity(os.fstat(root_fd)), root_identity, package_root
+        )
         current_fd = root_fd
         for component in relative.parts[:-1]:
             current_fd = os.open(component, directory_flags, dir_fd=current_fd)
@@ -995,8 +1315,28 @@ def canonical_text_bytes(content: str) -> bytes:
     return content.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
 
 
+def _atomic_write_checkpoint(target: Path, temporary: Path) -> None:
+    """Internal process-death fault-injection seam; production is a no-op."""
+
+    del target, temporary
+
+
+def _atomic_write_progress_checkpoint(
+    target: Path, temporary: Path, written: int, total: int
+) -> None:
+    """Internal mid-write process-death fault seam; production is a no-op."""
+
+    del target, temporary, written, total
+
+
 def _write_bytes_atomic_posix(
-    target: Path, package_root: Path, relative: Path, content: bytes
+    target: Path,
+    package_root: Path,
+    relative: Path,
+    content: bytes,
+    *,
+    root_identity: RootIdentity | None,
+    requested_temporary_leaf: str | None,
 ) -> None:
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     if hasattr(os, "O_CLOEXEC"):
@@ -1008,8 +1348,20 @@ def _write_bytes_atomic_posix(
     temporary_name: str | None = None
     descriptor: int | None = None
     try:
-        root_fd = os.open(package_root, directory_flags)
+        try:
+            root_fd = os.open(package_root, directory_flags)
+        except OSError as exc:
+            if root_identity is not None:
+                raise UnsafeFileError(
+                    package_root,
+                    "trusted root could not be reopened",
+                    kind="escape",
+                ) from exc
+            raise
         directory_fds.append(root_fd)
+        _require_root_identity(
+            _posix_root_identity(os.fstat(root_fd)), root_identity, package_root
+        )
         current_fd = root_fd
         for component in relative.parts[:-1]:
             try:
@@ -1028,18 +1380,32 @@ def _write_bytes_atomic_posix(
             not stat.S_ISREG(current.st_mode) or stat.S_ISLNK(current.st_mode)
         ):
             raise UnsafeFileError(target, "atomic target is not a regular file")
-        temporary_name = (
+        temporary_name = requested_temporary_leaf or (
             f".{final_name}.tmp-{os.getpid()}-"
             f"{next(tempfile._get_candidate_names())}"
         )
         descriptor = os.open(
             temporary_name, file_flags, 0o600, dir_fd=current_fd
         )
-        with os.fdopen(descriptor, "wb") as stream:
+        with os.fdopen(descriptor, "wb", buffering=0) as stream:
             descriptor = None
-            stream.write(content)
-            stream.flush()
+            view = memoryview(content)
+            offset = 0
+            while offset < len(view):
+                written = stream.write(view[offset : offset + 64 * 1024])
+                if written is None or written <= 0:
+                    raise OSError("atomic temporary write made no progress")
+                offset += written
+                _atomic_write_progress_checkpoint(
+                    target,
+                    target.parent / temporary_name,
+                    offset,
+                    len(view),
+                )
             os.fsync(stream.fileno())
+        _atomic_write_checkpoint(
+            target, target.parent / temporary_name
+        )
         os.replace(
             temporary_name,
             final_name,
@@ -1065,7 +1431,13 @@ def _write_bytes_atomic_posix(
 
 
 def _write_bytes_atomic_windows(
-    target: Path, package_root: Path, relative: Path, content: bytes
+    target: Path,
+    package_root: Path,
+    relative: Path,
+    content: bytes,
+    *,
+    root_identity: RootIdentity | None,
+    requested_temporary_leaf: str | None,
 ) -> None:
     directory_handles: list[object] = []
     descriptor: int | None = None
@@ -1074,7 +1446,10 @@ def _write_bytes_atomic_windows(
     try:
         parent_parts = tuple(relative.parts[:-1])
         directory_handles = _open_windows_directory_chain(
-            package_root, parent_parts, create=True
+            package_root,
+            parent_parts,
+            create=True,
+            root_identity=root_identity,
         )
         _assert_windows_directory_chain(
             package_root, parent_parts, directory_handles
@@ -1097,8 +1472,17 @@ def _write_bytes_atomic_windows(
             package_root=package_root,
             parent_parts=parent_parts,
             directory_handles=directory_handles,
+            requested_leaf=requested_temporary_leaf,
         )
-        _write_windows_descriptor(descriptor, content)
+        _write_windows_descriptor(
+            descriptor,
+            content,
+            target=target,
+            temporary=target.parent / temporary_leaf,
+        )
+        _atomic_write_checkpoint(
+            target, target.parent / temporary_leaf
+        )
         _rename_windows_descriptor(
             descriptor,
             directory_handles[-1],
@@ -1136,19 +1520,49 @@ def write_bytes_atomic(
     content: bytes,
     *,
     root: str | Path | None = None,
+    root_identity: RootIdentity | None = None,
+    temporary_path: str | Path | None = None,
 ) -> None:
     target = Path(path)
     if root is not None:
         target, package_root, relative = _contained_relative(target, root)
+        requested_temporary_leaf: str | None = None
+        if temporary_path is not None:
+            temporary, temporary_root, temporary_relative = _contained_relative(
+                temporary_path, root
+            )
+            if (
+                temporary_root != package_root
+                or temporary_relative.parent != relative.parent
+                or temporary_relative.name == relative.name
+            ):
+                raise ValueError(
+                    "atomic temporary path must be a distinct sibling of its target"
+                )
+            requested_temporary_leaf = temporary_relative.name
         if os.name == "nt":
             _write_bytes_atomic_windows(
-                target, package_root, relative, content
+                target,
+                package_root,
+                relative,
+                content,
+                root_identity=root_identity,
+                requested_temporary_leaf=requested_temporary_leaf,
             )
         else:
             _write_bytes_atomic_posix(
-                target, package_root, relative, content
+                target,
+                package_root,
+                relative,
+                content,
+                root_identity=root_identity,
+                requested_temporary_leaf=requested_temporary_leaf,
             )
         return
+    if temporary_path is not None:
+        raise ValueError("temporary_path requires a rooted atomic write")
+    if root_identity is not None:
+        raise ValueError("root_identity requires a rooted atomic write")
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.tmp-", dir=target.parent)
     temporary = Path(temporary_name)
@@ -1256,7 +1670,7 @@ def _open_contained_lock_file(
                     target,
                     directory=False,
                     desired_access=_GENERIC_READ | _GENERIC_WRITE,
-                    share_delete=False,
+                    share_delete=True,
                 )
                 if not _windows_contained(final_target, final_root):
                     raise UnsafeFileError(
@@ -1347,6 +1761,91 @@ def package_operation_lock_path(root: str | Path) -> Path:
     return package_root.parent / f".{package_root.name}.operation.lock"
 
 
+def package_namespace_lock_path(root: str | Path) -> Path:
+    return package_operation_lock_path(root)
+
+
+def package_identity_lock_path(root: str | Path) -> Path:
+    package_root = Path(root).resolve(strict=False)
+    return package_root / "runtime" / "operation.lock"
+
+
+def delivery_reservation_path(root: str | Path, kind: str) -> Path:
+    if kind not in DELIVERY_RESERVATION_KINDS:
+        raise ValueError("unsupported delivery reservation kind")
+    package_root = Path(root).resolve(strict=False)
+    name = (
+        "review-delivery-reservation.json"
+        if kind == "review-md-files"
+        else "final-delivery-reservation.json"
+    )
+    return package_root / "runtime" / name
+
+
+def delivery_reservation_pending_path(root: str | Path, kind: str) -> Path:
+    reservation = delivery_reservation_path(root, kind)
+    return reservation.with_name(f"{reservation.stem}.pending.json")
+
+
+def delivery_receipt_pending_path(root: str | Path, kind: str) -> Path:
+    if kind not in DELIVERY_RESERVATION_KINDS:
+        raise ValueError("unsupported delivery reservation kind")
+    package_root = Path(root).resolve(strict=False)
+    name = (
+        "review-md-files-delivery-receipt.pending.json"
+        if kind == "review-md-files"
+        else "final-artifacts-delivery-receipt.pending.json"
+    )
+    return package_root / "out" / name
+
+
+def pending_delivery_reservation_paths(root: str | Path) -> list[Path]:
+    return [
+        path
+        for kind in sorted(DELIVERY_RESERVATION_KINDS)
+        if os.path.lexists(path := delivery_reservation_path(root, kind))
+    ]
+
+
+def delivery_transaction_paths(root: str | Path, kind: str) -> tuple[Path, ...]:
+    return (
+        delivery_reservation_path(root, kind),
+        delivery_reservation_pending_path(root, kind),
+        delivery_receipt_pending_path(root, kind),
+    )
+
+
+def pending_delivery_transaction_paths(root: str | Path) -> list[Path]:
+    return [
+        path
+        for kind in sorted(DELIVERY_RESERVATION_KINDS)
+        for path in delivery_transaction_paths(root, kind)
+        if os.path.lexists(path)
+    ]
+
+
+def assert_no_pending_delivery_reservations(
+    root: str | Path, *, allow_kind: str | None = None
+) -> None:
+    allowed = (
+        {
+            os.path.normcase(str(path))
+            for path in delivery_transaction_paths(root, allow_kind)
+        }
+        if allow_kind is not None
+        else set()
+    )
+    pending = [
+        path
+        for path in pending_delivery_transaction_paths(root)
+        if os.path.normcase(str(path)) not in allowed
+    ]
+    if pending:
+        raise ValueError(
+            "SGV-DELIVERY-SEND-PENDING: a delivery reservation must be recorded or cancelled first"
+        )
+
+
 @contextmanager
 def package_operation_lock(
     root: str | Path,
@@ -1354,6 +1853,44 @@ def package_operation_lock(
     timeout: float = 10.0,
     retry_interval: float = 0.05,
 ) -> Iterator[None]:
+    package_root = Path(root).resolve(strict=False)
+    namespace_lock = package_operation_lock_path(package_root)
+    with package_lock(
+        namespace_lock,
+        timeout=timeout,
+        retry_interval=retry_interval,
+    ):
+        if not (
+            package_root.is_dir() and (package_root / "MANIFEST.json").is_file()
+        ):
+            yield
+            return
+        identity_lock = package_identity_lock_path(package_root)
+        if not os.path.lexists(identity_lock):
+            write_bytes_atomic(
+                identity_lock,
+                b"\0",
+                root=package_root,
+                root_identity=capture_root_identity(package_root),
+            )
+        with package_lock(
+            identity_lock,
+            root=package_root,
+            timeout=timeout,
+            retry_interval=retry_interval,
+        ):
+            yield
+
+
+@contextmanager
+def package_namespace_lock(
+    root: str | Path,
+    *,
+    timeout: float = 10.0,
+    retry_interval: float = 0.05,
+) -> Iterator[None]:
+    """Serialize operations that may replace the package directory itself."""
+
     with package_lock(
         package_operation_lock_path(root),
         timeout=timeout,

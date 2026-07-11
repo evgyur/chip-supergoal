@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "archive_bytes": {
+      "maximum": 83886080,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "archive_identity": {
+      "additionalProperties": false,
+      "properties": {
+        "absolute_path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "filename": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "path_format": {
+          "enum": [
+            "posix",
+            "windows"
+          ]
+        }
+      },
+      "required": [
+        "absolute_path",
+        "filename",
+        "path_format"
+      ],
+      "type": "object"
+    },
+    "archive_manifest_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "archive_result_version": {
+      "const": "1.0"
+    },
+    "archive_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "contract_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "contract_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "delivery_items": {
+      "type": "array"
+    },
+    "goal_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "package_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "snapshot_files": {
+      "$ref": "archive-manifest.schema.json#/properties/files"
+    },
+    "source_manifest_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "archive_bytes",
+    "archive_identity",
+    "archive_manifest_sha256",
+    "archive_result_version",
+    "archive_sha256",
+    "contract_revision",
+    "contract_sha256",
+    "delivery_items",
+    "goal_id",
+    "package_fingerprint",
+    "snapshot_files",
+    "source_manifest_sha256"
+  ],
+  "title": "chip-supergoal external archive result",
+  "type": "object"
+}

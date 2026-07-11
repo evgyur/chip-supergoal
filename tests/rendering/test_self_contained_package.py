@@ -42,11 +42,19 @@ EXPECTED_MUTABLE_PATHS = [
     {"path": "runtime/events.jsonl", "required": True, "validation": "event_chain_identity_revision"},
     {"path": "runtime/evidence.json", "required": True, "validation": "evidence_json_array"},
     {"path": "runtime/state.lock", "required": False, "validation": "one_byte_lock"},
+    {"path": "runtime/operation.lock", "required": False, "validation": "one_byte_lock"},
+    {"path": "runtime/archive-publication.json", "required": False, "validation": "archive_publication_intent"},
+    {"path": "runtime/review-delivery-reservation.json", "required": False, "validation": "delivery_reservation"},
+    {"path": "runtime/final-delivery-reservation.json", "required": False, "validation": "delivery_reservation"},
+    {"path": "runtime/review-delivery-reservation.pending.json", "required": False, "validation": "delivery_transaction"},
+    {"path": "runtime/final-delivery-reservation.pending.json", "required": False, "validation": "delivery_transaction"},
     {"path": "reports/final-audit.json", "required": False, "validation": "final_audit_json"},
     {"path": "reports/final-audit.md", "required": False, "validation": "final_audit_projection"},
     {"path": "reports/terminal-record.txt", "required": False, "validation": "terminal_record"},
     {"path": "out/review-md-files-delivery-receipt.json", "required": False, "validation": "review_delivery_receipt"},
     {"path": "out/final-artifacts-delivery-receipt.json", "required": False, "validation": "final_delivery_receipt"},
+    {"path": "out/review-md-files-delivery-receipt.pending.json", "required": False, "validation": "delivery_transaction"},
+    {"path": "out/final-artifacts-delivery-receipt.pending.json", "required": False, "validation": "delivery_transaction"},
     {"path": "out/final-artifacts-manifest.json", "required": False, "validation": "archive_result"},
 ]
 
@@ -188,6 +196,9 @@ class SelfContainedPackageTest(unittest.TestCase):
                 "scripts/repo-state.sh",
                 "scripts/detect-stack.sh",
                 "scripts/summarize-repo.sh",
+                "templates/delivery/package-final-artifacts.sh",
+                "templates/delivery/send-final-artifacts.sh",
+                "templates/delivery/send-review-md-files.sh",
             }
             self.assertTrue(required <= package_files(package))
 
@@ -516,7 +527,7 @@ class SelfContainedPackageTest(unittest.TestCase):
             "terminal_record": ("reports/terminal-record.txt", b"AUDIT_COMPLETE\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/reports/terminal-record.txt"),
             "review_receipt": ("out/review-md-files-delivery-receipt.json", b"{}\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/out/review-md-files-delivery-receipt.json"),
             "final_receipt": ("out/final-artifacts-delivery-receipt.json", b"{}\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/out/final-artifacts-delivery-receipt.json"),
-            "archive_result": ("out/final-artifacts-manifest.json", b"{}\n", "SGV-PACKAGE-MUTABLE-UNSUPPORTED", "/out/final-artifacts-manifest.json"),
+            "archive_result": ("out/final-artifacts-manifest.json", b"{}\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/out/final-artifacts-manifest.json"),
         }
         for label, (relative, content, expected_code, expected_pointer) in cases.items():
             with self.subTest(label=label), tempfile.TemporaryDirectory() as td:
@@ -745,8 +756,8 @@ class SelfContainedPackageTest(unittest.TestCase):
                 remediation="Recompile the package.",
             )
             with mock.patch(
-                "chip_supergoal.compile.validate_package",
-                side_effect=[[], [diagnostic]],
+                "chip_supergoal.compile._validate_package_unlocked",
+                return_value=[diagnostic],
             ):
                 with self.assertRaises(CompileSafetyError):
                     compile_contract_file(CONTRACT, package)
@@ -800,7 +811,7 @@ class SelfContainedPackageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             parent = Path(td)
             package = self.compile_package(parent)
-            original_validate = compile_module.validate_package
+            original_validate = compile_module._validate_package_unlocked
             mutated_snapshot: dict[str, bytes] = {}
             injected = False
 
@@ -820,7 +831,7 @@ class SelfContainedPackageTest(unittest.TestCase):
                 return diagnostics
 
             with mock.patch(
-                "chip_supergoal.compile.validate_package",
+                "chip_supergoal.compile._validate_package_unlocked",
                 side_effect=validate_with_concurrent_transition,
             ):
                 with self.assertRaises(CompileSafetyError):
@@ -910,6 +921,9 @@ class SelfContainedPackageTest(unittest.TestCase):
                 "scripts/repo-state.sh",
                 "scripts/detect-stack.sh",
                 "scripts/summarize-repo.sh",
+                "templates/delivery/package-final-artifacts.sh",
+                "templates/delivery/send-final-artifacts.sh",
+                "templates/delivery/send-review-md-files.sh",
             }
             self.assertEqual({path for path, mode in modes.items() if mode == "0755"}, wrappers)
             for path, mode in modes.items():

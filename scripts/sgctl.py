@@ -17,13 +17,26 @@ from chip_supergoal.compile import CompileSafetyError, compile_contract_file
 from chip_supergoal.migrate import migrate_v2_package
 from chip_supergoal.diagnostics import ContractValidationError, diagnostics_to_json
 from chip_supergoal.delivery import (
+    cancel_delivery_reservation,
+    check_final_delivery,
     check_review_delivery,
+    final_delivery_file,
+    record_final_delivery,
     record_review_delivery,
-    require_final_delivery_authority,
+    record_review_delivery_progress,
+    review_delivery_files,
+    send_final_delivery,
+    send_review_delivery,
+    show_delivery_reservation,
 )
 from chip_supergoal.model import load_contract
 from chip_supergoal.research import research_report, validate_research_gate
 from chip_supergoal.audit import audit_json_bytes, audit_package
+from chip_supergoal.archive import (
+    deterministic_zip,
+    quarantine_archive_transaction_temps,
+    recover_archive_publication,
+)
 from chip_supergoal.evidence import EvidenceRecord, record_evidence
 from chip_supergoal.events import strict_json_loads
 from chip_supergoal.state import State, StateStore, read_state, recover_from_events
@@ -63,6 +76,64 @@ def _runtime_error(exc: Exception) -> int:
 
 def _runtime_root(args) -> Path:
     return Path(getattr(args, "root", None) or ROOT).resolve(strict=False)
+
+
+def _delivery_authorization_from_json(raw: str) -> dict:
+    try:
+        envelope = strict_json_loads(raw)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            "SGV-DELIVERY-RECEIPT-INVALID: authorization envelope is malformed"
+        ) from exc
+    if (
+        not isinstance(envelope, dict)
+        or not {"authorization", "status"}.issubset(envelope)
+        or not set(envelope) <= {"authorization", "progress", "receipt", "status"}
+        or envelope.get("status")
+        not in {"send_required", "send_pending", "record_required"}
+        or not isinstance(envelope.get("authorization"), dict)
+    ):
+        raise ValueError(
+            "SGV-DELIVERY-RECEIPT-INVALID: authorization envelope is invalid"
+        )
+    return envelope["authorization"]
+
+
+def _review_files_from_authorization_json(raw: str) -> list[str]:
+    authorization = _delivery_authorization_from_json(raw)
+    files = authorization.get("files")
+    required = {"LAUNCH_GOAL.md", "LOOP_DESIGN.md", "ROADMAP.md", "THINKING.md"}
+    if (
+        authorization.get("kind") != "review-md-files"
+        or not isinstance(files, list)
+        or not all(
+            isinstance(item, str)
+            and item
+            and item == Path(item).name
+            and "\r" not in item
+            and "\n" not in item
+            for item in files
+        )
+        or files != sorted(files)
+        or len(files) != len(set(files))
+        or not required.issubset(files)
+    ):
+        raise ValueError(
+            "SGV-DELIVERY-FILE-SET-MISMATCH: authorization file set is invalid"
+        )
+    return files
+
+
+def _delivery_reservation_id_from_json(raw: str) -> str:
+    authorization = _delivery_authorization_from_json(raw)
+    reservation_id = authorization.get("reservation_id")
+    if not isinstance(reservation_id, str) or not re.fullmatch(
+        r"[a-f0-9]{32}", reservation_id
+    ):
+        raise ValueError(
+            "SGV-DELIVERY-RECEIPT-INVALID: reservation identity is invalid"
+        )
+    return reservation_id
 
 
 def _run_runtime(args) -> int:
@@ -127,32 +198,159 @@ def _run_runtime(args) -> int:
         record_evidence(root, record)
         _json_stdout(record.to_dict())
         return 0
+    if args.cmd == "archive":
+        _json_stdout(
+            deterministic_zip(
+                root,
+                args.out,
+                args.manifest,
+            )
+        )
+        return 0
+    if args.cmd == "archive-recover":
+        _json_stdout(recover_archive_publication(root))
+        return 0
+    if args.cmd == "archive-quarantine":
+        _json_stdout(
+            quarantine_archive_transaction_temps(
+                root, confirm_aborted=args.confirm_aborted
+            )
+        )
+        return 0
     if args.cmd == "delivery-review-check":
-        receipt = check_review_delivery(root, target=args.target)
-        if receipt is None:
-            _json_stdout({"status": "missing"})
+        check = check_review_delivery(
+            root, target=args.target, force=args.force
+        )
+        if check.authorization is not None:
+            _json_stdout(
+                {
+                    "authorization": check.authorization,
+                    "status": "send_required",
+                }
+            )
             return 10
-        _json_stdout(receipt)
+        _json_stdout(check.receipt)
+        return 0
+    if args.cmd == "delivery-review-files":
+        for name in review_delivery_files(
+            root,
+            target=args.target,
+            authorization=_delivery_authorization_from_json(
+                args.authorization_json
+            ),
+            force=args.force,
+        ):
+            print(name)
+        return 0
+    if args.cmd == "delivery-review-send":
+        _json_stdout(
+            send_review_delivery(
+                root,
+                target=args.target,
+                authorization=_delivery_authorization_from_json(
+                    args.authorization_json
+                ),
+                force=args.force,
+            )
+        )
+        return 0
+    if args.cmd == "delivery-review-progress":
+        _json_stdout(
+            record_review_delivery_progress(
+                root,
+                file=args.file,
+                message_id=args.message_id,
+                authorization=_delivery_authorization_from_json(
+                    args.authorization_json
+                ),
+            )
+        )
         return 0
     if args.cmd == "delivery-review-record":
         receipt = record_review_delivery(
             root,
             target=args.target,
             message_ids=args.message_id,
+            authorization=_delivery_authorization_from_json(
+                args.authorization_json
+            ),
             force=args.force,
         )
         _json_stdout(receipt)
         return 0
-    if args.cmd in {"delivery-final-check", "delivery-final-record"}:
-        require_final_delivery_authority(
+    if args.cmd == "delivery-final-check":
+        check = check_final_delivery(
             root,
             target=args.target,
             archive=args.archive,
+            force=args.force,
         )
-        raise ValueError(
-            "SGV-DELIVERY-ARCHIVE-AUTHORITY-UNAVAILABLE: "
-            "Task 6 canonical result validation is not available"
+        if check.authorization is not None:
+            _json_stdout(
+                {
+                    "authorization": check.authorization,
+                    "status": "send_required",
+                }
+            )
+            return 10
+        _json_stdout(check.receipt)
+        return 0
+    if args.cmd == "delivery-final-file":
+        print(
+            final_delivery_file(
+                root,
+                target=args.target,
+                authorization=_delivery_authorization_from_json(
+                    args.authorization_json
+                ),
+                force=args.force,
+            )
         )
+        return 0
+    if args.cmd == "delivery-final-send":
+        _json_stdout(
+            send_final_delivery(
+                root,
+                target=args.target,
+                authorization=_delivery_authorization_from_json(
+                    args.authorization_json
+                ),
+                force=args.force,
+            )
+        )
+        return 0
+    if args.cmd == "delivery-final-record":
+        _json_stdout(
+            record_final_delivery(
+                root,
+                target=args.target,
+                archive=args.archive,
+                message_id=args.message_id,
+                authorization=_delivery_authorization_from_json(
+                    args.authorization_json
+                ),
+                force=args.force,
+            )
+        )
+        return 0
+    if args.cmd == "delivery-reservation-show":
+        _json_stdout(show_delivery_reservation(root, kind=args.kind))
+        return 0
+    if args.cmd == "delivery-reservation-cancel":
+        _json_stdout(
+            cancel_delivery_reservation(
+                root,
+                kind=args.kind,
+                authorization=_delivery_authorization_from_json(
+                    args.authorization_json
+                ),
+                confirm_not_sent=args.confirm_not_sent,
+            )
+        )
+        return 0
+    if args.cmd == "delivery-authorization-id":
+        print(_delivery_reservation_id_from_json(args.authorization_json))
+        return 0
     if args.cmd == "audit":
         sys.stdout.buffer.write(audit_json_bytes(audit_package(root)))
         return 0
@@ -183,9 +381,19 @@ def main(argv=None) -> int:
     p.add_argument("path"); p.add_argument("--format", choices=["human","json"], default="human")
     p = sub.add_parser("validate-loop-design")
     p.add_argument("path"); p.add_argument("--instantiated", action="store_true"); p.add_argument("--format", choices=["human","json"], default="human")
-    for command in ("state-show", "state-recover", "audit", "finalize", "validate-terminal"):
+    for command in (
+        "state-show",
+        "state-recover",
+        "archive-recover",
+        "audit",
+        "finalize",
+        "validate-terminal",
+    ):
         p = sub.add_parser(command)
         p.add_argument("root", nargs="?", default=None)
+    p = sub.add_parser("archive-quarantine")
+    p.add_argument("root", nargs="?", default=None)
+    p.add_argument("--confirm-aborted", action="store_true")
     p = sub.add_parser("state-transition")
     p.add_argument("root", nargs="?", default=None)
     p.add_argument("--to")
@@ -197,31 +405,83 @@ def main(argv=None) -> int:
     p = sub.add_parser("record-evidence")
     p.add_argument("root", nargs="?", default=None)
     p.add_argument("--input", required=True)
+    p = sub.add_parser("archive")
+    p.add_argument("root", nargs="?", default=None)
+    p.add_argument("--out", required=True)
+    p.add_argument("--manifest", required=True)
     p = sub.add_parser("delivery-review-check")
     p.add_argument("root", nargs="?", default=None)
     p.add_argument("--target", required=True)
+    p.add_argument("--force", action="store_true")
     p = sub.add_parser("delivery-review-record")
     p.add_argument("root", nargs="?", default=None)
     p.add_argument("--target", required=True)
     p.add_argument("--message-id", action="append", default=[])
+    p.add_argument("--authorization-json", required=True)
     p.add_argument("--force", action="store_true")
+    for command in ("delivery-review-files", "delivery-review-send"):
+        p = sub.add_parser(command)
+        p.add_argument("root", nargs="?", default=None)
+        p.add_argument("--target", required=True)
+        p.add_argument("--authorization-json", required=True)
+        p.add_argument("--force", action="store_true")
+    p = sub.add_parser("delivery-review-progress")
+    p.add_argument("root", nargs="?", default=None)
+    p.add_argument("--file", required=True)
+    p.add_argument("--message-id", required=True)
+    p.add_argument("--authorization-json", required=True)
+    for command in ("delivery-final-file", "delivery-final-send"):
+        p = sub.add_parser(command)
+        p.add_argument("root", nargs="?", default=None)
+        p.add_argument("--target", required=True)
+        p.add_argument("--authorization-json", required=True)
+        p.add_argument("--force", action="store_true")
+    p = sub.add_parser("delivery-reservation-show")
+    p.add_argument("root", nargs="?", default=None)
+    p.add_argument(
+        "--kind", choices=["review-md-files", "final-artifacts"], required=True
+    )
+    p = sub.add_parser("delivery-reservation-cancel")
+    p.add_argument("root", nargs="?", default=None)
+    p.add_argument(
+        "--kind", choices=["review-md-files", "final-artifacts"], required=True
+    )
+    p.add_argument("--authorization-json", required=True)
+    p.add_argument("--confirm-not-sent", action="store_true")
+    p = sub.add_parser("delivery-authorization-id")
+    p.add_argument("--authorization-json", required=True)
     for command in ("delivery-final-check", "delivery-final-record"):
         p = sub.add_parser(command)
         p.add_argument("root", nargs="?", default=None)
         p.add_argument("--target", required=True)
         p.add_argument("--archive", required=True)
-        if command == "delivery-final-record":
-            p.add_argument("--message-id", required=True)
+        if command == "delivery-final-check":
+            p.add_argument("--force", action="store_true")
+        else:
+            p.add_argument("--message-id")
+            p.add_argument("--authorization-json", required=True)
+            p.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
     if args.cmd in {
         "state-show",
         "state-transition",
         "state-recover",
         "record-evidence",
+        "archive",
+        "archive-recover",
+        "archive-quarantine",
         "delivery-review-check",
+        "delivery-review-files",
+        "delivery-review-send",
+        "delivery-review-progress",
         "delivery-review-record",
         "delivery-final-check",
+        "delivery-final-file",
+        "delivery-final-send",
         "delivery-final-record",
+        "delivery-reservation-show",
+        "delivery-reservation-cancel",
+        "delivery-authorization-id",
         "audit",
         "finalize",
         "validate-terminal",

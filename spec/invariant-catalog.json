@@ -179,8 +179,8 @@
       "title": "Semantic validators reject known malformed packages"
     },
     {
-      "canonical_reference": "templates/delivery/package-final-artifacts.sh",
-      "description": "Packaging rejects symlinks, special files, path traversal, and implicit files outside allowlist.",
+      "canonical_reference": "lib/chip_supergoal/archive.py",
+      "description": "Python captures one bounded no-follow package snapshot, enforces portable ZIP32 limits, rejects aliases, secrets, collisions and special files, and durably publishes or recovers one exhaustively verified external ZIP/result generation.",
       "id": "INV-ARCHIVE-001",
       "introduced_by": [
         "A+G-009"
@@ -189,6 +189,12 @@
       "severity_if_broken": "P1",
       "status": "hard",
       "tests": [
+        "T-ARCHIVE-DETERMINISTIC-METADATA",
+        "T-ARCHIVE-INSIDE-ROOT-REJECTED",
+        "T-ARCHIVE-MANIFEST-ONCE",
+        "T-ARCHIVE-PUBLICATION-RECOVERY",
+        "T-ARCHIVE-RESOURCE-LIMITS",
+        "T-ARCHIVE-ROOT-IDENTITY",
         "T-SYMLINK-ESCAPE-REJECTED",
         "T-ZIP-TRAVERSAL-REJECTED"
       ],

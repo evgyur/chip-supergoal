@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib"))
 
 from chip_supergoal.goalmanager_sim import GoalManagerSimulator
+from chip_supergoal.portable import package_operation_lock
+from chip_supergoal.state import StateStore
 
 
 class RelocatedRuntimeCliE2ETest(unittest.TestCase):
@@ -68,6 +71,39 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         self.assertNotIn("Traceback", result.stdout + result.stderr)
         return result
+
+    def test_validate_package_lock_contention_is_stable_diagnostic(self):
+        entered = threading.Event()
+        release = threading.Event()
+        holder_error: list[BaseException] = []
+
+        def hold_operation_lock() -> None:
+            try:
+                with package_operation_lock(self.package):
+                    entered.set()
+                    if not release.wait(20):
+                        raise AssertionError("operation-lock fixture timed out")
+            except BaseException as exc:
+                holder_error.append(exc)
+
+        holder = threading.Thread(target=hold_operation_lock, daemon=True)
+        holder.start()
+        self.assertTrue(entered.wait(10))
+        try:
+            result = self.run_cli(
+                "validate-package",
+                self.package,
+                "--strict",
+                expected=1,
+            )
+        finally:
+            release.set()
+            holder.join(10)
+        self.assertFalse(holder.is_alive())
+        self.assertFalse(holder_error, holder_error)
+        self.assertIn(
+            "SGV-STATE-LOCK-TIMEOUT", result.stdout + result.stderr
+        )
 
     def transition(self, lifecycle, revision, *, phase_status=None):
         args = [
@@ -201,6 +237,25 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
 
         report = json.loads(self.run_cli("audit").stdout)
         self.assertTrue(report["can_complete"], report["issues"])
+
+        # Archiving is a pre-terminal snapshot operation. The canonical result
+        # remains valid when precisely registered runtime files advance later.
+        archive = self.parent / "pre-terminal-artifacts.zip"
+        archive_result_path = self.package / "out/final-artifacts-manifest.json"
+        archived = json.loads(
+            self.run_cli(
+                "archive",
+                self.package,
+                "--out",
+                archive,
+                "--manifest",
+                archive_result_path,
+            ).stdout
+        )
+        self.assertEqual(
+            archived["archive_sha256"], hashlib.sha256(archive.read_bytes()).hexdigest()
+        )
+
         done = self.transition("DONE", auditing["state_revision"])
         self.assertEqual(done["lifecycle"], "DONE")
         self.assertEqual(done["current_phase_id"], "P01")
@@ -212,6 +267,21 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
             first, (self.package / "reports/terminal-record.txt").read_bytes()
         )
         self.assertEqual(len(first.decode("utf-8").splitlines()), 5)
+
+        frozen_archive = archive.read_bytes()
+        frozen_result = archive_result_path.read_bytes()
+        rejected = self.run_cli(
+            "archive",
+            self.package,
+            "--out",
+            archive,
+            "--manifest",
+            archive_result_path,
+            expected=1,
+        )
+        self.assertIn("SGV-STATE-TERMINAL-FROZEN", rejected.stderr)
+        self.assertEqual(archive.read_bytes(), frozen_archive)
+        self.assertEqual(archive_result_path.read_bytes(), frozen_result)
 
         self.run_cli("validate-terminal")
         self.run_cli("validate-package", str(self.package), "--strict")
@@ -262,7 +332,17 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
             "current-thread",
             expected=10,
         )
-        self.assertEqual(json.loads(missing.stdout)["status"], "missing")
+        self.assertEqual(
+            json.loads(missing.stdout)["status"], "send_required"
+        )
+        self.run_cli(
+            "delivery-reservation-cancel",
+            "--kind",
+            "review-md-files",
+            "--authorization-json",
+            missing.stdout,
+            "--confirm-not-sent",
+        )
 
         auditing = self.progress_to_auditing()
         payload = self.evidence_payload()
@@ -275,7 +355,19 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
             for name in contract["delivery"]["files"]
             if name != "RESEARCH.md" or (self.package / name).exists()
         )
-        args = ["delivery-review-record", "--target", "current-thread"]
+        authorization = self.run_cli(
+            "delivery-review-check",
+            "--target",
+            "current-thread",
+            expected=10,
+        )
+        args = [
+            "delivery-review-record",
+            "--target",
+            "current-thread",
+            "--authorization-json",
+            authorization.stdout,
+        ]
         for name in active_files:
             args.extend(["--message-id", f"msg-{name}"])
         receipt = json.loads(self.run_cli(*args).stdout)
@@ -308,7 +400,7 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
         self.run_cli(*args, expected=1)
         self.assertEqual(receipt_path.read_bytes(), forged_bytes)
 
-    def test_final_delivery_producer_fails_closed_without_task6_result_authority(self):
+    def test_final_delivery_requires_and_consumes_canonical_archive_result(self):
         self.compile_delivery_package(final=True)
         archive = self.parent / "external-artifact.zip"
         archive.write_bytes(b"not a Task 6 canonical archive")
@@ -320,11 +412,102 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
             str(archive),
             expected=1,
         )
-        self.assertIn(
-            "SGV-DELIVERY-ARCHIVE-AUTHORITY-UNAVAILABLE", result.stderr
-        )
+        self.assertIn("SGV-PACKAGE-ZIP-HASH-MISMATCH", result.stderr)
         self.assertFalse(
             (self.package / "out/final-artifacts-delivery-receipt.json").exists()
+        )
+
+        result_manifest = self.package / "out/final-artifacts-manifest.json"
+        result_manifest.parent.mkdir(exist_ok=True)
+        # The archive command owns this fixed replaceable result authority and
+        # must be able to repair corrupt/stale prior bytes.
+        result_manifest.write_bytes(b"{}\n")
+        archived = json.loads(
+            self.run_cli(
+                "archive",
+                "--out",
+                str(archive),
+                "--manifest",
+                str(result_manifest),
+            ).stdout
+        )
+        self.assertEqual(
+            archived["archive_sha256"], hashlib.sha256(archive.read_bytes()).hexdigest()
+        )
+        missing = self.run_cli(
+            "delivery-final-check",
+            "--target",
+            "current-thread",
+            "--archive",
+            str(archive),
+            expected=10,
+        )
+        self.assertEqual(
+            json.loads(missing.stdout)["status"], "send_required"
+        )
+        receipt = json.loads(
+            self.run_cli(
+                "delivery-final-record",
+                "--target",
+                "current-thread",
+                "--archive",
+                str(archive),
+                "--message-id",
+                "final-msg-1",
+                "--authorization-json",
+                missing.stdout,
+            ).stdout
+        )
+        self.assertEqual(receipt["archive"], str(archive.resolve()))
+        self.assertEqual(receipt["hash"], archived["archive_sha256"])
+        checked = json.loads(
+            self.run_cli(
+                "delivery-final-check",
+                "--target",
+                "current-thread",
+                "--archive",
+                str(archive),
+            ).stdout
+        )
+        self.assertEqual(checked, receipt)
+        self.assertEqual(
+            self.run_cli("validate-package", str(self.package)).stdout.strip(),
+            "valid",
+        )
+        frozen_archive = archive.read_bytes()
+        frozen_result = result_manifest.read_bytes()
+        frozen_receipt = (
+            self.package / "out/final-artifacts-delivery-receipt.json"
+        ).read_bytes()
+        # An identical rerun is idempotent and keeps delivery authority valid.
+        self.run_cli(
+            "archive",
+            "--out",
+            str(archive),
+            "--manifest",
+            str(result_manifest),
+        )
+        self.assertEqual(archive.read_bytes(), frozen_archive)
+        self.assertEqual(result_manifest.read_bytes(), frozen_result)
+
+        StateStore(self.package).update(
+            expected_revision=1,
+            blocker={"post_delivery": "new archive generation"},
+        )
+        rejected = self.run_cli(
+            "archive",
+            "--out",
+            str(archive),
+            "--manifest",
+            str(result_manifest),
+            expected=1,
+        )
+        self.assertIn("SGV-DELIVERY-RECEIPT-INVALID", rejected.stderr)
+        self.assertEqual(archive.read_bytes(), frozen_archive)
+        self.assertEqual(result_manifest.read_bytes(), frozen_result)
+        self.assertEqual(
+            (self.package / "out/final-artifacts-delivery-receipt.json").read_bytes(),
+            frozen_receipt,
         )
 
     def test_package_audit_honors_delivery_ack_freshness_override_boundary(self):
@@ -340,7 +523,19 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
             for name in contract["delivery"]["files"]
             if name != "RESEARCH.md" or (self.package / name).exists()
         )
-        args = ["delivery-review-record", "--target", "current-thread"]
+        authorization = self.run_cli(
+            "delivery-review-check",
+            "--target",
+            "current-thread",
+            expected=10,
+        )
+        args = [
+            "delivery-review-record",
+            "--target",
+            "current-thread",
+            "--authorization-json",
+            authorization.stdout,
+        ]
         for name in active_files:
             args.extend(["--message-id", f"msg-{name}"])
         receipt = json.loads(self.run_cli(*args).stdout)

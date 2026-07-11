@@ -413,6 +413,33 @@ class PortableRuntimeTest(unittest.TestCase):
             self.assertFalse(lock_path.is_relative_to(root.resolve()))
             self.assertEqual(lock_path.read_bytes(), b"\0")
 
+    def test_compiled_package_identity_lock_prevents_rename_split_brain(self):
+        operation_lock = portable_module.package_operation_lock
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            package = compile_contract_file(
+                ROOT / "examples/brownfield-feature/CONTRACT.json",
+                parent / "package",
+            )
+            renamed = parent / "renamed-package"
+            with operation_lock(package):
+                try:
+                    package.rename(renamed)
+                except PermissionError:
+                    # Some Windows filesystems reject the directory rename
+                    # while the contained identity lock is open.  That is also
+                    # a safe outcome: no second physical namespace exists.
+                    self.assertTrue(package.is_dir())
+                    self.assertFalse(renamed.exists())
+                else:
+                    with self.assertRaises(StateLockTimeout):
+                        with operation_lock(
+                            renamed, timeout=0.05, retry_interval=0.01
+                        ):
+                            pass
+            if renamed.exists():
+                self.assertEqual(validate_package(renamed), [])
+
 
 if __name__ == "__main__":
     unittest.main()

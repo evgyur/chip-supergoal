@@ -204,6 +204,7 @@ class AuditEngineTest(unittest.TestCase):
             "kind": "final-artifacts",
             "message_id": "msg-1",
             "ok": True,
+            "reservation_id": "1" * 32,
             "sent": True,
             "sent_at": events[-1]["timestamp"],
             "target": "current-thread",
@@ -240,6 +241,7 @@ class AuditEngineTest(unittest.TestCase):
             "message_ids": [f"msg-{index}" for index, _ in enumerate(declared, 1)],
             "ok": True,
             "pack_version": "review_pack_v2",
+            "reservation_id": "2" * 32,
             "sent": True,
             "sent_at": sent_at,
             "target": "current-thread",
@@ -253,7 +255,7 @@ class AuditEngineTest(unittest.TestCase):
         )
         return receipt_path, receipt
 
-    def test_shaped_final_receipt_fails_closed_without_archive_authority(self):
+    def test_shaped_final_receipt_fails_closed_without_canonical_archive_result(self):
         contract = self.contract(final_delivery=True)
         root, _, state, events = self.authority(contract)
         archive = root / "out/arbitrary.zip"
@@ -276,7 +278,7 @@ class AuditEngineTest(unittest.TestCase):
         self.assertFalse(report.can_complete)
         self.assertEqual(report.delivery_status, "invalid")
         self.assertTrue(
-            any("archive authority" in issue.message for issue in report.issues),
+            any("archive result" in issue.message for issue in report.issues),
             report.issues,
         )
 
@@ -458,6 +460,7 @@ class AuditEngineTest(unittest.TestCase):
             "message_ids": [f"msg-{index}" for index, _ in enumerate(present, 1)],
             "ok": True,
             "pack_version": "review_pack_v2",
+            "reservation_id": "3" * 32,
             "sent": True,
             "sent_at": events[-1]["timestamp"],
             "target": "current-thread",

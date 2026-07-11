@@ -1,6 +1,6 @@
 {
   "catalog_version": "1.0",
-  "expected_code_count": 116,
+  "expected_code_count": 118,
   "diagnostics": [
     {
       "code": "SGV-CONTRACT-MALFORMED",
@@ -85,6 +85,24 @@
       "invariant": "INV-VALIDATOR-001",
       "stage": "preflight",
       "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PACKAGE-ARCHIVE-INSIDE-ROOT",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-ARCHIVE-LIMIT",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-ARCHIVE-RECOVERY-REQUIRED",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "state_recovery"
     },
     {
       "code": "SGV-PACKAGE-CASE-COLLISION",
@@ -181,12 +199,6 @@
       "invariant": "INV-VALIDATOR-001",
       "stage": "preflight",
       "remediation_class": "package_rebuild"
-    },
-    {
-      "code": "SGV-PACKAGE-MUTABLE-UNSUPPORTED",
-      "invariant": "INV-VALIDATOR-001",
-      "stage": "preflight",
-      "remediation_class": "state_recovery"
     },
     {
       "code": "SGV-PACKAGE-PATH-ESCAPE",
@@ -489,12 +501,6 @@
       "remediation_class": "audit_repair"
     },
     {
-      "code": "SGV-DELIVERY-ARCHIVE-AUTHORITY-UNAVAILABLE",
-      "invariant": "INV-DELIVERY-001",
-      "stage": "runtime",
-      "remediation_class": "archive_completion"
-    },
-    {
       "code": "SGV-DELIVERY-ARCHIVE-MISSING",
       "invariant": "INV-DELIVERY-001",
       "stage": "runtime",
@@ -526,6 +532,12 @@
     },
     {
       "code": "SGV-DELIVERY-RECEIPT-INVALID",
+      "invariant": "INV-DELIVERY-001",
+      "stage": "runtime",
+      "remediation_class": "delivery_repair"
+    },
+    {
+      "code": "SGV-DELIVERY-SEND-PENDING",
       "invariant": "INV-DELIVERY-001",
       "stage": "runtime",
       "remediation_class": "delivery_repair"

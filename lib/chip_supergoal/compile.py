@@ -23,7 +23,7 @@ from .portable import (
     is_reparse_point,
     iter_tree_no_follow,
     logical_mode,
-    package_operation_lock,
+    package_namespace_lock,
     read_regular_file_no_follow,
     write_bytes_atomic,
     write_utf8_lf,
@@ -32,7 +32,7 @@ from .profiles import ResolvedContract
 from .render import phase_entries_in_ordinal_order, render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
 from .research import render_research_markdown, research_report, research_required, research_gate
 from .state import State, StateStore, state_json_bytes
-from .validate import validate_package
+from .validate import _validate_package_unlocked, validate_package
 
 
 REQUIRED_GENERATED = {"CONTRACT.json", "THINKING.md", "LOOP_DESIGN.md", "ROADMAP.md", "STATE.md", "PROTOCOL.md", "LAUNCH_GOAL.md"}
@@ -150,7 +150,9 @@ def initial_state(contract: Contract, contract_sha256: str) -> State:
     )
 
 
-def _load_sealed_manifest(root: Path) -> dict:
+def _load_sealed_manifest(
+    root: Path, *, operation_lock_held: bool = False
+) -> dict:
     manifest_path = root / "MANIFEST.json"
     contract_path = root / "CONTRACT.json"
     if not manifest_path.is_file() or not contract_path.is_file():
@@ -165,7 +167,11 @@ def _load_sealed_manifest(root: Path) -> dict:
         raise CompileSafetyError(
             "existing output manifest is unsupported; recompile the source contract as a manifest 1.1 package"
         )
-    diagnostics = validate_package(root)
+    diagnostics = (
+        _validate_package_unlocked(root)
+        if operation_lock_held
+        else validate_package(root)
+    )
     if diagnostics:
         codes = ", ".join(sorted({diagnostic.code for diagnostic in diagnostics}))
         raise CompileSafetyError(
@@ -187,7 +193,9 @@ def _assert_pristine_runtime(root: Path, contract: Contract) -> None:
     except Exception as exc:
         raise CompileSafetyError("refusing to overwrite started runtime package") from exc
     optional_paths = [
-        item["path"] for item in MUTABLE_PATHS if not item["required"]
+        item["path"]
+        for item in MUTABLE_PATHS
+        if not item["required"] and item["validation"] != "one_byte_lock"
     ]
     if (
         state_json_bytes(state) != state_json_bytes(expected)
@@ -199,11 +207,18 @@ def _assert_pristine_runtime(root: Path, contract: Contract) -> None:
         raise CompileSafetyError("refusing to overwrite started runtime package")
 
 
-def _assert_safe_target(out_path: Path, contract: Contract) -> None:
+def _assert_safe_target(
+    out_path: Path,
+    contract: Contract,
+    *,
+    operation_lock_held: bool = False,
+) -> None:
     if out_path.exists():
         if out_path.is_symlink() or not out_path.is_dir():
             raise CompileSafetyError("output target must be a directory or absent")
-        _load_sealed_manifest(out_path)
+        _load_sealed_manifest(
+            out_path, operation_lock_held=operation_lock_held
+        )
         try:
             existing = contract_from_dict(
                 json.loads(
@@ -289,6 +304,7 @@ def _render_package(
         _write(out_path / "reports" / "research.json", json.dumps(research_report(contract), ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     StateStore(out_path).initialize(initial_state(contract, resolved.contract_sha256))
     _write(out_path / "runtime" / "evidence.json", "[]\n")
+    write_bytes_atomic(out_path / "runtime" / "operation.lock", b"\0")
     _copy_runtime_inventory(
         out_path,
         resource_root=resources,
@@ -334,15 +350,17 @@ def _compile_resolved(
             resource_root=resource_root,
             risk_policy_path=risk_policy_path,
         )
-        diagnostics = validate_package(staging)
+        diagnostics = _validate_package_unlocked(staging)
         if diagnostics:
             codes = ", ".join(sorted({diagnostic.code for diagnostic in diagnostics}))
             raise CompileSafetyError(f"staging package validation failed: {codes}")
-        with package_operation_lock(out_path):
+        with package_namespace_lock(out_path):
             try:
                 # The preflight check above is an early failure optimization only.
                 # This check and the swap are the atomic overwrite decision.
-                _assert_safe_target(out_path, contract)
+                _assert_safe_target(
+                    out_path, contract, operation_lock_held=True
+                )
                 if out_path.exists():
                     backup = parent / f".{out_path.name}.backup-{os.getpid()}-{next(tempfile._get_candidate_names())}"
                     out_path.rename(backup)

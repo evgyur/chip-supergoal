@@ -29,6 +29,8 @@ from .portable import (
     is_reparse_point,
     iter_tree_no_follow,
     logical_mode,
+    package_operation_lock,
+    pending_delivery_transaction_paths,
     read_regular_file_no_follow,
 )
 from .render import phase_entries_in_ordinal_order, render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
@@ -760,19 +762,25 @@ def _validate_mutable_plane(
                 )
             )
 
-    lock_path = root / "runtime/state.lock"
-    if lock_path.exists() and (
-        not lock_path.is_file() or _package_bytes(root, lock_path) != b"\0"
-    ):
-        diagnostics.append(
-            _mutable_diagnostic(
-                "SGV-PACKAGE-MUTABLE-MALFORMED",
-                root,
-                "runtime/state.lock",
-                "runtime lock must be a regular one-byte zero file",
-                "Recreate the package lock through the portable runtime.",
+    for relative in ("runtime/state.lock", "runtime/operation.lock"):
+        lock_path = root / relative
+        invalid = lock_path.exists() and not lock_path.is_file()
+        if relative == "runtime/state.lock" and lock_path.exists() and not invalid:
+            invalid = _package_bytes(root, lock_path) != b"\0"
+        # validate_package holds operation.lock while this body runs.  On
+        # Windows a byte-range lock intentionally blocks a second read handle;
+        # package_operation_lock already verified the one-byte content before
+        # acquiring it, so only the node type is checked here.
+        if invalid:
+            diagnostics.append(
+                _mutable_diagnostic(
+                    "SGV-PACKAGE-MUTABLE-MALFORMED",
+                    root,
+                    relative,
+                    "runtime lock must be a regular one-byte zero file",
+                    "Recreate the package lock through the portable runtime.",
+                )
             )
-        )
 
     audit_json = root / "reports/final-audit.json"
     audit_md = root / "reports/final-audit.md"
@@ -870,7 +878,10 @@ def _validate_mutable_plane(
                 if not isinstance(target, str) or not target:
                     raise ValueError("delivery target is unavailable")
                 validate_final_receipt(
-                    read_receipt(final_path, root), state=state, target=target
+                    read_receipt(final_path, root),
+                    state=state,
+                    target=target,
+                    root=root,
                 )
             except Exception:
                 diagnostics.append(
@@ -884,16 +895,39 @@ def _validate_mutable_plane(
                 )
 
     archive_result = root / "out/final-artifacts-manifest.json"
-    if archive_result.exists():
+    archive_recovery_pending = False
+    try:
+        from .archive import assert_no_archive_recovery_required
+
+        assert_no_archive_recovery_required(root)
+    except Exception:
+        archive_recovery_pending = True
         diagnostics.append(
-            _mutable_diagnostic(
-                "SGV-PACKAGE-MUTABLE-UNSUPPORTED",
-                root,
-                "out/final-artifacts-manifest.json",
-                "archive result requires the Task 6 deterministic archive validator",
-                "Remove it until recreated by the supported archive command.",
+            _diag(
+                "SGV-PACKAGE-ARCHIVE-RECOVERY-REQUIRED",
+                "INV-ARCHIVE-001",
+                str(root),
+                "/out/final-artifacts-manifest.json",
+                "a durable archive publication intent remains unresolved",
+                "Run python scripts/sgctl.py archive-recover before validation or finalization.",
+                stage="archive",
             )
         )
+    if archive_result.exists() and not archive_recovery_pending:
+        try:
+            from .archive import load_archive_result
+
+            load_archive_result(root)
+        except Exception:
+            diagnostics.append(
+                _mutable_diagnostic(
+                    "SGV-PACKAGE-MUTABLE-MALFORMED",
+                    root,
+                    "out/final-artifacts-manifest.json",
+                    "archive result or external archive is malformed, stale, or identity-mismatched",
+                    "Recreate both through python scripts/sgctl.py archive.",
+                )
+            )
     return diagnostics
 
 
@@ -1067,6 +1101,19 @@ def _validate_package_impl(
         )
 
     if include_mutable:
+        pending_reservations = pending_delivery_transaction_paths(package_root)
+        if pending_reservations:
+            diagnostics.append(
+                _diag(
+                    "SGV-DELIVERY-SEND-PENDING",
+                    "INV-DELIVERY-001",
+                    str(package_root),
+                    "/delivery-reservation",
+                    "a delivery transport reservation is awaiting record or cancellation",
+                    "Record the confirmed transport message id, or cancel the reservation only after confirming no send occurred.",
+                    stage="runtime",
+                )
+            )
         contract_sha256 = (
             manifest.get("contract_sha256")
             if isinstance(manifest, dict)
@@ -1134,5 +1181,32 @@ def validate_sealed_package(root: str | Path) -> list[Diagnostic]:
     return _validate_package_mode(root, include_mutable=False)
 
 
+def _validate_package_unlocked(root: str | Path) -> list[Diagnostic]:
+    """Validate a root already isolated by an operation lock or private staging."""
+
+    return _validate_package_mode(Path(root), include_mutable=True)
+
+
 def validate_package(root: str | Path) -> list[Diagnostic]:
-    return _validate_package_mode(root, include_mutable=True)
+    package_root = Path(root)
+    entered = False
+    try:
+        with package_operation_lock(package_root):
+            entered = True
+            return _validate_package_unlocked(package_root)
+    except OSError as exc:
+        if entered:
+            raise
+        return [
+            _diag(
+                "SGV-STATE-LOCK-TIMEOUT",
+                "INV-RECOVERY-001",
+                str(package_root),
+                "/",
+                f"package operation lock is unavailable: {exc}",
+                "Wait for the active package operation to finish; if none is "
+                "active, replace the unsafe sibling operation-lock path with "
+                "a regular lock file and retry.",
+                stage="runtime",
+            )
+        ]

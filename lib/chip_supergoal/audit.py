@@ -419,7 +419,12 @@ def _delivery_status(
             if path is None:
                 raise FileNotFoundError
             receipt = read_receipt(path, package_root)
-            validate_final_receipt(receipt, state=state, target=target)
+            validate_final_receipt(
+                receipt,
+                state=state,
+                target=target,
+                root=package_root,
+            )
             freshness = _receipt_freshness_issue(
                 receipt["sent_at"],
                 anchor=audit_anchor,
@@ -865,6 +870,9 @@ def audit_package(root: str | Path) -> AuditReport:
     package_root = Path(root)
     store = StateStore(package_root)
     with package_operation_lock(package_root):
+        from .archive import assert_no_archive_recovery_required
+
+        assert_no_archive_recovery_required(package_root)
         store._assert_lock_safe()
         with package_lock(store.lock, root=package_root):
             assert_runtime_mutable(package_root)

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "archive_manifest_version": {
+      "const": "1.0"
+    },
+    "files": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "maximum": 16777216,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "0644",
+              "0755"
+            ]
+          },
+          "path": {
+            "maxLength": 65535,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bytes",
+          "mode",
+          "path",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "maxItems": 4096,
+      "minItems": 1,
+      "type": "array"
+    },
+    "secret_scan": {
+      "const": "passed"
+    }
+  },
+  "required": [
+    "archive_manifest_version",
+    "files",
+    "secret_scan"
+  ],
+  "title": "chip-supergoal deterministic archive manifest",
+  "type": "object"
+}

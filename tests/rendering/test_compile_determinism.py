@@ -236,6 +236,19 @@ class CompileSafetyTest(unittest.TestCase):
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             self.assertEqual(read_state(out / "runtime/STATE.json").state_revision, 1)
 
+    def test_private_staging_validation_leaves_no_operation_lock_sidecar(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            out = parent / "sg"
+            result = self.run_compile(out)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            orphaned = [
+                path.name
+                for path in parent.glob(".*.operation.lock")
+                if path.name != ".sg.operation.lock"
+            ]
+            self.assertEqual(orphaned, [])
+
     def test_compile_refuses_source_container(self):
         with tempfile.TemporaryDirectory() as td:
             result = self.run_compile(ROOT)

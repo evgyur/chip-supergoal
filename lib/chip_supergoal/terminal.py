@@ -13,6 +13,7 @@ from .audit import (
     terminal_markers_allowed,
 )
 from .portable import (
+    assert_no_pending_delivery_reservations,
     package_lock,
     package_operation_lock,
     read_regular_file_no_follow,
@@ -90,6 +91,10 @@ def _load_current_state(root: Path) -> tuple[StateStore, State]:
 
 def validate_terminal_package(root: str | Path) -> bytes:
     package_root = Path(root)
+    from .archive import assert_no_archive_recovery_required
+
+    assert_no_archive_recovery_required(package_root)
+    assert_no_pending_delivery_reservations(package_root)
     _, state = _load_current_state(package_root)
     stored_report = read_final_audit(package_root)
     recomputed = recompute_package_audit(package_root)
@@ -107,6 +112,10 @@ def finalize_package(root: str | Path) -> bytes:
     package_root = Path(root)
     store = StateStore(package_root)
     with package_operation_lock(package_root):
+        from .archive import assert_no_archive_recovery_required
+
+        assert_no_archive_recovery_required(package_root)
+        assert_no_pending_delivery_reservations(package_root)
         store._assert_lock_safe()
         with package_lock(store.lock, root=package_root):
             _, state = _load_current_state(package_root)
