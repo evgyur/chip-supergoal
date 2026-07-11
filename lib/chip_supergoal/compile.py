@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .diagnostics import ContractValidationError
 from .events import read_events
-from .model import Contract, canonical_json, load_contract
+from .model import Contract, canonical_json, contract_from_dict
 from .pipeline import ContractPipelineResult, contract_diagnostics, repository_resource_root, validate_contract_source
 from .portable import (
     MUTABLE_PATH_NAMES,
@@ -24,13 +24,14 @@ from .portable import (
     iter_tree_no_follow,
     logical_mode,
     package_operation_lock,
+    read_regular_file_no_follow,
     write_bytes_atomic,
     write_utf8_lf,
 )
 from .profiles import ResolvedContract
 from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
 from .research import render_research_markdown, research_report, research_required, research_gate
-from .state import State, StateStore, read_state
+from .state import State, StateStore
 from .validate import validate_package
 
 
@@ -43,8 +44,9 @@ def _write(path: Path, content: str) -> None:
     write_utf8_lf(path, content)
 
 
-def file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def file_sha256(path: Path, *, root: Path | None = None) -> str:
+    trusted_root = root if root is not None else path.parent
+    return hashlib.sha256(read_regular_file_no_follow(path, trusted_root)).hexdigest()
 
 
 def _iter_package_files(root: Path) -> list[Path]:
@@ -75,12 +77,13 @@ def build_manifest(
     contract_path = root / "CONTRACT.json"
     emitted_hash = contract_sha256
     if emitted_hash is None:
-        emitted_hash = file_sha256(contract_path) if contract_path.is_file() else "0" * 64
+        emitted_hash = file_sha256(contract_path, root=root) if contract_path.is_file() else "0" * 64
     source_hash = source_contract_sha256 or emitted_hash
     artifacts = []
     for p in _iter_package_files(root):
         rel = p.relative_to(root).as_posix()
-        artifacts.append({"path": rel, "sha256": file_sha256(p), "bytes": p.stat().st_size, "mode": file_mode(rel)})
+        data = read_regular_file_no_follow(p, root)
+        artifacts.append({"path": rel, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "mode": file_mode(rel)})
     joined = "\n".join(f"{a['path']} {a['sha256']} {a['bytes']} {a['mode']}" for a in artifacts)
     return {
         "manifest_version": "1.1",
@@ -92,33 +95,14 @@ def build_manifest(
     }
 
 
-def _assert_safe_source_resource(source: Path, source_root: Path) -> None:
-    source_root = Path(os.path.abspath(source_root))
-    source = Path(os.path.abspath(source))
+def _copy_text(source: Path, destination: Path, *, source_root: Path) -> None:
     try:
-        relative = source.relative_to(source_root)
-        root_stat = source_root.lstat()
-        if stat.S_ISLNK(root_stat.st_mode) or is_reparse_point(root_stat):
-            raise ValueError
-        current = source_root
-        for part in relative.parts:
-            current /= part
-            current_stat = current.lstat()
-            if stat.S_ISLNK(current_stat.st_mode) or is_reparse_point(current_stat):
-                raise ValueError
-        if not stat.S_ISREG(source.lstat().st_mode):
-            raise ValueError
-        if not source.resolve(strict=True).is_relative_to(source_root.resolve(strict=True)):
-            raise ValueError
-    except (OSError, ValueError) as exc:
+        content = read_regular_file_no_follow(source, source_root).decode("utf-8")
+    except (OSError, UnicodeError, ValueError) as exc:
         raise CompileSafetyError(
             "required package resource is not a contained regular file"
         ) from exc
-
-
-def _copy_text(source: Path, destination: Path, *, source_root: Path) -> None:
-    _assert_safe_source_resource(source, source_root)
-    _write(destination, source.read_text(encoding="utf-8"))
+    _write(destination, content)
 
 
 def _copy_runtime_inventory(
@@ -141,8 +125,6 @@ def _copy_runtime_inventory(
         (risk_policy_source, Path("spec/risk-policy.json"), risk_policy_root),
     )
     for source, relative, source_root in inventory:
-        if not source.is_file():
-            raise FileNotFoundError(f"required package resource is missing: {source}")
         destination = out_path / relative
         _copy_text(source, destination, source_root=source_root)
         if logical_mode(relative) == "0755":
@@ -174,7 +156,7 @@ def _load_sealed_manifest(root: Path) -> dict:
     if not manifest_path.is_file() or not contract_path.is_file():
         raise CompileSafetyError("existing output is not a sealed chip-supergoal package")
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = json.loads(read_regular_file_no_follow(manifest_path, root))
     except Exception as exc:
         raise CompileSafetyError("existing output manifest is malformed") from exc
     if not isinstance(manifest, dict):
@@ -194,10 +176,14 @@ def _load_sealed_manifest(root: Path) -> dict:
 
 def _assert_pristine_runtime(root: Path, contract: Contract) -> None:
     try:
-        state = read_state(root / "runtime" / "STATE.json")
-        expected = initial_state(contract, file_sha256(root / "CONTRACT.json"))
-        evidence = json.loads((root / "runtime" / "evidence.json").read_text(encoding="utf-8"))
-        events = read_events(root / "runtime" / "events.jsonl")
+        state = State.from_dict(
+            json.loads(read_regular_file_no_follow(root / "runtime" / "STATE.json", root))
+        )
+        expected = initial_state(contract, file_sha256(root / "CONTRACT.json", root=root))
+        evidence = json.loads(
+            read_regular_file_no_follow(root / "runtime" / "evidence.json", root)
+        )
+        events = read_events(root / "runtime" / "events.jsonl", root=root)
     except Exception as exc:
         raise CompileSafetyError("refusing to overwrite started runtime package") from exc
     optional_paths = [
@@ -219,7 +205,11 @@ def _assert_safe_target(out_path: Path, contract: Contract) -> None:
             raise CompileSafetyError("output target must be a directory or absent")
         _load_sealed_manifest(out_path)
         try:
-            existing = load_contract(out_path / "CONTRACT.json")
+            existing = contract_from_dict(
+                json.loads(
+                    read_regular_file_no_follow(out_path / "CONTRACT.json", out_path)
+                )
+            )
         except Exception as exc:
             raise CompileSafetyError("existing output contract is malformed") from exc
         if existing.goal.id != contract.goal.id:
@@ -275,7 +265,20 @@ def _render_package(
     _write(out_path / "LOOP_DESIGN.md", render_loop_design(contract))
     _write(out_path / "ROADMAP.md", render_roadmap(contract))
     _write(out_path / "LAUNCH_GOAL.md", render_launch_goal(contract))
-    protocol_text = protocol_source.read_text(encoding="utf-8")
+    protocol_root = (
+        protocol_source.parent
+        if protocol_source != resources / "templates/PROTOCOL.md"
+        else resources
+    )
+    try:
+        protocol_text = read_regular_file_no_follow(
+            protocol_source,
+            protocol_root,
+        ).decode("utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise CompileSafetyError(
+            "required package resource is not a contained regular file"
+        ) from exc
     _write(out_path / "PROTOCOL.md", protocol_text)
     for i in range(len(contract.phases)):
         _write(phases_dir / f"phase-{i+1:02d}.md", render_phase(contract, i))

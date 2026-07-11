@@ -16,7 +16,9 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 from chip_supergoal.compile import CompileSafetyError, compile_contract_file
 import chip_supergoal.compile as compile_module
+import chip_supergoal.portable as portable_module
 import chip_supergoal.state as state_module
+import chip_supergoal.validate as validate_module
 from chip_supergoal.diagnostics import Diagnostic
 from chip_supergoal.events import append_event, read_events, verify_event_chain
 from chip_supergoal.state import State, StateStore, read_state, recover_from_events, render_state_md, write_state_atomic
@@ -75,6 +77,83 @@ def reseal_artifact(package: Path, relative: str) -> None:
 class SelfContainedPackageTest(unittest.TestCase):
     def compile_package(self, parent: Path) -> Path:
         return compile_contract_file(CONTRACT, parent / "package")
+
+    def test_compiler_resource_copy_does_not_reopen_verified_source_by_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "source.txt"
+            destination = root / "destination.txt"
+            source.write_text("verified source\n", encoding="utf-8")
+            with mock.patch.object(Path, "read_text", return_value="swapped outside\n"):
+                compile_module._copy_text(source, destination, source_root=root)
+            self.assertEqual(destination.read_text(encoding="utf-8"), "verified source\n")
+
+    def test_validator_consumes_sealed_file_from_verified_handle(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = self.compile_package(Path(td))
+            target = package / "THINKING.md"
+            original_read_bytes = Path.read_bytes
+
+            def swapped_path_read(path: Path) -> bytes:
+                if path == target:
+                    return b"swapped outside bytes\n"
+                return original_read_bytes(path)
+
+            with mock.patch.object(Path, "read_bytes", swapped_path_read):
+                diagnostics = validate_package(package)
+
+            self.assertEqual(diagnostics, [])
+
+    def test_validator_resolves_package_local_profile_and_policy_from_verified_handles(self):
+        targets = ("profiles/base.json", "spec/risk-policy.json")
+        for relative in targets:
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as td:
+                package = self.compile_package(Path(td))
+                target = package / relative
+                original_read_text = Path.read_text
+
+                def swapped_path_read(path: Path, *args, **kwargs) -> str:
+                    if path == target:
+                        return "{}\n"
+                    return original_read_text(path, *args, **kwargs)
+
+                with mock.patch.object(Path, "read_text", swapped_path_read):
+                    diagnostics = validate_package(package)
+
+                self.assertEqual(diagnostics, [])
+
+    def test_validator_fails_closed_when_verified_handle_open_detects_swap(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = self.compile_package(Path(td))
+            target = package / "THINKING.md"
+            original_reader = validate_module.read_regular_file_no_follow
+
+            def reject_swapped_file(path: Path, root: Path) -> bytes:
+                if Path(path) == target:
+                    raise portable_module.UnsafeFileError(
+                        path,
+                        "symlink swapped before handle open",
+                        kind="symlink",
+                    )
+                return original_reader(path, root)
+
+            with mock.patch(
+                "chip_supergoal.validate.read_regular_file_no_follow",
+                side_effect=reject_swapped_file,
+            ):
+                try:
+                    diagnostics = validate_package(package)
+                except portable_module.UnsafeFileError as exc:
+                    self.fail(f"validator leaked unsafe handle-open failure: {exc}")
+
+            self.assertTrue(
+                any(
+                    item.code == "SGV-PACKAGE-SYMLINK"
+                    and item.pointer == "/THINKING.md"
+                    for item in diagnostics
+                ),
+                diagnostics,
+            )
 
     def test_explicit_runtime_inventory_is_present(self):
         with tempfile.TemporaryDirectory() as td:
@@ -277,6 +356,40 @@ class SelfContainedPackageTest(unittest.TestCase):
             self.assertIsNotNone(recovered)
             self.assertEqual(recovered.state_revision, current.state_revision + 1)
             self.assertEqual(validate_package(package), [])
+
+    def test_recovery_rejects_valid_journal_from_a_different_package(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            package_a = self.compile_package(parent / "a")
+            source_data = json.loads(CONTRACT.read_text(encoding="utf-8"))
+            source_data["goal"]["id"] = "sg-20260711-recovery-package-b"
+            source_b = parent / "CONTRACT-B.json"
+            source_b.write_text(json.dumps(source_data), encoding="utf-8")
+            package_b = compile_contract_file(source_b, parent / "package-b")
+
+            state_a = read_state(package_a / "runtime/STATE.json")
+            StateStore(package_a).transition(
+                "PLAN_REVIEWED",
+                expected_revision=state_a.state_revision,
+            )
+            shutil.copyfile(
+                package_a / "runtime/events.jsonl",
+                package_b / "runtime/events.jsonl",
+            )
+            state_before = (package_b / "runtime/STATE.json").read_bytes()
+            markdown_before = (package_b / "STATE.md").read_bytes()
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "SGV-STATE-CONTRACT-MISMATCH",
+            ):
+                recover_from_events(package_b)
+
+            self.assertEqual(
+                (package_b / "runtime/STATE.json").read_bytes(),
+                state_before,
+            )
+            self.assertEqual((package_b / "STATE.md").read_bytes(), markdown_before)
 
     def test_relocated_package_validates_with_scrubbed_python_environment(self):
         with tempfile.TemporaryDirectory() as td:

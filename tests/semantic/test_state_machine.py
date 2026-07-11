@@ -160,5 +160,58 @@ class StateMachineTest(unittest.TestCase):
             self.assertEqual(store.state_json.read_bytes(), state_before)
             self.assertEqual(store.state_md.read_bytes(), markdown_before)
 
+    def test_event_journal_requires_compact_sorted_utf8_lf_jsonl(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = StateStore(td)
+            store.initialize(
+                State(
+                    goal_id="sg-20260625-state-test",
+                    contract_sha256=DIGEST,
+                    contract_revision=1,
+                    state_revision=0,
+                    lifecycle="DRAFT",
+                    current_phase_id="P01",
+                    phase_status="PENDING",
+                )
+            )
+            event = read_events(store.events)[0]
+            canonical = (
+                json.dumps(
+                    event,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                + b"\n"
+            )
+            self.assertEqual(store.events.read_bytes(), canonical)
+
+            reordered = {
+                key: event[key]
+                for key in reversed(list(event))
+            }
+            malformed = {
+                "blank line": canonical + b"\n",
+                "reordered keys": json.dumps(
+                    reordered,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                + b"\n",
+                "alternate whitespace": json.dumps(
+                    event,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode("utf-8")
+                + b"\n",
+                "CRLF": canonical.replace(b"\n", b"\r\n"),
+                "missing final LF": canonical[:-1],
+            }
+            for label, content in malformed.items():
+                with self.subTest(label=label):
+                    store.events.write_bytes(content)
+                    with self.assertRaises(ValueError):
+                        read_events(store.events)
+
 if __name__ == "__main__":
     unittest.main()

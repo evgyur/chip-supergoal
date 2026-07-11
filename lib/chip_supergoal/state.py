@@ -3,12 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 from typing import Any
 
 from .events import append_event, canonical_state_bytes, read_events, verify_event_chain
-from .portable import package_lock, package_operation_lock, write_bytes_atomic, write_utf8_lf
+from .model import canonical_json, contract_from_dict
+from .portable import (
+    package_lock,
+    package_operation_lock,
+    read_regular_file_no_follow,
+    write_bytes_atomic,
+    write_utf8_lf,
+)
 
 ALLOWED_TRANSITIONS = {
     ("DRAFT", "COMPILED"), ("COMPILED", "PLAN_REVIEWED"), ("PLAN_REVIEWED", "PREFLIGHT_GREEN"),
@@ -173,13 +181,38 @@ def recover_from_events(root: str | Path) -> State | None:
     store.runtime.mkdir(parents=True, exist_ok=True)
     with package_operation_lock(store.root):
         with package_lock(store.lock):
-            events = read_events(store.events)
+            try:
+                events = read_events(store.events, root=store.root)
+            except (OSError, ValueError):
+                return None
             if not events or verify_event_chain(events):
                 return None
             try:
-                recovered = State.from_dict(events[-1]["state"])
+                event_states = [State.from_dict(event["state"]) for event in events]
             except Exception:
                 return None
+            contract_path = store.root / "CONTRACT.json"
+            if os.path.lexists(contract_path):
+                try:
+                    contract_bytes = read_regular_file_no_follow(
+                        contract_path,
+                        store.root,
+                    )
+                    contract = contract_from_dict(json.loads(contract_bytes), strict=True)
+                    canonical_contract = canonical_json(contract).encode("utf-8")
+                    if contract_bytes != canonical_contract:
+                        raise ValueError("contract bytes are not canonical")
+                    contract_sha256 = hashlib.sha256(canonical_contract).hexdigest()
+                except Exception as exc:
+                    raise ValueError("SGV-STATE-CONTRACT-MISMATCH") from exc
+                for event_state in event_states:
+                    validate_goal_identity(
+                        event_state,
+                        goal_id=contract.goal.id,
+                        contract_sha256=contract_sha256,
+                        contract_revision=contract.contract_revision,
+                    )
+            recovered = event_states[-1]
             write_state_atomic(store.state_json, recovered)
             write_utf8_lf(store.state_md, render_state_md(recovered))
             return recovered

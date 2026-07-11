@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Callable
 
 from .model import Contract, canonical_json, contract_from_dict, to_plain
 
@@ -156,12 +156,18 @@ def _validate_profile_fields(name: str, profile: dict[str, Any]) -> None:
                 )
 
 
-def _load_profile(name: str, profiles_dir: Path) -> dict[str, Any]:
+def _load_profile(
+    name: str,
+    profiles_dir: Path,
+    read_file: Callable[[Path], bytes] | None = None,
+) -> dict[str, Any]:
     path = _profile_path(name, profiles_dir)
-    if not path.is_file():
+    if read_file is None and not path.is_file():
         raise ProfileError(f"profile {name!r} not found in {profiles_dir}")
     try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
+        loaded = json.loads(
+            read_file(path) if read_file is not None else path.read_text(encoding="utf-8")
+        )
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ProfileError(f"cannot load profile {name!r}: {exc}") from exc
     if not isinstance(loaded, dict):
@@ -190,7 +196,12 @@ def _load_profile(name: str, profiles_dir: Path) -> dict[str, Any]:
     return loaded
 
 
-def resolve_profile(name: str, profiles_dir: str | Path) -> dict[str, Any]:
+def resolve_profile(
+    name: str,
+    profiles_dir: str | Path,
+    *,
+    read_file: Callable[[Path], bytes] | None = None,
+) -> dict[str, Any]:
     root = Path(profiles_dir)
 
     def resolve(current: str, stack: tuple[str, ...]) -> dict[str, Any]:
@@ -201,7 +212,7 @@ def resolve_profile(name: str, profiles_dir: str | Path) -> dict[str, Any]:
             raise ProfileError(
                 f"maximum profile inheritance depth ({MAX_PROFILE_DEPTH}) exceeded"
             )
-        profile = _load_profile(current, root)
+        profile = _load_profile(current, root, read_file)
         parent = profile.get("extends")
         if parent is None:
             return deepcopy(profile)
@@ -350,9 +361,13 @@ def _redact_public_contract(
 
 
 def resolve_contract(
-    source: Contract, profiles_dir: str | Path, source_bytes: bytes
+    source: Contract,
+    profiles_dir: str | Path,
+    source_bytes: bytes,
+    *,
+    read_file: Callable[[Path], bytes] | None = None,
 ) -> ResolvedContract:
-    profile = resolve_profile(source.profile, profiles_dir)
+    profile = resolve_profile(source.profile, profiles_dir, read_file=read_file)
     if profile.get("public_clean"):
         profile = _public_profile(profile)
 

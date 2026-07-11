@@ -17,10 +17,12 @@ from .portable import (
     MUTABLE_PATHS,
     REQUIRED_MUTABLE_PATHS,
     SEALED_RUNTIME_PATHS,
+    UnsafeFileError,
     canonical_text_bytes,
     is_reparse_point,
     iter_tree_no_follow,
     logical_mode,
+    read_regular_file_no_follow,
 )
 from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
 from .research import render_research_markdown, research_gate, research_report, research_required, validate_research_gate
@@ -193,6 +195,14 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _package_bytes(root: Path, path: Path) -> bytes:
+    return read_regular_file_no_follow(path, root)
+
+
+def _package_text(root: Path, path: Path, *, errors: str = "strict") -> str:
+    return _package_bytes(root, path).decode("utf-8", errors=errors)
+
+
 _MANIFEST_KEYS = {
     "manifest_version",
     "source_contract_sha256",
@@ -336,7 +346,11 @@ def _expected_generated_files(
     root: Path,
 ) -> tuple[dict[str, bytes], object | None, list[Diagnostic]]:
     contract_path = root / "CONTRACT.json"
-    result = contract_diagnostics(contract_path, resource_root=root)
+    result = contract_diagnostics(
+        contract_path,
+        resource_root=root,
+        read_file=lambda path: _package_bytes(root, path),
+    )
     if result.diagnostics:
         if any(item.code == "SGV-CONTRACT-MALFORMED" for item in result.diagnostics):
             return {}, None, [
@@ -373,7 +387,7 @@ def _expected_generated_files(
     if protocol_template.is_file():
         try:
             expected["PROTOCOL.md"] = canonical_text_bytes(
-                protocol_template.read_text(encoding="utf-8")
+                _package_text(root, protocol_template)
             )
         except (OSError, UnicodeError):
             pass
@@ -406,7 +420,7 @@ def _manifest_records(
             )
         ]
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = json.loads(_package_bytes(root, manifest_path))
     except Exception:
         return None, {}, [
             _diag(
@@ -556,7 +570,7 @@ def _manifest_records(
         )
     contract_path = root / "CONTRACT.json"
     if contract_path.is_file() and manifest.get("contract_sha256") != _sha256_bytes(
-        contract_path.read_bytes()
+        _package_bytes(root, contract_path)
     ):
         diagnostics.append(
             _diag(
@@ -606,11 +620,12 @@ def _validate_mutable_plane(
     state_path = root / "runtime" / "STATE.json"
     if state_path.is_file():
         try:
-            state_data = json.loads(state_path.read_text(encoding="utf-8"))
+            state_bytes = _package_bytes(root, state_path)
+            state_data = json.loads(state_bytes)
             if not isinstance(state_data, dict):
                 raise ValueError("state must be an object")
             state = State.from_dict(state_data)
-            if state_path.read_bytes() != state_json_bytes(state):
+            if state_bytes != state_json_bytes(state):
                 raise ValueError("state bytes are not canonical")
             phase_ids = (
                 {phase.id for phase in getattr(contract, "phases", ())}
@@ -644,7 +659,7 @@ def _validate_mutable_plane(
     projection_path = root / "STATE.md"
     if projection_path.is_file() and state is not None:
         try:
-            if projection_path.read_bytes() != render_state_md(state).encode("utf-8"):
+            if _package_bytes(root, projection_path) != render_state_md(state).encode("utf-8"):
                 raise ValueError("projection mismatch")
             projection_matches = True
         except Exception:
@@ -663,10 +678,10 @@ def _validate_mutable_plane(
     journal_valid = False
     if events_path.is_file():
         try:
-            raw_events = events_path.read_bytes()
+            raw_events = _package_bytes(root, events_path)
             if not raw_events.endswith(b"\n") or b"\r" in raw_events:
                 raise ValueError("events are not canonical LF JSONL")
-            events = read_events(events_path)
+            events = read_events(events_path, root=root)
             if not events or verify_event_chain(events):
                 raise ValueError("event chain is invalid")
             if events[0].get("event_type") != "state_initialized":
@@ -746,7 +761,7 @@ def _validate_mutable_plane(
     evidence_path = root / "runtime" / "evidence.json"
     if evidence_path.is_file():
         try:
-            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            evidence = json.loads(_package_bytes(root, evidence_path))
             if not isinstance(evidence, list) or not all(
                 isinstance(item, dict) for item in evidence
             ):
@@ -763,7 +778,9 @@ def _validate_mutable_plane(
             )
 
     lock_path = root / "runtime" / "state.lock"
-    if lock_path.exists() and (not lock_path.is_file() or lock_path.read_bytes() != b"\0"):
+    if lock_path.exists() and (
+        not lock_path.is_file() or _package_bytes(root, lock_path) != b"\0"
+    ):
         diagnostics.append(
             _mutable_diagnostic(
                 "SGV-PACKAGE-MUTABLE-MALFORMED",
@@ -795,7 +812,7 @@ def _validate_mutable_plane(
     return diagnostics
 
 
-def validate_package(root: str | Path) -> list[Diagnostic]:
+def _validate_package_impl(root: str | Path) -> list[Diagnostic]:
     package_root = Path(root)
     path_diagnostics = _package_path_diagnostics(package_root)
     if path_diagnostics:
@@ -843,7 +860,7 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
                     "Recompile the package.",
                 )
             )
-        elif path.read_bytes() != expected_bytes:
+        elif _package_bytes(package_root, path) != expected_bytes:
             diagnostics.append(
                 _diag(
                     "SGV-PACKAGE-GENERATED-DRIFT",
@@ -865,7 +882,7 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
         ):
             continue
         for line_number, line in enumerate(
-            path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+            _package_text(package_root, path, errors="ignore").splitlines(), 1
         ):
             if line.startswith("SUPERGOAL_GOAL_BODY:"):
                 launch_hits.append(f"{relative}:{line_number}")
@@ -934,7 +951,7 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
             path = package_root / relative
             if not path.is_file():
                 continue
-            data = path.read_bytes()
+            data = _package_bytes(package_root, path)
             if (
                 item.get("sha256") != _sha256_bytes(data)
                 or item.get("bytes") != len(data)
@@ -967,7 +984,7 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
         if isinstance(manifest, dict)
         and isinstance(manifest.get("contract_sha256"), str)
         and _SHA256_PATTERN.fullmatch(manifest["contract_sha256"])
-        else _sha256_bytes((package_root / "CONTRACT.json").read_bytes())
+        else _sha256_bytes(_package_bytes(package_root, package_root / "CONTRACT.json"))
         if (package_root / "CONTRACT.json").is_file()
         else None
     )
@@ -987,3 +1004,31 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
             seen.add(identity)
             unique.append(diagnostic)
     return unique
+
+
+def validate_package(root: str | Path) -> list[Diagnostic]:
+    package_root = Path(root)
+    try:
+        return _validate_package_impl(package_root)
+    except UnsafeFileError as exc:
+        try:
+            relative = exc.path.relative_to(package_root).as_posix()
+            pointer = f"/{relative}"
+        except ValueError:
+            pointer = "/"
+        code = (
+            "SGV-PACKAGE-SYMLINK"
+            if exc.kind == "symlink"
+            else "SGV-PACKAGE-SPECIAL-FILE"
+        )
+        return [
+            _diag(
+                code,
+                "INV-ARCHIVE-001",
+                str(package_root),
+                pointer,
+                "package file could not be consumed from a verified no-follow handle",
+                "Replace the path with a contained regular file and retry validation.",
+                stage="archive",
+            )
+        ]

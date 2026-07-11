@@ -5,6 +5,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib"))
@@ -33,6 +34,54 @@ def _hold_package_lock(lock_path: str, ready, release) -> None:
 
 
 class PortableRuntimeTest(unittest.TestCase):
+    def test_regular_file_reader_consumes_verified_handle_not_path_reopen(self):
+        reader = getattr(portable_module, "read_regular_file_no_follow", None)
+        self.assertIsNotNone(reader)
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "source.txt"
+            source.write_bytes(b"verified bytes")
+
+            with mock.patch.object(
+                Path,
+                "read_bytes",
+                side_effect=AssertionError("path-based reopen is forbidden"),
+            ):
+                self.assertEqual(reader(source, root), b"verified bytes")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX descriptor-relative race regression")
+    def test_regular_file_reader_rejects_symlink_swapped_before_final_open(self):
+        reader = getattr(portable_module, "read_regular_file_no_follow", None)
+        unsafe_error = getattr(portable_module, "UnsafeFileError", OSError)
+        self.assertIsNotNone(reader)
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "source.txt"
+            source.write_bytes(b"inside")
+            outside = root.parent / f"{root.name}-outside.txt"
+            outside.write_bytes(b"outside")
+            original_open = os.open
+            swapped = False
+
+            def swap_before_final_open(path, flags, *args, **kwargs):
+                nonlocal swapped
+                if path == source.name and kwargs.get("dir_fd") is not None and not swapped:
+                    swapped = True
+                    source.unlink()
+                    source.symlink_to(outside)
+                return original_open(path, flags, *args, **kwargs)
+
+            try:
+                with mock.patch(
+                    "chip_supergoal.portable.os.open",
+                    side_effect=swap_before_final_open,
+                ):
+                    with self.assertRaises(unsafe_error):
+                        reader(source, root)
+                self.assertTrue(swapped)
+            finally:
+                outside.unlink(missing_ok=True)
+
     def test_canonical_text_bytes_normalizes_all_newlines_and_uses_utf8(self):
         self.assertEqual(
             canonical_text_bytes("alpha\r\nbeta\rgamma\nД"),

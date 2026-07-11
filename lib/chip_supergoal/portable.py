@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import ctypes
 import errno
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import BinaryIO, Iterator
 
 if os.name == "nt":
     import msvcrt
+    from ctypes import wintypes
 else:
     import fcntl
 
@@ -126,6 +128,244 @@ def iter_tree_no_follow(root: str | Path) -> Iterator[tuple[Path, os.stat_result
 
 class StateLockTimeout(TimeoutError):
     pass
+
+
+class UnsafeFileError(OSError):
+    def __init__(self, path: str | Path, reason: str, *, kind: str = "special"):
+        self.path = Path(path)
+        self.reason = reason
+        self.kind = kind
+        super().__init__(f"unsafe package file {self.path}: {reason}")
+
+
+def _contained_relative(path: str | Path, root: str | Path) -> tuple[Path, Path, Path]:
+    package_root = Path(os.path.abspath(root))
+    target = Path(os.path.abspath(path))
+    try:
+        relative = target.relative_to(package_root)
+    except ValueError as exc:
+        raise UnsafeFileError(path, "path is outside the trusted root") from exc
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise UnsafeFileError(path, "path is not a regular child of the trusted root")
+    return target, package_root, relative
+
+
+def _unsafe_open_error(path: Path, exc: BaseException) -> UnsafeFileError:
+    try:
+        stat_result = path.lstat()
+        if stat.S_ISLNK(stat_result.st_mode) or is_reparse_point(stat_result):
+            return UnsafeFileError(path, "symlink or reparse point rejected", kind="symlink")
+    except OSError:
+        pass
+    return UnsafeFileError(path, "regular file could not be opened without following links")
+
+
+def _read_regular_file_posix(target: Path, root: Path, relative: Path) -> bytes:
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+        file_flags |= os.O_CLOEXEC
+    directory_fds: list[int] = []
+    file_fd: int | None = None
+    try:
+        root_fd = os.open(root, directory_flags)
+        directory_fds.append(root_fd)
+        if not stat.S_ISDIR(os.fstat(root_fd).st_mode):
+            raise UnsafeFileError(root, "trusted root is not a directory")
+        current_fd = root_fd
+        for component in relative.parts[:-1]:
+            current_fd = os.open(component, directory_flags, dir_fd=current_fd)
+            directory_fds.append(current_fd)
+            if not stat.S_ISDIR(os.fstat(current_fd).st_mode):
+                raise UnsafeFileError(target, "path component is not a directory")
+        file_fd = os.open(relative.parts[-1], file_flags, dir_fd=current_fd)
+        if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+            raise UnsafeFileError(target, "target is not a regular file")
+        with os.fdopen(file_fd, "rb") as stream:
+            file_fd = None
+            return stream.read()
+    except UnsafeFileError:
+        raise
+    except OSError as exc:
+        raise _unsafe_open_error(target, exc) from exc
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        for descriptor in reversed(directory_fds):
+            os.close(descriptor)
+
+
+if os.name == "nt":
+    _GENERIC_READ = 0x80000000
+    _FILE_SHARE_READ = 0x00000001
+    _FILE_SHARE_WRITE = 0x00000002
+    _FILE_SHARE_DELETE = 0x00000004
+    _OPEN_EXISTING = 3
+    _FILE_ATTRIBUTE_DIRECTORY = 0x00000010
+    _FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
+    _FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+    _FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+    _FILE_TYPE_DISK = 0x0001
+    _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+
+    class _ByHandleFileInformation(ctypes.Structure):
+        _fields_ = [
+            ("dwFileAttributes", wintypes.DWORD),
+            ("ftCreationTime", wintypes.FILETIME),
+            ("ftLastAccessTime", wintypes.FILETIME),
+            ("ftLastWriteTime", wintypes.FILETIME),
+            ("dwVolumeSerialNumber", wintypes.DWORD),
+            ("nFileSizeHigh", wintypes.DWORD),
+            ("nFileSizeLow", wintypes.DWORD),
+            ("nNumberOfLinks", wintypes.DWORD),
+            ("nFileIndexHigh", wintypes.DWORD),
+            ("nFileIndexLow", wintypes.DWORD),
+        ]
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _CreateFileW = _kernel32.CreateFileW
+    _CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    _CreateFileW.restype = wintypes.HANDLE
+    _CloseHandle = _kernel32.CloseHandle
+    _CloseHandle.argtypes = [wintypes.HANDLE]
+    _CloseHandle.restype = wintypes.BOOL
+    _GetFileInformationByHandle = _kernel32.GetFileInformationByHandle
+    _GetFileInformationByHandle.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(_ByHandleFileInformation),
+    ]
+    _GetFileInformationByHandle.restype = wintypes.BOOL
+    _GetFinalPathNameByHandleW = _kernel32.GetFinalPathNameByHandleW
+    _GetFinalPathNameByHandleW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ]
+    _GetFinalPathNameByHandleW.restype = wintypes.DWORD
+    _GetFileType = _kernel32.GetFileType
+    _GetFileType.argtypes = [wintypes.HANDLE]
+    _GetFileType.restype = wintypes.DWORD
+
+
+def _windows_handle_value(handle: object) -> int:
+    value = getattr(handle, "value", handle)
+    return int(value)
+
+
+def _windows_final_path(handle: object) -> Path:
+    size = 512
+    while True:
+        buffer = ctypes.create_unicode_buffer(size)
+        length = _GetFinalPathNameByHandleW(handle, buffer, size, 0)
+        if length == 0:
+            raise ctypes.WinError(ctypes.get_last_error())
+        if length < size:
+            value = buffer.value
+            if value.startswith("\\\\?\\UNC\\"):
+                value = "\\\\" + value[8:]
+            elif value.startswith("\\\\?\\"):
+                value = value[4:]
+            return Path(os.path.normpath(value))
+        size = length + 1
+
+
+def _windows_contained(path: Path, root: Path) -> bool:
+    normalized_path = os.path.normcase(os.path.normpath(path))
+    normalized_root = os.path.normcase(os.path.normpath(root))
+    try:
+        return os.path.commonpath((normalized_path, normalized_root)) == normalized_root
+    except ValueError:
+        return False
+
+
+def _open_windows_verified(path: Path, *, directory: bool) -> tuple[object, Path]:
+    flags = _FILE_FLAG_OPEN_REPARSE_POINT
+    desired_access = 0
+    share = _FILE_SHARE_READ | _FILE_SHARE_WRITE
+    if directory:
+        flags |= _FILE_FLAG_BACKUP_SEMANTICS
+    else:
+        desired_access = _GENERIC_READ
+        share |= _FILE_SHARE_DELETE
+    handle = _CreateFileW(
+        str(path),
+        desired_access,
+        share,
+        None,
+        _OPEN_EXISTING,
+        flags,
+        None,
+    )
+    if _windows_handle_value(handle) == _INVALID_HANDLE_VALUE:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        information = _ByHandleFileInformation()
+        if not _GetFileInformationByHandle(handle, ctypes.byref(information)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        attributes = information.dwFileAttributes
+        if attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+            raise UnsafeFileError(path, "symlink or reparse point rejected", kind="symlink")
+        is_directory = bool(attributes & _FILE_ATTRIBUTE_DIRECTORY)
+        if is_directory != directory:
+            raise UnsafeFileError(path, "node type does not match the requested file type")
+        if not directory and _GetFileType(handle) != _FILE_TYPE_DISK:
+            raise UnsafeFileError(path, "target is not a regular disk file")
+        return handle, _windows_final_path(handle)
+    except BaseException:
+        _CloseHandle(handle)
+        raise
+
+
+def _read_regular_file_windows(target: Path, root: Path, relative: Path) -> bytes:
+    directory_handles: list[object] = []
+    file_handle: object | None = None
+    try:
+        root_handle, final_root = _open_windows_verified(root, directory=True)
+        directory_handles.append(root_handle)
+        current = root
+        for component in relative.parts[:-1]:
+            current /= component
+            handle, final_directory = _open_windows_verified(current, directory=True)
+            if not _windows_contained(final_directory, final_root):
+                _CloseHandle(handle)
+                raise UnsafeFileError(current, "directory resolves outside the trusted root")
+            directory_handles.append(handle)
+        file_handle, final_target = _open_windows_verified(target, directory=False)
+        if not _windows_contained(final_target, final_root):
+            raise UnsafeFileError(target, "file resolves outside the trusted root")
+        descriptor = msvcrt.open_osfhandle(
+            _windows_handle_value(file_handle),
+            os.O_RDONLY | os.O_BINARY,
+        )
+        file_handle = None
+        with os.fdopen(descriptor, "rb") as stream:
+            return stream.read()
+    except UnsafeFileError:
+        raise
+    except OSError as exc:
+        raise _unsafe_open_error(target, exc) from exc
+    finally:
+        if file_handle is not None:
+            _CloseHandle(file_handle)
+        for handle in reversed(directory_handles):
+            _CloseHandle(handle)
+
+
+def read_regular_file_no_follow(path: str | Path, root: str | Path) -> bytes:
+    target, package_root, relative = _contained_relative(path, root)
+    if os.name == "nt":
+        return _read_regular_file_windows(target, package_root, relative)
+    return _read_regular_file_posix(target, package_root, relative)
 
 
 def canonical_text_bytes(content: str) -> bytes:

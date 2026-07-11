@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .portable import read_regular_file_no_follow
+
 ZERO_HASH = "0" * 64
 EVENT_FIELDS = frozenset(
     {
@@ -37,6 +39,18 @@ def event_hash(event: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_event_payload(event)).hexdigest()
 
 
+def canonical_event_line(event: dict[str, Any]) -> bytes:
+    return (
+        json.dumps(
+            event,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
+
+
 def canonical_state_bytes(state: dict[str, Any]) -> bytes:
     return (
         json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -47,14 +61,31 @@ def _state_hash(state: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_state_bytes(state)).hexdigest()
 
 
-def read_events(path: str | Path) -> list[dict[str, Any]]:
+def read_events(
+    path: str | Path,
+    *,
+    root: str | Path | None = None,
+) -> list[dict[str, Any]]:
     p = Path(path)
-    if not p.exists():
+    if not os.path.lexists(p):
         return []
-    events = []
-    for line in p.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            events.append(json.loads(line))
+    data = read_regular_file_no_follow(p, Path(root) if root is not None else p.parent)
+    if not data:
+        return []
+    if b"\r" in data or not data.endswith(b"\n"):
+        raise ValueError("event journal must use canonical UTF-8 LF JSONL")
+    raw_lines = data[:-1].split(b"\n")
+    if any(not line for line in raw_lines):
+        raise ValueError("event journal must not contain blank lines")
+    events: list[dict[str, Any]] = []
+    for raw_line in raw_lines:
+        try:
+            event = json.loads(raw_line.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("event journal contains malformed JSON") from exc
+        if not isinstance(event, dict) or canonical_event_line(event) != raw_line + b"\n":
+            raise ValueError("event journal line is not canonical JSON")
+        events.append(event)
     return events
 
 
@@ -121,8 +152,8 @@ def append_event(
         "prev_event_sha256": prev,
     }
     event["event_sha256"] = event_hash(event)
-    with p.open("a", encoding="utf-8", newline="\n") as f:
-        f.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+    with p.open("ab") as f:
+        f.write(canonical_event_line(event))
         f.flush()
         os.fsync(f.fileno())
     return event

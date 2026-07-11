@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+from typing import Callable
 
 from .diagnostics import Diagnostic, diagnostic_metadata
 from .model import Contract, canonical_json, contract_from_dict
@@ -169,6 +170,7 @@ def validate_contract_source(
     artifact: str = "CONTRACT.json",
     resource_root: str | Path | None = None,
     risk_policy_path: str | Path | None = None,
+    resource_reader: Callable[[Path], bytes] | None = None,
 ) -> ContractPipelineResult:
     root = Path(resource_root) if resource_root is not None else repository_resource_root()
     try:
@@ -185,7 +187,12 @@ def validate_contract_source(
         return ContractPipelineResult(None, (_malformed_diagnostic(artifact),))
 
     try:
-        resolved = resolve_contract(contract, root / "profiles", source_bytes)
+        resolved = resolve_contract(
+            contract,
+            root / "profiles",
+            source_bytes,
+            read_file=resource_reader,
+        )
     except ProfileError as exc:
         return ContractPipelineResult(None, (_profile_diagnostic(artifact, exc),))
     except (AttributeError, KeyError, TypeError, ValueError):
@@ -197,7 +204,11 @@ def validate_contract_source(
         return ContractPipelineResult(None, (_malformed_diagnostic(artifact),))
     policy_path = Path(risk_policy_path) if risk_policy_path is not None else root / "spec/risk-policy.json"
     try:
-        policy = load_risk_policy(policy_path)
+        policy = (
+            json.loads(resource_reader(policy_path))
+            if resource_reader is not None
+            else load_risk_policy(policy_path)
+        )
         if not isinstance(policy, dict) or not isinstance(policy.get("risk_tags"), dict):
             raise ValueError("risk policy must contain a risk_tags object")
     except Exception:
@@ -238,10 +249,11 @@ def contract_diagnostics(
     *,
     resource_root: str | Path | None = None,
     risk_policy_path: str | Path | None = None,
+    read_file: Callable[[Path], bytes] | None = None,
 ) -> ContractPipelineResult:
     source_path = Path(path)
     try:
-        source_bytes = source_path.read_bytes()
+        source_bytes = read_file(source_path) if read_file is not None else source_path.read_bytes()
     except Exception:
         return ContractPipelineResult(
             None, (_malformed_diagnostic(str(source_path)),)
@@ -251,4 +263,5 @@ def contract_diagnostics(
         artifact=str(source_path),
         resource_root=resource_root,
         risk_policy_path=risk_policy_path,
+        resource_reader=read_file,
     )
