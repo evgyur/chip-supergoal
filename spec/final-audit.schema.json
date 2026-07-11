@@ -1,0 +1,50 @@
+{
+  "$id": "https://hermes.local/chip-supergoal/final-audit.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "audit_anchor": {"pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$", "type": "string"},
+    "audit_round": {"minimum": 1, "type": "integer"},
+    "can_complete": {"type": "boolean"},
+    "contract_revision": {"minimum": 1, "type": "integer"},
+    "contract_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"},
+    "coverage": {
+      "additionalProperties": false,
+      "properties": {
+        "blocking_criteria_total": {"minimum": 0, "type": "integer"},
+        "blocking_criteria_with_passing_evidence": {"minimum": 0, "type": "integer"},
+        "deterministic_coverage": {"minimum": 0, "type": "integer"},
+        "unverified": {"minimum": 0, "type": "integer"}
+      },
+      "required": ["blocking_criteria_total", "blocking_criteria_with_passing_evidence", "deterministic_coverage", "unverified"],
+      "type": "object"
+    },
+    "delivery_status": {"enum": ["not_required", "verified", "missing", "invalid"]},
+    "event_tail_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"},
+    "evidence_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"},
+    "goal_id": {"minLength": 1, "type": "string"},
+    "issues": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "criterion_id": {"type": "string"},
+          "evidence_id": {"type": "string"},
+          "issue_type": {"enum": ["AUDIT_GAP", "AUDIT_BLOCKER", "AUDIT_CORRUPTION", "AUDIT_WARNING"]},
+          "message": {"minLength": 1, "type": "string"},
+          "phase_id": {"type": "string"}
+        },
+        "required": ["issue_type", "message"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "lifecycle": {"enum": ["AUDITING", "DONE"]},
+    "rpd_decision": {"enum": ["not_required", "verified", "missing"]},
+    "schema_version": {"const": "1.0"},
+    "state_revision": {"minimum": 1, "type": "integer"},
+    "state_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"}
+  },
+  "required": ["schema_version", "goal_id", "contract_sha256", "contract_revision", "state_revision", "state_sha256", "lifecycle", "audit_round", "audit_anchor", "event_tail_sha256", "evidence_sha256", "coverage", "issues", "delivery_status", "rpd_decision", "can_complete"],
+  "title": "chip-supergoal final audit",
+  "type": "object"
+}

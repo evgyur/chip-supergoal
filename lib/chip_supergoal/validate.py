@@ -9,7 +9,10 @@ import stat
 from typing import Iterable
 
 from .diagnostics import Diagnostic, diagnostic_metadata
-from .events import EVENT_FIELDS, read_events, verify_event_chain
+from .audit import audit_json_bytes, read_final_audit, recompute_package_audit
+from .delivery import read_receipt, validate_final_receipt, validate_review_receipt
+from .events import read_events, validate_event_journal
+from .evidence import read_evidence, validate_record_against_contract
 from .model import canonical_json, load_contract
 from .pipeline import contract_diagnostics, repository_resource_root
 from .portable import (
@@ -27,6 +30,7 @@ from .portable import (
 from .render import phase_entries_in_ordinal_order, render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
 from .research import render_research_markdown, research_gate, research_report, research_required, validate_research_gate
 from .state import LIFECYCLES, State, render_state_md, state_json_bytes
+from .terminal import validate_terminal_package
 
 REQUIRED_LOOP_SECTIONS = [
     "Goal", "Context sources", "Host model", "Reviewer / judge model", "Verification gates",
@@ -617,25 +621,23 @@ def _validate_mutable_plane(
                 )
             )
 
+    phase_ids = {
+        phase.id for phase in getattr(contract, "phases", ())
+    } if contract is not None else set()
+    dependencies = {
+        phase.id: set(phase.depends_on) for phase in getattr(contract, "phases", ())
+    } if contract is not None else {}
+    goal_id = getattr(getattr(contract, "goal", None), "id", None)
+    contract_revision = getattr(contract, "contract_revision", None)
+
     state: State | None = None
-    projection_matches = False
-    state_path = root / "runtime" / "STATE.json"
+    state_path = root / "runtime/STATE.json"
     if state_path.is_file():
         try:
             state_bytes = _package_bytes(root, state_path)
-            state_data = json.loads(state_bytes)
-            if not isinstance(state_data, dict):
-                raise ValueError("state must be an object")
-            state = State.from_dict(state_data)
+            state = State.from_dict(json.loads(state_bytes))
             if state_bytes != state_json_bytes(state):
                 raise ValueError("state bytes are not canonical")
-            phase_ids = (
-                {phase.id for phase in getattr(contract, "phases", ())}
-                if contract is not None
-                else set()
-            )
-            goal_id = getattr(getattr(contract, "goal", None), "id", None)
-            contract_revision = getattr(contract, "contract_revision", None)
             if (
                 state.state_revision < 1
                 or state.lifecycle == "DRAFT"
@@ -658,12 +660,16 @@ def _validate_mutable_plane(
             )
             state = None
 
+    projection_matches = False
     projection_path = root / "STATE.md"
     if projection_path.is_file() and state is not None:
         try:
-            if _package_bytes(root, projection_path) != render_state_md(state).encode("utf-8"):
+            projection_matches = (
+                _package_bytes(root, projection_path)
+                == render_state_md(state).encode("utf-8")
+            )
+            if not projection_matches:
                 raise ValueError("projection mismatch")
-            projection_matches = True
         except Exception:
             diagnostics.append(
                 _mutable_diagnostic(
@@ -675,66 +681,22 @@ def _validate_mutable_plane(
                 )
             )
 
-    events_path = root / "runtime" / "events.jsonl"
+    events: list[dict] = []
     journal_tail_state: State | None = None
     journal_valid = False
+    events_path = root / "runtime/events.jsonl"
     if events_path.is_file():
         try:
-            raw_events = _package_bytes(root, events_path)
-            if not raw_events.endswith(b"\n") or b"\r" in raw_events:
-                raise ValueError("events are not canonical LF JSONL")
             events = read_events(events_path, root=root)
-            if not events or verify_event_chain(events):
-                raise ValueError("event chain is invalid")
-            if events[0].get("event_type") != "state_initialized":
-                raise ValueError("missing genesis event")
-            if events[0].get("state_revision") != 1:
-                raise ValueError("genesis revision is invalid")
-            previous_revision = 0
-            phase_ids = (
-                {phase.id for phase in getattr(contract, "phases", ())}
-                if contract is not None
-                else set()
+            validate_event_journal(
+                events,
+                goal_id=goal_id,
+                contract_sha256=contract_sha256,
+                contract_revision=contract_revision,
+                phase_ids=phase_ids,
+                phase_dependencies=dependencies,
             )
-            goal_id = getattr(getattr(contract, "goal", None), "id", None)
-            contract_revision = getattr(contract, "contract_revision", None)
-            event_states: list[State] = []
-            for index, event in enumerate(events, 1):
-                if set(event) != EVENT_FIELDS:
-                    raise ValueError("event fields are invalid")
-                if event.get("event_id") != f"EVT-{index:06d}" or not _EVENT_ID_PATTERN.fullmatch(
-                    event["event_id"]
-                ):
-                    raise ValueError("event id is invalid")
-                revision = event.get("state_revision")
-                if type(revision) is not int or revision < previous_revision or revision < 1:
-                    raise ValueError("event revision is invalid")
-                previous_revision = revision
-                event_state = State.from_dict(event.get("state"))
-                event_states.append(event_state)
-                if (
-                    event.get("goal_id") != goal_id
-                    or event.get("contract_sha256") != contract_sha256
-                    or event.get("contract_revision") != contract_revision
-                    or event.get("phase_id") not in phase_ids
-                    or not isinstance(event.get("actor"), str)
-                    or not isinstance(event.get("event_type"), str)
-                    or not isinstance(event.get("evidence_ids"), list)
-                    or not all(isinstance(item, str) for item in event["evidence_ids"])
-                    or not isinstance(event.get("timestamp"), str)
-                    or not _TIMESTAMP_PATTERN.fullmatch(event["timestamp"])
-                    or not isinstance(event.get("state_sha256"), str)
-                    or not _SHA256_PATTERN.fullmatch(event["state_sha256"])
-                    or event_state.goal_id != goal_id
-                    or event_state.contract_sha256 != contract_sha256
-                    or event_state.contract_revision != contract_revision
-                    or event.get("state_revision") != event_state.state_revision
-                    or event.get("phase_id") != event_state.current_phase_id
-                    or event.get("state_sha256")
-                    != _sha256_bytes(state_json_bytes(event_state))
-                ):
-                    raise ValueError("event identity is invalid")
-            journal_tail_state = event_states[-1]
+            journal_tail_state = State.from_dict(events[-1]["state"])
             journal_valid = True
         except Exception:
             diagnostics.append(
@@ -743,7 +705,7 @@ def _validate_mutable_plane(
                     root,
                     "runtime/events.jsonl",
                     "runtime event journal is malformed or inconsistent",
-                    "Recover the event chain or recompile a pristine package.",
+                    "Repair the event chain or recompile a pristine package.",
                 )
             )
     if journal_valid and (
@@ -755,31 +717,33 @@ def _validate_mutable_plane(
                 "INV-RECOVERY-001",
                 str(root),
                 "/runtime/events.jsonl",
-                "the valid event journal is ahead of or differs from its state projections",
-                "Replay the event journal tail into runtime/STATE.json and STATE.md.",
+                "the valid event journal differs from its projections",
+                "Run python scripts/sgctl.py state-recover.",
             )
         )
 
-    evidence_path = root / "runtime" / "evidence.json"
+    evidence_valid = False
+    evidence_path = root / "runtime/evidence.json"
     if evidence_path.is_file():
         try:
-            evidence = json.loads(_package_bytes(root, evidence_path))
-            if not isinstance(evidence, list) or not all(
-                isinstance(item, dict) for item in evidence
-            ):
-                raise ValueError("evidence must be a list of records")
+            evidence = read_evidence(evidence_path, root=root)
+            if contract is None or state is None:
+                raise ValueError("contract/state authority unavailable")
+            for record in evidence:
+                validate_record_against_contract(record, contract, state)
+            evidence_valid = True
         except Exception:
             diagnostics.append(
                 _mutable_diagnostic(
                     "SGV-PACKAGE-EVIDENCE-MALFORMED",
                     root,
                     "runtime/evidence.json",
-                    "runtime evidence is not a JSON list of records",
-                    "Restore a valid evidence list or recompile a pristine package.",
+                    "runtime evidence is malformed or inconsistent with contract identity",
+                    "Restore canonical bound evidence through record-evidence.",
                 )
             )
 
-    lock_path = root / "runtime" / "state.lock"
+    lock_path = root / "runtime/state.lock"
     if lock_path.exists() and (
         not lock_path.is_file() or _package_bytes(root, lock_path) != b"\0"
     ):
@@ -792,29 +756,133 @@ def _validate_mutable_plane(
                 "Recreate the package lock through the portable runtime.",
             )
         )
-    for relative in (
-        "reports/final-audit.json",
-        "reports/final-audit.md",
-        "reports/terminal-record.txt",
-        "out/review-md-files-delivery-receipt.json",
-        "out/final-artifacts-delivery-receipt.json",
-        "out/final-artifacts-manifest.json",
-    ):
-        path = root / relative
-        if path.exists():
+
+    audit_json = root / "reports/final-audit.json"
+    audit_md = root / "reports/final-audit.md"
+    audit_present = audit_json.exists() or audit_md.exists()
+    audit_valid = False
+    stored_report = None
+    if audit_present:
+        try:
+            if not audit_json.is_file() or not audit_md.is_file():
+                raise ValueError("audit JSON/Markdown pair is incomplete")
+            stored = read_final_audit(root)
+            recomputed = recompute_package_audit(root)
+            if audit_json_bytes(stored) != audit_json_bytes(recomputed):
+                raise ValueError("audit does not exactly recompute from current authority")
+            stored_report = stored
+            audit_valid = True
+        except Exception:
             diagnostics.append(
                 _mutable_diagnostic(
-                    "SGV-PACKAGE-MUTABLE-UNSUPPORTED",
+                    "SGV-PACKAGE-MUTABLE-MALFORMED",
                     root,
-                    relative,
-                    f"{relative} cannot be trusted before its semantic validator is available",
-                    "Remove the artifact and recreate it through a supported sgctl command.",
+                    "reports/final-audit.json",
+                    "final audit pair is malformed, stale, or inconsistent",
+                    "Run the packaged audit command again after repairing authority inputs.",
                 )
             )
+    if state is not None and state.lifecycle == "DONE" and (
+        not audit_valid
+        or stored_report is None
+        or not stored_report.can_complete
+        or stored_report.lifecycle != "DONE"
+        or stored_report.state_revision != state.state_revision
+    ):
+        diagnostics.append(
+            _mutable_diagnostic(
+                "SGV-PACKAGE-MUTABLE-MALFORMED",
+                root,
+                "reports/final-audit.json",
+                "DONE state requires an exact current final audit",
+                "Recompute the final audit before finalization.",
+            )
+        )
+
+    terminal_path = root / "reports/terminal-record.txt"
+    if terminal_path.exists():
+        try:
+            validate_terminal_package(root)
+        except Exception:
+            diagnostics.append(
+                _mutable_diagnostic(
+                    "SGV-PACKAGE-MUTABLE-MALFORMED",
+                    root,
+                    "reports/terminal-record.txt",
+                    "terminal record grammar or authority binding is invalid",
+                    "Remove the invalid record and run finalize only after a clean DONE audit.",
+                )
+            )
+
+    if contract is not None and state is not None:
+        delivery = getattr(contract, "delivery").data
+        target = delivery.get("target")
+        review_path = root / "out/review-md-files-delivery-receipt.json"
+        if review_path.exists():
+            try:
+                if not isinstance(target, str) or not target:
+                    raise ValueError("delivery target is unavailable")
+                declared = delivery.get("files", [])
+                files = sorted(
+                    item for item in declared
+                    if isinstance(item, str) and (root / item).is_file()
+                )
+                hashes = {
+                    item: _sha256_bytes(_package_bytes(root, root / item))
+                    for item in files
+                }
+                validate_review_receipt(
+                    read_receipt(review_path, root),
+                    state=state,
+                    target=target,
+                    hashes=hashes,
+                )
+            except Exception:
+                diagnostics.append(
+                    _mutable_diagnostic(
+                        "SGV-PACKAGE-MUTABLE-MALFORMED",
+                        root,
+                        "out/review-md-files-delivery-receipt.json",
+                        "review delivery receipt is malformed or identity-mismatched",
+                        "Recreate the receipt through the declared delivery transport.",
+                    )
+                )
+        final_path = root / "out/final-artifacts-delivery-receipt.json"
+        if final_path.exists():
+            try:
+                if not isinstance(target, str) or not target:
+                    raise ValueError("delivery target is unavailable")
+                validate_final_receipt(
+                    read_receipt(final_path, root), state=state, target=target
+                )
+            except Exception:
+                diagnostics.append(
+                    _mutable_diagnostic(
+                        "SGV-PACKAGE-MUTABLE-MALFORMED",
+                        root,
+                        "out/final-artifacts-delivery-receipt.json",
+                        "final delivery receipt is malformed or identity-mismatched",
+                        "Recreate the receipt through the declared delivery transport.",
+                    )
+                )
+
+    archive_result = root / "out/final-artifacts-manifest.json"
+    if archive_result.exists():
+        diagnostics.append(
+            _mutable_diagnostic(
+                "SGV-PACKAGE-MUTABLE-UNSUPPORTED",
+                root,
+                "out/final-artifacts-manifest.json",
+                "archive result requires the Task 6 deterministic archive validator",
+                "Remove it until recreated by the supported archive command.",
+            )
+        )
     return diagnostics
 
 
-def _validate_package_impl(root: str | Path) -> list[Diagnostic]:
+def _validate_package_impl(
+    root: str | Path, *, include_mutable: bool = True
+) -> list[Diagnostic]:
     package_root = Path(root)
     path_diagnostics = _package_path_diagnostics(package_root)
     if path_diagnostics:
@@ -981,18 +1049,21 @@ def _validate_package_impl(root: str | Path) -> list[Diagnostic]:
             )
         )
 
-    contract_sha256 = (
-        manifest.get("contract_sha256")
-        if isinstance(manifest, dict)
-        and isinstance(manifest.get("contract_sha256"), str)
-        and _SHA256_PATTERN.fullmatch(manifest["contract_sha256"])
-        else _sha256_bytes(_package_bytes(package_root, package_root / "CONTRACT.json"))
-        if (package_root / "CONTRACT.json").is_file()
-        else None
-    )
-    diagnostics.extend(
-        _validate_mutable_plane(package_root, contract, contract_sha256)
-    )
+    if include_mutable:
+        contract_sha256 = (
+            manifest.get("contract_sha256")
+            if isinstance(manifest, dict)
+            and isinstance(manifest.get("contract_sha256"), str)
+            and _SHA256_PATTERN.fullmatch(manifest["contract_sha256"])
+            else _sha256_bytes(
+                _package_bytes(package_root, package_root / "CONTRACT.json")
+            )
+            if (package_root / "CONTRACT.json").is_file()
+            else None
+        )
+        diagnostics.extend(
+            _validate_mutable_plane(package_root, contract, contract_sha256)
+        )
 
     unique: list[Diagnostic] = []
     seen: set[tuple[str, str, str]] = set()
@@ -1008,10 +1079,14 @@ def _validate_package_impl(root: str | Path) -> list[Diagnostic]:
     return unique
 
 
-def validate_package(root: str | Path) -> list[Diagnostic]:
+def _validate_package_mode(
+    root: str | Path, *, include_mutable: bool
+) -> list[Diagnostic]:
     package_root = Path(root)
     try:
-        return _validate_package_impl(package_root)
+        return _validate_package_impl(
+            package_root, include_mutable=include_mutable
+        )
     except UnsafeFileError as exc:
         try:
             relative = exc.path.relative_to(package_root).as_posix()
@@ -1034,3 +1109,13 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
                 stage="archive",
             )
         ]
+
+
+def validate_sealed_package(root: str | Path) -> list[Diagnostic]:
+    """Validate only immutable package authority without audit recursion."""
+
+    return _validate_package_mode(root, include_mutable=False)
+
+
+def validate_package(root: str | Path) -> list[Diagnostic]:
+    return _validate_package_mode(root, include_mutable=True)

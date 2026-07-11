@@ -1,29 +1,15 @@
 {
-  "audit_markers": [
-    "AUDIT_START",
-    "AUDIT_VERIFY",
-    "AUDIT_GAPS",
-    "AUDIT_COMPLETE",
-    "AUDIT_HANDOFF"
-  ],
-  "completion_pair": [
-    "AUDIT_COMPLETE",
-    "SUPERGOAL_RUN_COMPLETE"
-  ],
-  "contract_version": "1.0",
-  "forbidden_launch_paths": [
-    "THINKING.md",
-    "ROADMAP.md",
-    "LOOP_DESIGN.md",
-    "PROTOCOL.md"
-  ],
-  "phase_markers": [
-    "SUPERGOAL_PHASE_START",
-    "SUPERGOAL_STATUS",
-    "SUPERGOAL_PHASE_VERIFY",
-    "MEMORY_SAVED",
-    "SUPERGOAL_PHASE_DONE",
-    "SUPERGOAL_TURN_YIELD"
-  ],
-  "single_launch_marker": "SUPERGOAL_GOAL_BODY:"
+  "audit_markers": ["AUDIT_START", "AUDIT_VERIFY", "AUDIT_GAPS", "AUDIT_COMPLETE", "AUDIT_HANDOFF"],
+  "compatibility_completion_lines": ["AUDIT_COMPLETE", "SUPERGOAL_RUN_COMPLETE", "Goal complete: yes"],
+  "contract_version": "2.0",
+  "forbidden_contract_standalone_lines": ["AUDIT_COMPLETE", "SUPERGOAL_RUN_COMPLETE", "Goal complete: yes", "END_SUPERGOAL_TERMINAL"],
+  "phase_markers": ["SUPERGOAL_PHASE_START", "SUPERGOAL_STATUS", "SUPERGOAL_PHASE_VERIFY", "MEMORY_SAVED", "SUPERGOAL_PHASE_DONE", "SUPERGOAL_TURN_YIELD"],
+  "single_launch_marker": "SUPERGOAL_GOAL_BODY:",
+  "terminal_authority": {
+    "encoding": "UTF-8",
+    "final_lf_count": 1,
+    "line_count": 5,
+    "path": "reports/terminal-record.txt",
+    "version": "v1"
+  }
 }

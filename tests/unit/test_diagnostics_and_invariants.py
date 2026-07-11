@@ -170,7 +170,7 @@ class DiagnosticsAndInvariantsTest(unittest.TestCase):
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
         self.assertEqual(set(catalog), {"catalog_version", "expected_code_count", "diagnostics"})
         self.assertEqual(catalog["catalog_version"], "1.0")
-        self.assertEqual(catalog["expected_code_count"], 78)
+        self.assertEqual(catalog["expected_code_count"], 102)
         entries = catalog.get("diagnostics", [])
         self.assertEqual(len(entries), catalog["expected_code_count"])
         catalog_codes = [entry.get("code") for entry in entries]

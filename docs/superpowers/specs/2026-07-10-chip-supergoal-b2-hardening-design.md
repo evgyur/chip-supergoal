@@ -101,7 +101,7 @@ The manifest does not include mutable bytes in the sealed fingerprint. Package v
 
 Compilation initializes `runtime/STATE.json` with schema `3.0`, lifecycle `COMPILED`, revision `1`, current phase equal to the dependency-ready phase with the lowest ordinal, phase status `PENDING`, zero attempt/audit counts, and the emitted contract identity. Semantic validation requires positive unique contiguous ordinals but does not require the first phase id to be `P01`. It writes one `state_initialized` event carrying the same identity, revision, serialized state hash, previous-event hash `null`, and its own event hash. `STATE.md` is rendered from that JSON, and `runtime/evidence.json` is `[]`.
 
-All mutable updates use one package lock. A state transition first appends and fsyncs a journal event containing the complete target state and state hash, then atomically replaces `STATE.json` and `STATE.md` from sibling temporary files. Recovery replays the last valid journal state after an interrupted projection write. Evidence and audit writes use the same lock and temporary-file/`os.replace` discipline. Validators report a recovery-required diagnostic when the journal and projection differ; they never silently choose the newer-looking file.
+All mutable updates use one package lock. A state transition first appends and fsyncs a journal event containing the complete target state and state hash, then atomically replaces `STATE.json` and `STATE.md` from sibling temporary files. Recovery replays the last valid journal state after an interrupted projection write. Evidence and audit writes use the same lock and temporary-file/`os.replace` discipline. Every runtime writer is rooted at the package and opens parent components without following symlinks or Windows reparse points, so a junction cannot redirect a mutable write outside the package. Validators report a recovery-required diagnostic when the journal and projection differ; they never silently choose the newer-looking file.
 
 ### 3. Relocatable self-contained execution
 
@@ -156,7 +156,7 @@ Audit accepts evidence only when it matches all applicable authority fields:
 - result, redaction, freshness, and required artifact hash fields;
 - mandatory policy evidence tags.
 
-Missing, stale, cross-goal, wrong-revision, wrong-command, or non-zero command evidence is an audit gap. Runtime state must reach `DONE` through legal revision-checked transitions before terminal completion is possible.
+Missing, stale, cross-goal, wrong-revision, wrong-verifier-type, wrong-assertion, wrong-command, or wrong-exit evidence is an audit gap. The exit code must equal the criterion's declared `expected_exit`; an exact declared non-zero exit is valid. Approval and delivery manifests are phase-scoped auxiliary evidence with the exact reserved `criterion_id` value `__phase__`; they remain valid for zero-criteria phases and cannot substitute for criterion proof. Runtime state must reach `DONE` through legal revision-checked transitions before terminal completion is possible; `AUDITING` and `DONE` require the active phase to remain `COMPLETE` and unblocked.
 
 Freshness is deterministic. Evidence timestamps use second-precision RFC3339 UTC (`YYYY-MM-DDTHH:MM:SSZ`). The audit anchor is the timestamp of the current `transition:*->AUDITING` journal event, not the verifier's wall clock. `captured_at` must not be more than 300 seconds after that anchor; values within the allowed skew are clamped to the anchor for age calculation. Every evidence type uses `loop.evidence_max_age_seconds` (default `86400`) unless overridden by `loop.evidence_max_age_by_type`. Its effective age must be within that limit. `fresh_until` is either the literal `audit_end`, which still obeys the maximum age, or an absolute RFC3339 timestamp not earlier than the audit anchor. Malformed timestamps, missing audit anchors, excessive future skew, expired absolute times, and over-age records are audit gaps.
 
@@ -170,7 +170,7 @@ Goal complete: yes
 END_SUPERGOAL_TERMINAL
 ```
 
-The referenced audit hash must match `reports/final-audit.json`, whose state revision must equal current `runtime/STATE.json`. CRLF, reordered/missing/duplicate lines, extra blank lines, bad identities, or additional text invalidate the record. `PROTOCOL.md` may document individual marker literals because it is never parsed as a terminal record. Contract-derived fields containing standalone terminal lines are rejected to prevent operator confusion. Marker-like prose and explicit negation do not complete a goal.
+The referenced audit hash must match `reports/final-audit.json`, whose state revision must equal current `runtime/STATE.json`. Audit recomputation also validates the sealed inventory, generated views, manifest fingerprint, and no-follow path policy; sealed drift invalidates an existing terminal record. CRLF, reordered/missing/duplicate lines, extra blank lines, bad identities, or additional text invalidate the record. `PROTOCOL.md` may document individual marker literals because it is never parsed as a terminal record. Contract-derived fields containing standalone terminal lines are rejected to prevent operator confusion. Marker-like prose and explicit negation do not complete a goal.
 
 ### 7. Deterministic archive
 
@@ -204,7 +204,7 @@ Implementation follows red-green-refactor. Required regressions include:
 - lossless rendering mutation tests for every execution-significant field;
 - CRLF source checkout and canonical LF output;
 - Windows and POSIX state locking/stale writers;
-- wrong-goal, wrong-revision, stale, wrong-command, non-zero, and missing policy evidence;
+- wrong-goal, wrong-revision, stale, wrong-command, wrong-exit, exact declared non-zero exit, and missing policy evidence;
 - marker injection, marker negation, substring, duplicate marker, and authorized terminal output;
 - deterministic archive, duplicate names, symlink escape, secret rejection, and readback;
 - public-clean redaction and chip-private delivery defaults;

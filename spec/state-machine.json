@@ -1,4 +1,15 @@
 {
+  "audit_entry_requires_all_phases_complete": true,
+  "audit_remediation": {
+    "from": "AUDITING",
+    "reopen_statuses": ["EXECUTING", "VERIFYING"],
+    "target": "any_completed_phase",
+    "to": "RUNNING"
+  },
+  "auditing_done_invariant": {
+    "blocker": null,
+    "phase_status": "COMPLETE"
+  },
   "allowed_transitions": [
     [
       "DRAFT",
@@ -77,5 +88,29 @@
       "HANDOFF"
     ]
   ],
-  "version": "1.0"
+  "done_guard": "clean_unchanged_audit",
+  "genesis": {
+    "event_type": "state_initialized",
+    "lifecycle": "COMPILED",
+    "state_revision": 1
+  },
+  "phase_statuses": [
+    "PENDING",
+    "READY",
+    "EXECUTING",
+    "VERIFYING",
+    "BLOCKED",
+    "COMPLETE"
+  ],
+  "phase_status_mutation": {
+    "pre_run_edge": ["PENDING", "READY"],
+    "runtime_authority": "RUNNING",
+    "terminal_freeze": ["AUDITING", "DONE"]
+  },
+  "same_lifecycle_event_type": "state_update",
+  "terminal_lifecycles": [
+    "DONE",
+    "HANDOFF"
+  ],
+  "version": "2.0"
 }

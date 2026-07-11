@@ -18,33 +18,33 @@ class StateMachineTest(unittest.TestCase):
     def test_atomic_transition_and_event_ledger(self):
         with tempfile.TemporaryDirectory() as td:
             store = StateStore(td)
-            initial = State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=1, state_revision=0, lifecycle="DRAFT", current_phase_id="P01", phase_status="PENDING")
+            initial = State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=1, state_revision=1, lifecycle="COMPILED", current_phase_id="P01", phase_status="PENDING")
             store.initialize(initial)
-            new = store.transition("COMPILED", expected_revision=0, phase_status="READY")
-            self.assertEqual(new.state_revision, 1)
-            self.assertEqual(read_state(store.state_json).lifecycle, "COMPILED")
+            new = store.transition("PLAN_REVIEWED", expected_revision=1, phase_status="READY")
+            self.assertEqual(new.state_revision, 2)
+            self.assertEqual(read_state(store.state_json).lifecycle, "PLAN_REVIEWED")
             events = read_events(store.events)
             self.assertEqual(verify_event_chain(events), [])
-            self.assertEqual(events[-1]["state_revision"], 1)
+            self.assertEqual(events[-1]["state_revision"], 2)
             self.assertEqual(events[-1]["contract_revision"], 1)
             self.assertEqual(events[-1]["state"], new.to_dict())
             self.assertEqual(events[-1]["state_sha256"], state_sha256(new))
-            self.assertIn("COMPILED", store.state_md.read_text())
+            self.assertIn("PLAN_REVIEWED", store.state_md.read_text())
 
     def test_illegal_transition_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             store = StateStore(td)
-            store.initialize(State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=1, state_revision=0, lifecycle="COMPILED", current_phase_id="P01", phase_status="READY"))
+            store.initialize(State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=1, state_revision=1, lifecycle="COMPILED", current_phase_id="P01", phase_status="PENDING"))
             with self.assertRaisesRegex(ValueError, "SGV-STATE-ILLEGAL-TRANSITION"):
-                store.transition("DONE", expected_revision=0)
+                store.transition("DONE", expected_revision=1)
 
     def test_stale_writer_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             store = StateStore(td)
-            store.initialize(State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=1, state_revision=0, lifecycle="DRAFT", current_phase_id="P01", phase_status="PENDING"))
-            store.transition("COMPILED", expected_revision=0)
+            store.initialize(State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=1, state_revision=1, lifecycle="COMPILED", current_phase_id="P01", phase_status="PENDING"))
+            store.transition("PLAN_REVIEWED", expected_revision=1)
             with self.assertRaisesRegex(ValueError, "SGV-STATE-STALE-WRITER"):
-                store.transition("PLAN_REVIEWED", expected_revision=0)
+                store.transition("PREFLIGHT_GREEN", expected_revision=1)
 
     def test_goal_digest_mismatch_rejected(self):
         state = State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=3, state_revision=0, lifecycle="DRAFT", current_phase_id="P01", phase_status="PENDING")
@@ -58,15 +58,16 @@ class StateMachineTest(unittest.TestCase):
     def test_recovery_from_corrupt_state_uses_valid_event_prefix(self):
         with tempfile.TemporaryDirectory() as td:
             store = StateStore(td)
-            initial = State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=1, state_revision=0, lifecycle="DRAFT", current_phase_id="P01", phase_status="PENDING")
+            initial = State(goal_id="sg-20260625-state-test", contract_sha256=DIGEST, contract_revision=1, state_revision=1, lifecycle="COMPILED", current_phase_id="P01", phase_status="PENDING")
             store.initialize(initial)
             store.state_json.write_text("{broken", encoding="utf-8")
             recovered = recover_from_events(td)
-            self.assertEqual(recovered, initial)
+            self.assertEqual(recovered.state, initial)
             self.assertEqual(read_state(store.state_json), initial)
             self.assertEqual(store.state_md.read_text(encoding="utf-8"), state_module.render_state_md(initial))
             store.events.write_text(store.events.read_text().replace('"event_id"', '"event_id_tampered"', 1), encoding="utf-8")
-            self.assertIsNone(recover_from_events(td))
+            with self.assertRaisesRegex(ValueError, "SGV-STATE-JOURNAL-CORRUPT"):
+                recover_from_events(td)
 
     def test_transition_journals_target_state_before_projection_and_recovery_replays_it(self):
         with tempfile.TemporaryDirectory() as td:
@@ -75,13 +76,13 @@ class StateMachineTest(unittest.TestCase):
                 goal_id="sg-20260625-state-test",
                 contract_sha256=DIGEST,
                 contract_revision=7,
-                state_revision=0,
-                lifecycle="DRAFT",
+                state_revision=1,
+                lifecycle="COMPILED",
                 current_phase_id="P01",
                 phase_status="PENDING",
             )
             store.initialize(initial)
-            target = initial.transition("COMPILED", phase_status="READY")
+            target = initial.transition("PLAN_REVIEWED", phase_status="READY")
 
             with mock.patch.object(
                 state_module,
@@ -89,7 +90,7 @@ class StateMachineTest(unittest.TestCase):
                 side_effect=OSError("injected projection crash"),
             ):
                 with self.assertRaisesRegex(OSError, "projection crash"):
-                    store.transition("COMPILED", expected_revision=0, phase_status="READY")
+                    store.transition("PLAN_REVIEWED", expected_revision=1, phase_status="READY")
 
             self.assertEqual(read_state(store.state_json), initial)
             events = read_events(store.events)
@@ -100,7 +101,7 @@ class StateMachineTest(unittest.TestCase):
             self.assertEqual(events[-1]["state_sha256"], state_sha256(target))
 
             recovered = recover_from_events(td)
-            self.assertEqual(recovered, target)
+            self.assertEqual(recovered.state, target)
             self.assertEqual(read_state(store.state_json), target)
             self.assertEqual(store.state_md.read_text(encoding="utf-8"), state_module.render_state_md(target))
 
@@ -111,13 +112,13 @@ class StateMachineTest(unittest.TestCase):
                 goal_id="sg-20260625-state-test",
                 contract_sha256=DIGEST,
                 contract_revision=2,
-                state_revision=0,
-                lifecycle="DRAFT",
+                state_revision=1,
+                lifecycle="COMPILED",
                 current_phase_id="P01",
                 phase_status="PENDING",
             )
             store.initialize(initial)
-            target = initial.transition("COMPILED", phase_status="READY")
+            target = initial.transition("PLAN_REVIEWED", phase_status="READY")
 
             with mock.patch.object(
                 state_module,
@@ -125,11 +126,11 @@ class StateMachineTest(unittest.TestCase):
                 side_effect=OSError("injected markdown crash"),
             ):
                 with self.assertRaisesRegex(OSError, "markdown crash"):
-                    store.transition("COMPILED", expected_revision=0, phase_status="READY")
+                    store.transition("PLAN_REVIEWED", expected_revision=1, phase_status="READY")
 
             self.assertEqual(read_state(store.state_json), target)
             self.assertEqual(store.state_md.read_text(encoding="utf-8"), state_module.render_state_md(initial))
-            self.assertEqual(recover_from_events(td), target)
+            self.assertEqual(recover_from_events(td).state, target)
             self.assertEqual(store.state_md.read_text(encoding="utf-8"), state_module.render_state_md(target))
 
     def test_recovery_refuses_tampered_embedded_state_without_mutating_projections(self):
@@ -139,8 +140,8 @@ class StateMachineTest(unittest.TestCase):
                 goal_id="sg-20260625-state-test",
                 contract_sha256=DIGEST,
                 contract_revision=1,
-                state_revision=0,
-                lifecycle="DRAFT",
+                state_revision=1,
+                lifecycle="COMPILED",
                 current_phase_id="P01",
                 phase_status="PENDING",
             )
@@ -156,7 +157,8 @@ class StateMachineTest(unittest.TestCase):
                 newline="\n",
             )
 
-            self.assertIsNone(recover_from_events(td))
+            with self.assertRaisesRegex(ValueError, "SGV-STATE-JOURNAL-CORRUPT"):
+                recover_from_events(td)
             self.assertEqual(store.state_json.read_bytes(), state_before)
             self.assertEqual(store.state_md.read_bytes(), markdown_before)
 
@@ -168,8 +170,8 @@ class StateMachineTest(unittest.TestCase):
                     goal_id="sg-20260625-state-test",
                     contract_sha256=DIGEST,
                     contract_revision=1,
-                    state_revision=0,
-                    lifecycle="DRAFT",
+                    state_revision=1,
+                    lifecycle="COMPILED",
                     current_phase_id="P01",
                     phase_status="PENDING",
                 )

@@ -539,6 +539,7 @@ class LosslessRenderingTest(unittest.TestCase):
             "python scripts/sgctl.py validate-phase-markdown phases/phase-NN.md",
             "python scripts/sgctl.py state-show",
             "python scripts/sgctl.py state-transition",
+            "python scripts/sgctl.py state-recover",
             "python scripts/sgctl.py record-evidence",
             "python scripts/sgctl.py audit",
             "python scripts/sgctl.py finalize",
@@ -558,6 +559,7 @@ class LosslessRenderingTest(unittest.TestCase):
         self.assertIn("authoritative runtime state", protocol)
         self.assertIn("projection", protocol)
         self.assertIn("protocol prose is not authority", protocol.lower())
+        self.assertNotIn("not-yet-implemented Task 5", protocol)
 
         self.assertIn("runtime/STATE.json", state_template)
         self.assertIn("authority", state_template.lower())

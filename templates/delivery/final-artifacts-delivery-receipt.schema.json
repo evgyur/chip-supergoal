@@ -1,11 +1,14 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["ok", "sent", "kind", "target", "archive", "hash", "message_id", "sent_at"],
+  "required": ["ok", "sent", "kind", "goal_id", "contract_sha256", "contract_revision", "target", "archive", "hash", "message_id", "sent_at"],
   "properties": {
     "ok": {"const": true},
     "sent": {"const": true},
     "kind": {"const": "final-artifacts"},
+    "goal_id": {"type": "string", "minLength": 1},
+    "contract_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "contract_revision": {"type": "integer", "minimum": 1},
     "target": {"type": "string", "minLength": 1},
     "archive": {"type": "string", "minLength": 1},
     "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},

@@ -3,6 +3,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 import ctypes
 import errno
+import hashlib
+import json
 import os
 from pathlib import Path
 import stat
@@ -29,8 +31,11 @@ EXECUTABLE_WRAPPERS = frozenset(
 
 RUNTIME_MODULES = (
     "__init__.py",
+    "audit.py",
     "compile.py",
+    "delivery.py",
     "diagnostics.py",
+    "evidence.py",
     "events.py",
     "graph.py",
     "migrate.py",
@@ -43,6 +48,7 @@ RUNTIME_MODULES = (
     "render.py",
     "research.py",
     "state.py",
+    "terminal.py",
     "validate.py",
 )
 RUNTIME_SCRIPTS = (
@@ -61,6 +67,8 @@ RUNTIME_TEMPLATES = (
     "RESEARCH.md",
     "ROADMAP.md",
     "STATE.md",
+    "delivery/final-artifacts-delivery-receipt.schema.json",
+    "delivery/review-md-files-delivery-receipt.schema.json",
 )
 RUNTIME_SPEC_FILES = (
     "risk-policy.json",
@@ -69,6 +77,9 @@ RUNTIME_SPEC_FILES = (
     "diagnostic.schema.json",
     "event.schema.json",
     "evidence.schema.json",
+    "final-audit.schema.json",
+    "marker-contract.json",
+    "state-machine.json",
     "state.schema.json",
 )
 RUNTIME_PROFILES = ("base.json", "public-clean.json", "chip-private.json")
@@ -198,6 +209,8 @@ def _read_regular_file_posix(target: Path, root: Path, relative: Path) -> bytes:
 
 if os.name == "nt":
     _GENERIC_READ = 0x80000000
+    _GENERIC_WRITE = 0x40000000
+    _FILE_APPEND_DATA = 0x00000004
     _FILE_SHARE_READ = 0x00000001
     _FILE_SHARE_WRITE = 0x00000002
     _FILE_SHARE_DELETE = 0x00000004
@@ -288,18 +301,27 @@ def _windows_contained(path: Path, root: Path) -> bool:
         return False
 
 
-def _open_windows_verified(path: Path, *, directory: bool) -> tuple[object, Path]:
+def _open_windows_verified(
+    path: Path,
+    *,
+    directory: bool,
+    desired_access: int | None = None,
+    share_delete: bool = True,
+) -> tuple[object, Path]:
     flags = _FILE_FLAG_OPEN_REPARSE_POINT
-    desired_access = 0
+    access = 0
     share = _FILE_SHARE_READ | _FILE_SHARE_WRITE
     if directory:
         flags |= _FILE_FLAG_BACKUP_SEMANTICS
     else:
-        desired_access = _GENERIC_READ
-        share |= _FILE_SHARE_DELETE
+        access = _GENERIC_READ
+        if share_delete:
+            share |= _FILE_SHARE_DELETE
+    if desired_access is not None:
+        access = desired_access
     handle = _CreateFileW(
         str(path),
-        desired_access,
+        access,
         share,
         None,
         _OPEN_EXISTING,
@@ -368,12 +390,371 @@ def read_regular_file_no_follow(path: str | Path, root: str | Path) -> bytes:
     return _read_regular_file_posix(target, package_root, relative)
 
 
+def unlink_regular_file_no_follow(path: str | Path, root: str | Path) -> bool:
+    """Unlink one contained regular file without following parent aliases."""
+
+    target, package_root, relative = _contained_relative(path, root)
+    if os.name == "nt":
+        directory_handles: list[object] = []
+        file_handle: object | None = None
+        try:
+            root_handle, final_root = _open_windows_verified(
+                package_root, directory=True
+            )
+            directory_handles.append(root_handle)
+            current = package_root
+            for component in relative.parts[:-1]:
+                current /= component
+                handle, final_directory = _open_windows_verified(
+                    current, directory=True
+                )
+                if not _windows_contained(final_directory, final_root):
+                    _CloseHandle(handle)
+                    raise UnsafeFileError(
+                        current, "directory resolves outside the trusted root"
+                    )
+                directory_handles.append(handle)
+            if not os.path.lexists(target):
+                return False
+            file_handle, final_target = _open_windows_verified(
+                target, directory=False
+            )
+            if not _windows_contained(final_target, final_root):
+                raise UnsafeFileError(
+                    target, "file resolves outside the trusted root"
+                )
+            _CloseHandle(file_handle)
+            file_handle = None
+            os.unlink(target)
+            return True
+        except UnsafeFileError:
+            raise
+        except OSError as exc:
+            raise _unsafe_open_error(target, exc) from exc
+        finally:
+            if file_handle is not None:
+                _CloseHandle(file_handle)
+            for handle in reversed(directory_handles):
+                _CloseHandle(handle)
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+    directory_fds: list[int] = []
+    try:
+        root_fd = os.open(package_root, directory_flags)
+        directory_fds.append(root_fd)
+        current_fd = root_fd
+        for component in relative.parts[:-1]:
+            current_fd = os.open(component, directory_flags, dir_fd=current_fd)
+            directory_fds.append(current_fd)
+        try:
+            current = os.stat(
+                relative.parts[-1],
+                dir_fd=current_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return False
+        if not stat.S_ISREG(current.st_mode) or stat.S_ISLNK(current.st_mode):
+            raise UnsafeFileError(target, "unlink target is not a regular file")
+        os.unlink(relative.parts[-1], dir_fd=current_fd)
+        os.fsync(current_fd)
+        return True
+    except UnsafeFileError:
+        raise
+    except OSError as exc:
+        raise _unsafe_open_error(target, exc) from exc
+    finally:
+        for directory_fd in reversed(directory_fds):
+            os.close(directory_fd)
+
+
+def verify_sealed_artifact(
+    root: str | Path,
+    relative_path: str | Path,
+    *,
+    data: bytes | None = None,
+) -> bool:
+    package_root = Path(root)
+    manifest_path = package_root / "MANIFEST.json"
+    if not os.path.lexists(manifest_path):
+        return False
+    try:
+        manifest = json.loads(
+            read_regular_file_no_follow(manifest_path, package_root)
+        )
+    except Exception as exc:
+        raise ValueError("sealed artifact manifest is malformed") from exc
+    normalized = Path(relative_path).as_posix()
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("manifest_version") != "1.1"
+        or not isinstance(manifest.get("artifacts"), list)
+    ):
+        raise ValueError("sealed artifact manifest is unsupported")
+    matches = [
+        item
+        for item in manifest["artifacts"]
+        if isinstance(item, dict) and item.get("path") == normalized
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"sealed artifact is not uniquely registered: {normalized}")
+    content = (
+        data
+        if data is not None
+        else read_regular_file_no_follow(package_root / normalized, package_root)
+    )
+    record = matches[0]
+    if (
+        record.get("sha256") != hashlib.sha256(content).hexdigest()
+        or record.get("bytes") != len(content)
+        or record.get("mode") != logical_mode(normalized)
+    ):
+        raise ValueError(f"sealed artifact hash mismatch: {normalized}")
+    return True
+
+
+def append_regular_file_no_follow(
+    path: str | Path, root: str | Path, content: bytes
+) -> None:
+    target, package_root, relative = _contained_relative(path, root)
+    if os.name == "nt":
+        directory_handles: list[object] = []
+        file_handle: object | None = None
+        try:
+            root_handle, final_root = _open_windows_verified(
+                package_root, directory=True
+            )
+            directory_handles.append(root_handle)
+            current = package_root
+            for component in relative.parts[:-1]:
+                current /= component
+                handle, final_directory = _open_windows_verified(
+                    current, directory=True
+                )
+                if not _windows_contained(final_directory, final_root):
+                    _CloseHandle(handle)
+                    raise UnsafeFileError(
+                        current, "directory resolves outside the trusted root"
+                    )
+                directory_handles.append(handle)
+            file_handle, final_target = _open_windows_verified(
+                target,
+                directory=False,
+                desired_access=_FILE_APPEND_DATA,
+            )
+            if not _windows_contained(final_target, final_root):
+                raise UnsafeFileError(
+                    target, "file resolves outside the trusted root"
+                )
+            descriptor = msvcrt.open_osfhandle(
+                _windows_handle_value(file_handle),
+                os.O_APPEND | os.O_WRONLY | os.O_BINARY,
+            )
+            file_handle = None
+            with os.fdopen(descriptor, "ab") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except UnsafeFileError:
+            raise
+        except OSError as exc:
+            raise _unsafe_open_error(target, exc) from exc
+        finally:
+            if file_handle is not None:
+                _CloseHandle(file_handle)
+            for handle in reversed(directory_handles):
+                _CloseHandle(handle)
+        return
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+        file_flags |= os.O_CLOEXEC
+    directory_fds: list[int] = []
+    file_fd: int | None = None
+    try:
+        root_fd = os.open(package_root, directory_flags)
+        directory_fds.append(root_fd)
+        current_fd = root_fd
+        for component in relative.parts[:-1]:
+            current_fd = os.open(component, directory_flags, dir_fd=current_fd)
+            directory_fds.append(current_fd)
+        file_fd = os.open(relative.parts[-1], file_flags, dir_fd=current_fd)
+        if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+            raise UnsafeFileError(target, "target is not a regular file")
+        with os.fdopen(file_fd, "ab") as stream:
+            file_fd = None
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except UnsafeFileError:
+        raise
+    except OSError as exc:
+        raise _unsafe_open_error(target, exc) from exc
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        for descriptor in reversed(directory_fds):
+            os.close(descriptor)
+
+
 def canonical_text_bytes(content: str) -> bytes:
     return content.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
 
 
-def write_bytes_atomic(path: str | Path, content: bytes) -> None:
+def _write_bytes_atomic_posix(
+    target: Path, package_root: Path, relative: Path, content: bytes
+) -> None:
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+    file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        file_flags |= os.O_CLOEXEC
+    directory_fds: list[int] = []
+    temporary_name: str | None = None
+    descriptor: int | None = None
+    try:
+        root_fd = os.open(package_root, directory_flags)
+        directory_fds.append(root_fd)
+        current_fd = root_fd
+        for component in relative.parts[:-1]:
+            try:
+                next_fd = os.open(component, directory_flags, dir_fd=current_fd)
+            except FileNotFoundError:
+                os.mkdir(component, 0o755, dir_fd=current_fd)
+                next_fd = os.open(component, directory_flags, dir_fd=current_fd)
+            directory_fds.append(next_fd)
+            current_fd = next_fd
+        final_name = relative.parts[-1]
+        try:
+            current = os.stat(final_name, dir_fd=current_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            current = None
+        if current is not None and (
+            not stat.S_ISREG(current.st_mode) or stat.S_ISLNK(current.st_mode)
+        ):
+            raise UnsafeFileError(target, "atomic target is not a regular file")
+        temporary_name = (
+            f".{final_name}.tmp-{os.getpid()}-"
+            f"{next(tempfile._get_candidate_names())}"
+        )
+        descriptor = os.open(
+            temporary_name, file_flags, 0o600, dir_fd=current_fd
+        )
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = None
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(
+            temporary_name,
+            final_name,
+            src_dir_fd=current_fd,
+            dst_dir_fd=current_fd,
+        )
+        temporary_name = None
+        os.fsync(current_fd)
+    except UnsafeFileError:
+        raise
+    except OSError as exc:
+        raise _unsafe_open_error(target, exc) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary_name is not None and directory_fds:
+            try:
+                os.unlink(temporary_name, dir_fd=directory_fds[-1])
+            except OSError:
+                pass
+        for directory_fd in reversed(directory_fds):
+            os.close(directory_fd)
+
+
+def _write_bytes_atomic_windows(
+    target: Path, package_root: Path, relative: Path, content: bytes
+) -> None:
+    directory_handles: list[object] = []
+    temporary: Path | None = None
+    descriptor: int | None = None
+    try:
+        root_handle, final_root = _open_windows_verified(
+            package_root, directory=True
+        )
+        directory_handles.append(root_handle)
+        current = package_root
+        for component in relative.parts[:-1]:
+            current /= component
+            try:
+                handle, final_directory = _open_windows_verified(
+                    current, directory=True
+                )
+            except FileNotFoundError:
+                os.mkdir(current)
+                handle, final_directory = _open_windows_verified(
+                    current, directory=True
+                )
+            if not _windows_contained(final_directory, final_root):
+                _CloseHandle(handle)
+                raise UnsafeFileError(
+                    current, "directory resolves outside the trusted root"
+                )
+            directory_handles.append(handle)
+        if os.path.lexists(target):
+            current_target = target.lstat()
+            if (
+                not stat.S_ISREG(current_target.st_mode)
+                or stat.S_ISLNK(current_target.st_mode)
+                or is_reparse_point(current_target)
+            ):
+                raise UnsafeFileError(
+                    target, "atomic target is not a regular file"
+                )
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{target.name}.tmp-", dir=target.parent
+        )
+        temporary = Path(temporary_name)
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = None
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+        temporary = None
+    except UnsafeFileError:
+        raise
+    except OSError as exc:
+        raise _unsafe_open_error(target, exc) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        for handle in reversed(directory_handles):
+            _CloseHandle(handle)
+
+
+def write_bytes_atomic(
+    path: str | Path,
+    content: bytes,
+    *,
+    root: str | Path | None = None,
+) -> None:
     target = Path(path)
+    if root is not None:
+        target, package_root, relative = _contained_relative(target, root)
+        if os.name == "nt":
+            _write_bytes_atomic_windows(
+                target, package_root, relative, content
+            )
+        else:
+            _write_bytes_atomic_posix(
+                target, package_root, relative, content
+            )
+        return
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.tmp-", dir=target.parent)
     temporary = Path(temporary_name)
@@ -388,8 +769,13 @@ def write_bytes_atomic(path: str | Path, content: bytes) -> None:
         raise
 
 
-def write_utf8_lf(path: str | Path, content: str) -> None:
-    write_bytes_atomic(path, canonical_text_bytes(content))
+def write_utf8_lf(
+    path: str | Path,
+    content: str,
+    *,
+    root: str | Path | None = None,
+) -> None:
+    write_bytes_atomic(path, canonical_text_bytes(content), root=root)
 
 
 def logical_mode(relative_path: str | Path) -> str:
@@ -444,6 +830,124 @@ def _open_lock_file(path: Path) -> BinaryIO:
         raise
 
 
+@contextmanager
+def _open_contained_lock_file(
+    path: str | Path, root: str | Path
+) -> Iterator[BinaryIO]:
+    target, package_root, relative = _contained_relative(path, root)
+    if os.name == "nt":
+        directory_handles: list[object] = []
+        file_handle: object | None = None
+        stream: BinaryIO | None = None
+        try:
+            try:
+                root_handle, final_root = _open_windows_verified(
+                    package_root, directory=True
+                )
+                directory_handles.append(root_handle)
+                current = package_root
+                for component in relative.parts[:-1]:
+                    current /= component
+                    handle, final_directory = _open_windows_verified(
+                        current, directory=True
+                    )
+                    if not _windows_contained(final_directory, final_root):
+                        _CloseHandle(handle)
+                        raise UnsafeFileError(
+                            current,
+                            "lock directory resolves outside the trusted root",
+                        )
+                    directory_handles.append(handle)
+                file_handle, final_target = _open_windows_verified(
+                    target,
+                    directory=False,
+                    desired_access=_GENERIC_READ | _GENERIC_WRITE,
+                    share_delete=False,
+                )
+                if not _windows_contained(final_target, final_root):
+                    raise UnsafeFileError(
+                        target, "lock file resolves outside the trusted root"
+                    )
+                descriptor = msvcrt.open_osfhandle(
+                    _windows_handle_value(file_handle), os.O_RDWR | os.O_BINARY
+                )
+                file_handle = None
+                stream = os.fdopen(descriptor, "r+b", buffering=0)
+                if os.fstat(stream.fileno()).st_size != 1:
+                    raise UnsafeFileError(target, "lock file must contain one byte")
+                stream.seek(0)
+                if stream.read(1) != b"\0":
+                    raise UnsafeFileError(target, "lock file byte is invalid")
+            except UnsafeFileError:
+                raise
+            except OSError as exc:
+                raise _unsafe_open_error(target, exc) from exc
+            yield stream
+        finally:
+            if stream is not None:
+                stream.close()
+            if file_handle is not None:
+                _CloseHandle(file_handle)
+            for handle in reversed(directory_handles):
+                _CloseHandle(handle)
+        return
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_RDWR | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+        file_flags |= os.O_CLOEXEC
+    directory_fds: list[int] = []
+    file_fd: int | None = None
+    stream: BinaryIO | None = None
+    try:
+        try:
+            root_fd = os.open(package_root, directory_flags)
+            directory_fds.append(root_fd)
+            current_fd = root_fd
+            for component in relative.parts[:-1]:
+                current_fd = os.open(component, directory_flags, dir_fd=current_fd)
+                directory_fds.append(current_fd)
+            file_fd = os.open(relative.parts[-1], file_flags, dir_fd=current_fd)
+            opened = os.fstat(file_fd)
+            if not stat.S_ISREG(opened.st_mode) or opened.st_size != 1:
+                raise UnsafeFileError(
+                    target, "lock file must be a one-byte regular file"
+                )
+            stream = os.fdopen(file_fd, "r+b", buffering=0)
+            file_fd = None
+            stream.seek(0)
+            if stream.read(1) != b"\0":
+                raise UnsafeFileError(target, "lock file byte is invalid")
+        except UnsafeFileError:
+            raise
+        except OSError as exc:
+            raise _unsafe_open_error(target, exc) from exc
+        yield stream
+    finally:
+        if stream is not None:
+            stream.close()
+        if file_fd is not None:
+            os.close(file_fd)
+        for directory_fd in reversed(directory_fds):
+            os.close(directory_fd)
+
+
+@contextmanager
+def _open_lock_stream(
+    path: Path, root: str | Path | None
+) -> Iterator[BinaryIO]:
+    if root is not None:
+        with _open_contained_lock_file(path, root) as stream:
+            yield stream
+        return
+    stream = _open_lock_file(path)
+    try:
+        yield stream
+    finally:
+        stream.close()
+
+
 def package_operation_lock_path(root: str | Path) -> Path:
     package_root = Path(root).resolve(strict=False)
     return package_root.parent / f".{package_root.name}.operation.lock"
@@ -484,35 +988,33 @@ def _release(stream: BinaryIO) -> None:
 def package_lock(
     path: str | Path,
     *,
+    root: str | Path | None = None,
     timeout: float = 10.0,
     retry_interval: float = 0.05,
 ) -> Iterator[None]:
     lock_path = Path(path)
-    stream = _open_lock_file(lock_path)
-    acquired = False
-    deadline = time.monotonic() + max(timeout, 0.0)
-    busy_errors = {errno.EACCES, errno.EAGAIN}
-    if hasattr(errno, "EDEADLK"):
-        busy_errors.add(errno.EDEADLK)
-    try:
-        while True:
-            try:
-                _acquire_nonblocking(stream)
-                acquired = True
-                break
-            except OSError as exc:
-                if exc.errno not in busy_errors:
-                    raise
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise StateLockTimeout(
-                        f"SGV-STATE-LOCK-TIMEOUT: timed out acquiring {lock_path}"
-                    ) from exc
-                time.sleep(min(max(retry_interval, 0.0), remaining))
-        yield
-    finally:
+    with _open_lock_stream(lock_path, root) as stream:
+        acquired = False
+        deadline = time.monotonic() + max(timeout, 0.0)
+        busy_errors = {errno.EACCES, errno.EAGAIN}
+        if hasattr(errno, "EDEADLK"):
+            busy_errors.add(errno.EDEADLK)
         try:
+            while True:
+                try:
+                    _acquire_nonblocking(stream)
+                    acquired = True
+                    break
+                except OSError as exc:
+                    if exc.errno not in busy_errors:
+                        raise
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise StateLockTimeout(
+                            f"SGV-STATE-LOCK-TIMEOUT: timed out acquiring {lock_path}"
+                        ) from exc
+                    time.sleep(min(max(retry_interval, 0.0), remaining))
+            yield
+        finally:
             if acquired:
                 _release(stream)
-        finally:
-            stream.close()

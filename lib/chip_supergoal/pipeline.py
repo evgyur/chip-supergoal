@@ -7,7 +7,7 @@ import re
 from typing import Callable
 
 from .diagnostics import Diagnostic, diagnostic_metadata
-from .model import Contract, canonical_json, contract_from_dict
+from .model import Contract, canonical_json, contract_from_dict, to_plain
 from .normalize import semantic_errors
 from .policy import load_risk_policy, risk_policy_errors
 from .profiles import ProfileError, ResolvedContract, resolve_contract
@@ -118,6 +118,52 @@ def _semantic_diagnostics(contract: Contract, artifact: str) -> list[Diagnostic]
     ]
 
 
+def _terminal_injection_diagnostics(
+    contract: Contract, artifact: str
+) -> list[Diagnostic]:
+    forbidden = {
+        "AUDIT_COMPLETE",
+        "SUPERGOAL_RUN_COMPLETE",
+        "Goal complete: yes",
+        "END_SUPERGOAL_TERMINAL",
+    }
+    injected = False
+
+    def visit(value: object) -> None:
+        nonlocal injected
+        if injected:
+            return
+        if isinstance(value, str):
+            for line in value.splitlines():
+                normalized = line.strip()
+                if normalized in forbidden or normalized.startswith(
+                    "SUPERGOAL_TERMINAL v1 "
+                ):
+                    injected = True
+                    return
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                visit(item)
+
+    visit(to_plain(contract))
+    if not injected:
+        return []
+    return [
+        _diagnostic(
+            "SGV-CONTRACT-TERMINAL-INJECTION",
+            artifact=artifact,
+            pointer="/",
+            message="contract data contains a standalone terminal-authority line",
+            remediation="Remove terminal-record lines from contract-derived fields.",
+            stage="semantic",
+            invariant="INV-AUDIT-001",
+        )
+    ]
+
+
 def _risk_code(error: str) -> tuple[str, str, str]:
     if error.startswith("contract risk ") and "unknown risk tag" in error:
         return "SGV-RISK-UNKNOWN", "/risks", "Use a risk tag from the risk policy."
@@ -200,6 +246,7 @@ def validate_contract_source(
 
     try:
         diagnostics = _semantic_diagnostics(resolved.contract, artifact)
+        diagnostics.extend(_terminal_injection_diagnostics(resolved.contract, artifact))
     except (AttributeError, KeyError, TypeError, ValueError):
         return ContractPipelineResult(None, (_malformed_diagnostic(artifact),))
     policy_path = Path(risk_policy_path) if risk_policy_path is not None else root / "spec/risk-policy.json"

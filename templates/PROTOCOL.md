@@ -30,22 +30,23 @@ python scripts/sgctl.py research-gate CONTRACT.json --format json
 
 The research command is applicable only when `RESEARCH.md` is emitted.
 
-Task 5 owns the runtime/evidence/finalization control plane. The following exact
-subcommand names are the required Python-authoritative interface for that task:
+The package-local runtime/evidence/finalization control plane is:
 
 ```text
 python scripts/sgctl.py state-show
-python scripts/sgctl.py state-transition
-python scripts/sgctl.py record-evidence
+python scripts/sgctl.py state-transition --to <lifecycle> --expected-revision <n>
+python scripts/sgctl.py state-recover
+python scripts/sgctl.py record-evidence --input -
 python scripts/sgctl.py audit
 python scripts/sgctl.py finalize
 python scripts/sgctl.py validate-terminal
 ```
 
-These six lines document not-yet-implemented Task 5 surfaces; they are not a
-claim that Task 4 packages can execute them. Until the packaged `sgctl --help`
-exposes a surface, do not replace it with a manual state edit, ad-hoc evidence
-record, prose-only audit, or terminal-record generator.
+`record-evidence --input -` reads one strict JSON EvidenceRecord from standard
+input. Same-lifecycle phase/status/attempt updates use `state-transition`
+without `--to` (or with `--to` equal to the current lifecycle) and always name
+the expected state revision. Do not replace these commands with a manual state
+edit, ad-hoc evidence record, prose-only audit, or terminal-record generator.
 
 ## Optional Unix compatibility notes
 
@@ -118,6 +119,8 @@ Never hand-edit `STATE.md` or treat conversation context as state. State transit
 their projection belong to the packaged Python runtime. If
 `runtime/STATE.json` and `STATE.md` disagree, stop using the projection and let
 `python scripts/sgctl.py validate-package . --strict` report the drift.
+Run `python scripts/sgctl.py state-recover` only as an explicit projection
+replay from a fully valid journal; journal corruption is never swallowed.
 
 ## Final audit
 
@@ -132,6 +135,24 @@ compatibility marker names, not evidence by themselves.
 handling only when the declared loop contract supplies the corresponding retry,
 recovery, or handoff rule. Otherwise that behavior is `not declared by
 CONTRACT.json`.
+
+Enter `AUDITING`, record all evidence, then run `python scripts/sgctl.py audit`.
+Evidence must match the declared verifier type as well as its command, exit,
+and assertion. Approval and delivery records are auxiliary evidence: they may
+satisfy their own policy gates but never substitute for criterion proof. Bind
+phase-scoped auxiliary records with `criterion_id: "__phase__"`, including on
+phases that declare no criteria.
+Only an unchanged clean audit authorizes `state-transition --to DONE`; that
+transition immediately recomputes the audit against the DONE revision. Run
+`finalize` only after that recomputation. Required delivery receipts may bind a
+pre-terminal external archive, but the archive does not create terminal
+authority. `AUDITING` and `DONE` keep the active phase `COMPLETE` and unblocked.
+When an audit finds a repairable gap, `AUDITING -> RUNNING` may reopen any
+previously completed phase as `EXECUTING` or `VERIFYING`; the next audit entry
+starts a new audit round.
+The audit and terminal record also bind to the current sealed package inventory;
+missing manifests, generated drift, symlinks, junctions, or hash mismatches
+invalidate completion.
 
 ## Standard Hermes `/goal` compatibility
 
@@ -150,4 +171,7 @@ Goal complete: yes
 The three lines must appear in the same final response for host compatibility.
 Do not use `Goal complete: yes` anywhere else. This documentation does not
 generate a terminal record and does not make protocol prose completion
-authority; authoritative terminal recording is separate runtime functionality.
+authority. The only machine-authoritative completion record is the exact
+five-line UTF-8/LF `reports/terminal-record.txt` written and printed by
+`python scripts/sgctl.py finalize`; `validate-terminal` binds it to the current
+DONE state and exact `reports/final-audit.json` bytes.

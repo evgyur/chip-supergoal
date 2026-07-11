@@ -1,6 +1,6 @@
 {
   "catalog_version": "1.0",
-  "expected_code_count": 78,
+  "expected_code_count": 102,
   "diagnostics": [
     {
       "code": "SGV-CONTRACT-MALFORMED",
@@ -11,6 +11,12 @@
     {
       "code": "SGV-CONTRACT-SEMANTIC",
       "invariant": "INV-VALIDATOR-001",
+      "stage": "semantic",
+      "remediation_class": "contract_edit"
+    },
+    {
+      "code": "SGV-CONTRACT-TERMINAL-INJECTION",
+      "invariant": "INV-AUDIT-001",
       "stage": "semantic",
       "remediation_class": "contract_edit"
     },
@@ -469,6 +475,144 @@
       "invariant": "INV-RECOVERY-001",
       "stage": "runtime",
       "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-AUDIT-CONTRACT-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "audit_repair"
+    },
+    {
+      "code": "SGV-AUDIT-REPORT-INVALID",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "audit_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-ASSERTION-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-AUDIT-INVALIDATION",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-COMMAND-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-CONTRACT-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-CRITERION-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-DUPLICATE-ID",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-EXIT-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-MALFORMED",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-PHASE-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-STATE-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-EVIDENCE-TYPE-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "evidence_repair"
+    },
+    {
+      "code": "SGV-RUNTIME-ERROR",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "runtime",
+      "remediation_class": "runtime_repair"
+    },
+    {
+      "code": "SGV-STATE-DONE-REQUIRES-AUDIT",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "audit_repair"
+    },
+    {
+      "code": "SGV-STATE-GENESIS-INVALID",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-ILLEGAL-UPDATE",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-JOURNAL-CORRUPT",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-RECOVERY-REQUIRED",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-TERMINAL-FROZEN",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-TERMINAL-AUDIT-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "audit_repair"
+    },
+    {
+      "code": "SGV-TERMINAL-GRAMMAR",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "audit_repair"
+    },
+    {
+      "code": "SGV-TERMINAL-STATE-MISMATCH",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "audit_repair"
     }
   ]
 }

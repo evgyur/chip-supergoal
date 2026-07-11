@@ -209,16 +209,16 @@ class PortableRuntimeTest(unittest.TestCase):
                 goal_id="sg-20260710-portable-state",
                 contract_sha256=DIGEST,
                 contract_revision=1,
-                state_revision=0,
-                lifecycle="DRAFT",
+                state_revision=1,
+                lifecycle="COMPILED",
                 current_phase_id="P01",
                 phase_status="PENDING",
             )
             store.initialize(initial)
 
-            updated = store.transition("COMPILED", expected_revision=0, phase_status="READY")
+            updated = store.transition("PLAN_REVIEWED", expected_revision=1, phase_status="READY")
 
-            self.assertEqual(updated.state_revision, 1)
+            self.assertEqual(updated.state_revision, 2)
             self.assertEqual(store.lock.read_bytes(), b"\0")
             self.assertNotIn(b"\r", store.state_json.read_bytes())
             self.assertNotIn(b"\r", store.state_md.read_bytes())
@@ -236,8 +236,8 @@ class PortableRuntimeTest(unittest.TestCase):
                     goal_id="sg-20260711-operation-lock",
                     contract_sha256=DIGEST,
                     contract_revision=1,
-                    state_revision=0,
-                    lifecycle="DRAFT",
+                    state_revision=1,
+                    lifecycle="COMPILED",
                     current_phase_id="P01",
                     phase_status="PENDING",
                 )
@@ -247,7 +247,7 @@ class PortableRuntimeTest(unittest.TestCase):
 
             def transition() -> None:
                 started.set()
-                store.transition("COMPILED", expected_revision=0)
+                store.transition("PLAN_REVIEWED", expected_revision=1)
                 completed.set()
 
             with operation_lock(root):

@@ -2,6 +2,24 @@
   "$id": "https://hermes.local/chip-supergoal/state.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "enum": ["AUDITING", "DONE"]
+          }
+        },
+        "required": ["lifecycle"]
+      },
+      "then": {
+        "properties": {
+          "blocker": {"type": "null"},
+          "phase_status": {"const": "COMPLETE"}
+        }
+      }
+    }
+  ],
   "properties": {
     "attempt": {
       "minimum": 0,
@@ -26,17 +44,15 @@
       "type": "integer"
     },
     "current_phase_id": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "minLength": 1,
+      "type": "string"
     },
     "goal_id": {
+      "minLength": 1,
       "type": "string"
     },
     "lifecycle": {
       "enum": [
-        "DRAFT",
         "COMPILED",
         "PLAN_REVIEWED",
         "PREFLIGHT_GREEN",
@@ -51,16 +67,20 @@
       ]
     },
     "phase_status": {
-      "type": [
-        "string",
-        "null"
+      "enum": [
+        "PENDING",
+        "READY",
+        "EXECUTING",
+        "VERIFYING",
+        "BLOCKED",
+        "COMPLETE"
       ]
     },
     "schema_version": {
       "const": "3.0"
     },
     "state_revision": {
-      "minimum": 0,
+      "minimum": 1,
       "type": "integer"
     }
   },
@@ -73,6 +93,7 @@
     "lifecycle",
     "current_phase_id",
     "phase_status",
+    "blocker",
     "attempt",
     "audit_round"
   ],

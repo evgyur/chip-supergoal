@@ -1,12 +1,15 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["ok", "sent", "kind", "pack_version", "target", "files", "hashes", "message_ids", "sent_at"],
+  "required": ["ok", "sent", "kind", "pack_version", "goal_id", "contract_sha256", "contract_revision", "target", "files", "hashes", "message_ids", "sent_at"],
   "properties": {
     "ok": {"const": true},
     "sent": {"const": true},
     "kind": {"const": "review-md-files"},
     "pack_version": {"const": "review_pack_v2"},
+    "goal_id": {"type": "string", "minLength": 1},
+    "contract_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "contract_revision": {"type": "integer", "minimum": 1},
     "target": {"type": "string", "minLength": 1},
     "files": {
       "type": "array",

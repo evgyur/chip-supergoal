@@ -163,11 +163,23 @@ class SelfContainedPackageTest(unittest.TestCase):
                 "scripts/sgctl.py",
                 "lib/chip_supergoal/__init__.py",
                 "lib/chip_supergoal/compile.py",
+                "lib/chip_supergoal/audit.py",
+                "lib/chip_supergoal/delivery.py",
+                "lib/chip_supergoal/evidence.py",
+                "lib/chip_supergoal/events.py",
+                "lib/chip_supergoal/state.py",
+                "lib/chip_supergoal/terminal.py",
                 "lib/chip_supergoal/validate.py",
                 "templates/PROTOCOL.md",
                 "spec/risk-policy.json",
                 "spec/diagnostic-catalog.json",
                 "spec/state.schema.json",
+                "spec/evidence.schema.json",
+                "spec/final-audit.schema.json",
+                "spec/marker-contract.json",
+                "spec/state-machine.json",
+                "templates/delivery/final-artifacts-delivery-receipt.schema.json",
+                "templates/delivery/review-md-files-delivery-receipt.schema.json",
                 "profiles/base.json",
                 "profiles/public-clean.json",
                 "profiles/chip-private.json",
@@ -354,7 +366,7 @@ class SelfContainedPackageTest(unittest.TestCase):
 
             recovered = recover_from_events(package)
             self.assertIsNotNone(recovered)
-            self.assertEqual(recovered.state_revision, current.state_revision + 1)
+            self.assertEqual(recovered.state.state_revision, current.state_revision + 1)
             self.assertEqual(validate_package(package), [])
 
     def test_recovery_rejects_valid_journal_from_a_different_package(self):
@@ -381,7 +393,7 @@ class SelfContainedPackageTest(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 ValueError,
-                "SGV-STATE-CONTRACT-MISMATCH",
+                "SGV-STATE-JOURNAL-CORRUPT",
             ):
                 recover_from_events(package_b)
 
@@ -454,15 +466,20 @@ class SelfContainedPackageTest(unittest.TestCase):
             evidence = [{
                 "evidence_id": "EV-001",
                 "goal_id": updated.goal_id,
+                "contract_sha256": updated.contract_sha256,
                 "contract_revision": 1,
                 "phase_id": updated.current_phase_id,
                 "criterion_id": "P01-C01",
-                "type": "manual_observation",
+                "type": "command_result",
                 "producer": "test",
                 "captured_at": "2026-07-11T00:00:00Z",
                 "fresh_until": "audit_end",
-                "replayable": False,
+                "replayable": True,
                 "result": "unverified",
+                "redaction": "passed",
+                "command": "python3 -m unittest",
+                "exit_code": 1,
+                "assertion": "test passes",
             }]
             (package / "runtime" / "evidence.json").write_text(
                 json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -492,16 +509,16 @@ class SelfContainedPackageTest(unittest.TestCase):
                 (package / relative).write_bytes(content)
                 self.assertIn(expected_code, diagnostic_codes(package))
 
-    def test_optional_mutable_outputs_fail_closed_until_semantic_validators_exist(self):
+    def test_optional_mutable_outputs_use_their_semantic_validators(self):
         cases = {
-            "final_audit_json": ("reports/final-audit.json", b"{}\n"),
-            "final_audit_markdown": ("reports/final-audit.md", b"# forged audit\n"),
-            "terminal_record": ("reports/terminal-record.txt", b"AUDIT_COMPLETE\n"),
-            "review_receipt": ("out/review-md-files-delivery-receipt.json", b"{}\n"),
-            "final_receipt": ("out/final-artifacts-delivery-receipt.json", b"{}\n"),
-            "archive_result": ("out/final-artifacts-manifest.json", b"{}\n"),
+            "final_audit_json": ("reports/final-audit.json", b"{}\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/reports/final-audit.json"),
+            "final_audit_markdown": ("reports/final-audit.md", b"# forged audit\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/reports/final-audit.json"),
+            "terminal_record": ("reports/terminal-record.txt", b"AUDIT_COMPLETE\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/reports/terminal-record.txt"),
+            "review_receipt": ("out/review-md-files-delivery-receipt.json", b"{}\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/out/review-md-files-delivery-receipt.json"),
+            "final_receipt": ("out/final-artifacts-delivery-receipt.json", b"{}\n", "SGV-PACKAGE-MUTABLE-MALFORMED", "/out/final-artifacts-delivery-receipt.json"),
+            "archive_result": ("out/final-artifacts-manifest.json", b"{}\n", "SGV-PACKAGE-MUTABLE-UNSUPPORTED", "/out/final-artifacts-manifest.json"),
         }
-        for label, (relative, content) in cases.items():
+        for label, (relative, content, expected_code, expected_pointer) in cases.items():
             with self.subTest(label=label), tempfile.TemporaryDirectory() as td:
                 package = self.compile_package(Path(td))
                 path = package / relative
@@ -512,8 +529,8 @@ class SelfContainedPackageTest(unittest.TestCase):
                 targeted = [
                     item
                     for item in diagnostics
-                    if item.code == "SGV-PACKAGE-MUTABLE-UNSUPPORTED"
-                    and item.pointer == f"/{relative}"
+                    if item.code == expected_code
+                    and item.pointer == expected_pointer
                 ]
 
                 self.assertEqual(len(targeted), 1, diagnostics)

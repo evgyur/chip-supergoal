@@ -327,7 +327,7 @@ Commit: `git add lib/chip_supergoal/render.py templates/PROTOCOL.md templates/LA
 - Modify: `tests/semantic/test_audit_engine.py`
 - Create: `tests/security/test_terminal_authority.py`
 
-- [ ] **Step 1: Write forged-evidence and terminal-record failures**
+- [x] **Step 1: Write forged-evidence and terminal-record failures**
 
 ```python
 def test_wrong_identity_and_exit_cannot_complete(self):
@@ -348,25 +348,25 @@ def test_terminal_parser_rejects_duplicate_and_crlf_records(self):
 
 Add stale, future-skew, wrong-command, wrong-contract-hash, missing policy evidence, marker injection, marker negation, substring, audit-hash, and state-revision cases.
 
-- [ ] **Step 2: Run the focused security tests and confirm current false completion**
+- [x] **Step 2: Run the focused security tests and confirm current false completion**
 
 Run: `python -m unittest tests.semantic.test_audit_engine tests.security.test_terminal_authority -v`
 
 Expected: wrong identity evidence currently yields completion and terminal module is absent.
 
-- [ ] **Step 3: Implement journal-backed transitions**
+- [x] **Step 3: Implement journal-backed transitions**
 
 Journal events carry full target state, state hash, previous hash, timestamp, and event hash. Transition writes the fsynced event first, then atomically replaces JSON and Markdown. Recovery replays the last valid event. All mutations use `package_lock()`.
 
-- [ ] **Step 4: Implement deterministic evidence validation**
+- [x] **Step 4: Implement deterministic evidence validation**
 
 Parse RFC3339 `Z` timestamps, derive audit anchor from the current transition-to-auditing event, apply five-minute future skew and resolved max ages, compare declared command/exit, and require policy evidence tags in `metadata["policy_evidence"]`.
 
-- [ ] **Step 5: Add CLI runtime commands**
+- [x] **Step 5: Add CLI runtime commands**
 
-Add `state-show`, `state-transition`, `record-evidence`, `audit`, `finalize`, and `validate-terminal`. Each command resolves the package root, uses package-local contract/resources, prints structured diagnostics on failure, and writes canonical artifacts atomically.
+Add `state-show`, `state-transition`, `state-recover`, `record-evidence`, `audit`, `finalize`, and `validate-terminal`. Each command resolves the package root, uses package-local contract/resources, prints structured diagnostics on failure, and writes canonical artifacts atomically. Recovery is explicit and replays only a fully valid journal; corruption is never swallowed.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run: `python -m unittest tests.semantic.test_state_machine tests.semantic.test_audit_engine tests.security.test_terminal_authority tests.e2e.test_full_run -v`
 

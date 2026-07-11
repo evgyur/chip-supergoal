@@ -63,6 +63,27 @@ class Verifier:
     expected_exit: int | None = None
     expected_assertion: str | None = None
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.type, str) or not self.type:
+            raise ValueError("verifier.type must be a nonempty string")
+        if self.command_id is not None and (
+            not isinstance(self.command_id, str) or not self.command_id
+        ):
+            raise ValueError("verifier.command_id must be a nonempty string or null")
+        if self.expected_exit is not None and type(self.expected_exit) is not int:
+            raise ValueError("verifier.expected_exit must be an integer or null")
+        if self.command_id is not None and self.expected_exit is None:
+            raise ValueError("command verifier requires verifier.expected_exit")
+        if self.command_id is None and self.expected_exit is not None:
+            raise ValueError("non-command verifier cannot declare verifier.expected_exit")
+        if self.expected_assertion is not None and (
+            not isinstance(self.expected_assertion, str)
+            or not self.expected_assertion
+        ):
+            raise ValueError(
+                "verifier.expected_assertion must be a nonempty string or null"
+            )
+
 @dataclass(frozen=True)
 class Criterion:
     id: str

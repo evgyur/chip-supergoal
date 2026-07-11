@@ -2,91 +2,114 @@
   "$id": "https://hermes.local/chip-supergoal/evidence.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {"enum": ["approval_manifest", "delivery_ack"]}
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {"criterion_id": {"const": "__phase__"}}
+      },
+      "else": {
+        "properties": {
+          "criterion_id": {"not": {"const": "__phase__"}}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"type": {"const": "command_result"}},
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {"replayable": {"const": true}},
+        "required": ["command", "exit_code"]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {"required": ["command"]},
+            {"required": ["exit_code"]}
+          ]
+        },
+        "properties": {"replayable": {"const": false}}
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": ["file_hash", "git_diff", "api_response", "log_excerpt", "screenshot", "external_source_snapshot", "delivery_ack", "approval_manifest"]
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {"required": ["artifact_sha256"]}
+    },
+    {
+      "if": {
+        "properties": {"type": {"const": "approval_manifest"}},
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {"metadata": {"required": ["approval_ids"]}},
+        "required": ["metadata"]
+      }
+    },
+    {
+      "if": {
+        "properties": {"type": {"const": "delivery_ack"}},
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {"metadata": {"required": ["delivery_kind"]}},
+        "required": ["metadata"]
+      }
+    }
+  ],
   "properties": {
-    "artifact_sha256": {
-      "type": "string"
-    },
-    "captured_at": {
-      "type": "string"
-    },
-    "command": {
-      "type": "string"
-    },
-    "contract_revision": {
-      "type": "integer"
-    },
-    "criterion_id": {
-      "type": "string"
-    },
-    "evidence_id": {
-      "type": "string"
-    },
-    "exit_code": {
-      "type": [
-        "integer",
-        "null"
-      ]
-    },
+    "artifact_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"},
+    "assertion": {"minLength": 1, "type": "string"},
+    "captured_at": {"pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$", "type": "string"},
+    "command": {"minLength": 1, "type": "string"},
+    "contract_revision": {"minimum": 1, "type": "integer"},
+    "contract_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"},
+    "criterion_id": {"minLength": 1, "type": "string"},
+    "evidence_id": {"minLength": 1, "type": "string"},
+    "exit_code": {"type": "integer"},
     "fresh_until": {
-      "type": "string"
-    },
-    "goal_id": {
-      "type": "string"
-    },
-    "phase_id": {
-      "type": "string"
-    },
-    "producer": {
-      "type": "string"
-    },
-    "redaction": {
-      "type": "string"
-    },
-    "replayable": {
-      "type": "boolean"
-    },
-    "result": {
-      "enum": [
-        "pass",
-        "fail",
-        "stale",
-        "unverified"
+      "oneOf": [
+        {"const": "audit_end"},
+        {"pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$", "type": "string"}
       ]
     },
-    "stderr_path": {
-      "type": "string"
+    "goal_id": {"minLength": 1, "type": "string"},
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_ids": {"items": {"minLength": 1, "type": "string"}, "type": "array", "uniqueItems": true},
+        "delivery_kind": {"minLength": 1, "type": "string"},
+        "notes": {"minLength": 1, "type": "string"},
+        "policy_evidence": {"items": {"minLength": 1, "type": "string"}, "type": "array", "uniqueItems": true},
+        "rpd_focus": {"items": {"minLength": 1, "type": "string"}, "type": "array", "uniqueItems": true}
+      },
+      "type": "object"
     },
-    "stdout_path": {
-      "type": "string"
-    },
+    "phase_id": {"minLength": 1, "type": "string"},
+    "producer": {"minLength": 1, "type": "string"},
+    "redaction": {"enum": ["passed", "redacted"]},
+    "replayable": {"type": "boolean"},
+    "result": {"enum": ["pass", "fail", "stale", "unverified"]},
+    "stderr_path": {"minLength": 1, "type": "string"},
+    "stdout_path": {"minLength": 1, "type": "string"},
     "type": {
-      "enum": [
-        "command_result",
-        "file_hash",
-        "git_diff",
-        "api_response",
-        "log_excerpt",
-        "screenshot",
-        "manual_observation",
-        "external_source_snapshot",
-        "delivery_ack",
-        "approval_manifest"
-      ]
+      "enum": ["command_result", "file_hash", "git_diff", "api_response", "log_excerpt", "screenshot", "manual_observation", "external_source_snapshot", "delivery_ack", "approval_manifest"]
     }
   },
-  "required": [
-    "evidence_id",
-    "goal_id",
-    "contract_revision",
-    "phase_id",
-    "criterion_id",
-    "type",
-    "producer",
-    "captured_at",
-    "fresh_until",
-    "replayable",
-    "result"
-  ],
+  "required": ["evidence_id", "goal_id", "contract_sha256", "contract_revision", "phase_id", "criterion_id", "type", "producer", "captured_at", "fresh_until", "replayable", "result", "redaction"],
   "title": "chip-supergoal evidence",
   "type": "object"
 }
