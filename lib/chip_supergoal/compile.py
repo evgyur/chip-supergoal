@@ -29,7 +29,7 @@ from .portable import (
     write_utf8_lf,
 )
 from .profiles import ResolvedContract
-from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
+from .render import phase_entries_in_ordinal_order, render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
 from .research import render_research_markdown, research_report, research_required, research_gate
 from .state import State, StateStore
 from .validate import validate_package
@@ -280,8 +280,11 @@ def _render_package(
             "required package resource is not a contained regular file"
         ) from exc
     _write(out_path / "PROTOCOL.md", protocol_text)
-    for i in range(len(contract.phases)):
-        _write(phases_dir / f"phase-{i+1:02d}.md", render_phase(contract, i))
+    for phase_index, phase in phase_entries_in_ordinal_order(contract):
+        _write(
+            phases_dir / f"phase-{phase.ordinal:02d}.md",
+            render_phase(contract, phase_index),
+        )
     if research_required(contract) or research_gate(contract):
         _write(out_path / "reports" / "research.json", json.dumps(research_report(contract), ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     StateStore(out_path).initialize(initial_state(contract, resolved.contract_sha256))

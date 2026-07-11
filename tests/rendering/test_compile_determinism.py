@@ -1,4 +1,5 @@
 import filecmp
+from copy import deepcopy
 import subprocess
 import sys
 import tempfile
@@ -113,6 +114,88 @@ class CompileDeterminismTest(unittest.TestCase):
             self.assertNotIn(
                 "RESEARCH.md",
                 (package / "LAUNCH_GOAL.md").read_text(encoding="utf-8"),
+            )
+
+    def test_swapped_phase_array_compiles_files_and_roadmap_by_ordinal(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            data = json.loads(
+                (ROOT / "examples/brownfield-feature/CONTRACT.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            phase_one = data["phases"][0]
+            phase_two = deepcopy(phase_one)
+            phase_two.update(
+                {
+                    "id": "P02",
+                    "ordinal": 2,
+                    "name": "Verify fixture",
+                    "task": "Verify the ordinally compiled fixture",
+                    "depends_on": ["P01"],
+                }
+            )
+            phase_two["work_items"][0]["id"] = "P02-W01"
+            phase_two["deliverables"][0].update(
+                {"id": "P02-D01", "path": "fixture-verified.txt"}
+            )
+            phase_two["criteria"][0]["id"] = "P02-C01"
+            phase_two["criteria"][0]["verifier"]["command_id"] = "P02-CMD01"
+            phase_two["commands"][0]["id"] = "P02-CMD01"
+            data["phases"] = [phase_two, phase_one]
+
+            source = parent / "swapped.json"
+            package = parent / "package"
+            source.write_text(json.dumps(data), encoding="utf-8")
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/sgctl.py",
+                    "compile",
+                    str(source),
+                    "--out",
+                    str(package),
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+
+            state = json.loads(
+                (package / "runtime/STATE.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["current_phase_id"], "P01")
+            self.assertTrue(
+                (package / "phases/phase-01.md")
+                .read_text(encoding="utf-8")
+                .startswith("# P01 —")
+            )
+            self.assertTrue(
+                (package / "phases/phase-02.md")
+                .read_text(encoding="utf-8")
+                .startswith("# P02 —")
+            )
+            roadmap = (package / "ROADMAP.md").read_text(encoding="utf-8")
+            self.assertLess(roadmap.index("- P01:"), roadmap.index("- P02:"))
+            self.assertLess(roadmap.index("### P01 —"), roadmap.index("### P02 —"))
+
+            validated = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/sgctl.py",
+                    "validate-package",
+                    str(package),
+                    "--strict",
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(
+                validated.returncode, 0, validated.stdout + validated.stderr
             )
 
 class CompileSafetyTest(unittest.TestCase):

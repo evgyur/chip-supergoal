@@ -4,11 +4,18 @@ import json
 from dataclasses import fields, is_dataclass
 from typing import Any
 
-from .model import Contract
+from .model import Contract, Phase
 from .research import research_gate, research_report, research_required
 
 
 NOT_DECLARED = "not declared by CONTRACT.json"
+
+
+def phase_entries_in_ordinal_order(contract: Contract) -> list[tuple[int, Phase]]:
+    return sorted(
+        enumerate(contract.phases),
+        key=lambda item: (item[1].ordinal, item[1].id),
+    )
 
 
 def _view_plain(value: Any) -> Any:
@@ -204,12 +211,13 @@ def render_roadmap(contract: Contract) -> str:
         "",
         "## Phase map",
     ]
-    for phase in contract.phases:
+    ordered_phases = [phase for _, phase in phase_entries_in_ordinal_order(contract)]
+    for phase in ordered_phases:
         dependencies = ", ".join(phase.depends_on) or "none"
         lines.append(f"- {phase.id}: {phase.name} — depends on {dependencies}")
 
     lines += ["", "## Phases"]
-    for phase in contract.phases:
+    for phase in ordered_phases:
         lines += [
             "",
             f"### {phase.id} — {phase.name}",
@@ -270,8 +278,8 @@ def render_launch_goal(contract: Contract) -> str:
         "python scripts/sgctl.py validate-package . --strict",
         "python scripts/sgctl.py validate-loop-design LOOP_DESIGN.md --instantiated",
         *[
-            f"python scripts/sgctl.py validate-phase-markdown phases/phase-{index + 1:02d}.md"
-            for index in range(len(contract.phases))
+            f"python scripts/sgctl.py validate-phase-markdown phases/phase-{phase.ordinal:02d}.md"
+            for _, phase in phase_entries_in_ordinal_order(contract)
         ],
     ]
     if _research_emitted(contract):

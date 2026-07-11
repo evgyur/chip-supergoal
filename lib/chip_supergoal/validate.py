@@ -24,7 +24,7 @@ from .portable import (
     logical_mode,
     read_regular_file_no_follow,
 )
-from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
+from .render import phase_entries_in_ordinal_order, render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
 from .research import render_research_markdown, research_gate, research_report, research_required, validate_research_gate
 from .state import LIFECYCLES, State, render_state_md, state_json_bytes
 
@@ -399,9 +399,9 @@ def _expected_generated_files(
             json.dumps(research_report(contract), ensure_ascii=False, indent=2, sort_keys=True)
             + "\n"
         ).encode("utf-8")
-    for index in range(len(contract.phases)):
-        expected[f"phases/phase-{index + 1:02d}.md"] = render_phase(
-            contract, index
+    for phase_index, phase in phase_entries_in_ordinal_order(contract):
+        expected[f"phases/phase-{phase.ordinal:02d}.md"] = render_phase(
+            contract, phase_index
         ).encode("utf-8")
     return expected, contract, []
 
