@@ -335,7 +335,14 @@ def _compile_resolved(
     parent = out_path.parent
     parent.mkdir(parents=True, exist_ok=True)
     _assert_not_source_container(out_path, Path(contract_source) if contract_source is not None else None)
-    _assert_safe_target(out_path, contract)
+    # Compile replaces the package namespace itself, so its read-only preflight
+    # must use the sibling namespace lock.  Calling validate_package() here
+    # would lazily create runtime/operation.lock inside an invalid legacy or
+    # malformed target before the fail-closed decision, violating byte-for-byte
+    # preservation.  The locked validator reads the target without mutating it;
+    # the same check is repeated under the swap lock below.
+    with package_namespace_lock(out_path):
+        _assert_safe_target(out_path, contract, operation_lock_held=True)
 
     staging = Path(tempfile.mkdtemp(prefix=f".{out_path.name}.tmp-", dir=str(parent)))
     backup: Path | None = None
