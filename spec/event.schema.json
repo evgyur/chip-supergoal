@@ -9,6 +9,10 @@
     "contract_sha256": {
       "type": "string"
     },
+    "contract_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
     "event_id": {
       "type": "string"
     },
@@ -42,6 +46,9 @@
     "state_revision": {
       "type": "integer"
     },
+    "state": {
+      "$ref": "state.schema.json"
+    },
     "state_sha256": {
       "pattern": "^[a-f0-9]{64}$",
       "type": "string"
@@ -54,8 +61,10 @@
     "event_id",
     "goal_id",
     "contract_sha256",
+    "contract_revision",
     "state_revision",
     "state_sha256",
+    "state",
     "event_type",
     "timestamp",
     "prev_event_sha256",

@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from chip_supergoal.portable import (
 )
 from chip_supergoal.state import State, StateStore
 from chip_supergoal.validate import validate_package
+import chip_supergoal.portable as portable_module
 
 
 DIGEST = "a" * 64
@@ -109,6 +111,23 @@ class PortableRuntimeTest(unittest.TestCase):
             with package_lock(lock_path):
                 self.assertEqual(lock_path.stat().st_size, 1)
 
+    def test_package_lock_rejects_symlink_without_touching_its_target(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            outside = root / "outside.bin"
+            outside.write_bytes(b"")
+            lock_path = root / "state.lock"
+            try:
+                lock_path.symlink_to(outside)
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with self.assertRaises(OSError):
+                with package_lock(lock_path):
+                    self.fail("symlinked lock was acquired")
+
+            self.assertEqual(outside.read_bytes(), b"")
+
     def test_contended_lock_times_out_against_second_process(self):
         with tempfile.TemporaryDirectory() as td:
             lock_path = Path(td) / "state.lock"
@@ -140,6 +159,7 @@ class PortableRuntimeTest(unittest.TestCase):
             initial = State(
                 goal_id="sg-20260710-portable-state",
                 contract_sha256=DIGEST,
+                contract_revision=1,
                 state_revision=0,
                 lifecycle="DRAFT",
                 current_phase_id="P01",
@@ -153,6 +173,45 @@ class PortableRuntimeTest(unittest.TestCase):
             self.assertEqual(store.lock.read_bytes(), b"\0")
             self.assertNotIn(b"\r", store.state_json.read_bytes())
             self.assertNotIn(b"\r", store.state_md.read_bytes())
+
+    def test_state_transition_uses_persistent_external_operation_lock(self):
+        operation_lock = getattr(portable_module, "package_operation_lock", None)
+        operation_lock_path = getattr(portable_module, "package_operation_lock_path", None)
+        self.assertIsNotNone(operation_lock)
+        self.assertIsNotNone(operation_lock_path)
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "package"
+            store = StateStore(root)
+            store.initialize(
+                State(
+                    goal_id="sg-20260711-operation-lock",
+                    contract_sha256=DIGEST,
+                    contract_revision=1,
+                    state_revision=0,
+                    lifecycle="DRAFT",
+                    current_phase_id="P01",
+                    phase_status="PENDING",
+                )
+            )
+            started = threading.Event()
+            completed = threading.Event()
+
+            def transition() -> None:
+                started.set()
+                store.transition("COMPILED", expected_revision=0)
+                completed.set()
+
+            with operation_lock(root):
+                thread = threading.Thread(target=transition)
+                thread.start()
+                self.assertTrue(started.wait(2.0))
+                self.assertFalse(completed.wait(0.2))
+            self.assertTrue(completed.wait(5.0))
+            thread.join(5.0)
+            lock_path = operation_lock_path(root)
+            self.assertEqual(lock_path.parent, root.parent.resolve())
+            self.assertFalse(lock_path.is_relative_to(root.resolve()))
+            self.assertEqual(lock_path.read_bytes(), b"\0")
 
 
 if __name__ == "__main__":

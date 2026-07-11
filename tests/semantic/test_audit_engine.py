@@ -40,8 +40,8 @@ class AuditEngineTest(unittest.TestCase):
 
     def test_terminal_markers_require_done_state_and_clean_report(self):
         c = self.contract()
-        done = State(goal_id=c.goal.id, contract_sha256=DIGEST, state_revision=7, lifecycle="DONE", current_phase_id=None, phase_status="COMPLETE")
-        running = State(goal_id=c.goal.id, contract_sha256=DIGEST, state_revision=6, lifecycle="AUDITING", current_phase_id=None, phase_status="VERIFYING")
+        done = State(goal_id=c.goal.id, contract_sha256=DIGEST, contract_revision=c.contract_revision, state_revision=7, lifecycle="DONE", current_phase_id=None, phase_status="COMPLETE")
+        running = State(goal_id=c.goal.id, contract_sha256=DIGEST, contract_revision=c.contract_revision, state_revision=6, lifecycle="AUDITING", current_phase_id=None, phase_status="VERIFYING")
         done_report = audit_contract(c, self.evidence(), state=done)
         running_report = audit_contract(c, self.evidence(), state=running)
         self.assertTrue(terminal_markers_allowed(done, done_report))

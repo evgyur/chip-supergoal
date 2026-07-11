@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import stat
 from typing import Iterable
 
 from .diagnostics import Diagnostic, diagnostic_metadata
@@ -16,6 +18,8 @@ from .portable import (
     REQUIRED_MUTABLE_PATHS,
     SEALED_RUNTIME_PATHS,
     canonical_text_bytes,
+    is_reparse_point,
+    iter_tree_no_follow,
     logical_mode,
 )
 from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
@@ -203,6 +207,131 @@ _EVENT_ID_PATTERN = re.compile(r"^EVT-[0-9]{6}$")
 _TIMESTAMP_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 
 
+def _package_path_diagnostics(root: Path) -> list[Diagnostic]:
+    try:
+        root_stat = root.lstat()
+    except OSError:
+        return []
+    if stat.S_ISLNK(root_stat.st_mode) or is_reparse_point(root_stat):
+        return [
+            _diag(
+                "SGV-PACKAGE-SYMLINK",
+                "INV-ARCHIVE-001",
+                str(root),
+                "/",
+                "package root is a symlink or reparse point",
+                "Validate a real package directory without indirection.",
+                stage="archive",
+            )
+        ]
+    if not stat.S_ISDIR(root_stat.st_mode):
+        return [
+            _diag(
+                "SGV-PACKAGE-SPECIAL-FILE",
+                "INV-ARCHIVE-001",
+                str(root),
+                "/",
+                "package root is not a regular directory",
+                "Validate a real package directory.",
+                stage="archive",
+            )
+        ]
+    try:
+        resolved_root = root.resolve(strict=True)
+        entries = list(iter_tree_no_follow(root))
+    except OSError:
+        return [
+            _diag(
+                "SGV-PACKAGE-SPECIAL-FILE",
+                "INV-ARCHIVE-001",
+                str(root),
+                "/",
+                "package inventory cannot be read safely",
+                "Restore a readable regular-file package tree.",
+                stage="archive",
+            )
+        ]
+    diagnostics: list[Diagnostic] = []
+    for path, stat_result in entries:
+        relative = path.relative_to(root).as_posix()
+        pointer = f"/{relative}"
+        if stat.S_ISLNK(stat_result.st_mode) or is_reparse_point(stat_result):
+            diagnostics.append(
+                _diag(
+                    "SGV-PACKAGE-SYMLINK",
+                    "INV-ARCHIVE-001",
+                    str(root),
+                    pointer,
+                    f"package path {relative} is a symlink or reparse point",
+                    "Replace it with a contained regular file or directory.",
+                    stage="archive",
+                )
+            )
+            continue
+        if stat.S_ISDIR(stat_result.st_mode) and relative in MUTABLE_PATH_NAMES:
+            diagnostics.append(
+                _diag(
+                    "SGV-PACKAGE-SPECIAL-FILE",
+                    "INV-ARCHIVE-001",
+                    str(root),
+                    pointer,
+                    f"mutable file path {relative} is a directory",
+                    "Replace it with a regular file produced by a supported command.",
+                    stage="archive",
+                )
+            )
+            continue
+        if not (
+            stat.S_ISREG(stat_result.st_mode) or stat.S_ISDIR(stat_result.st_mode)
+        ):
+            diagnostics.append(
+                _diag(
+                    "SGV-PACKAGE-SPECIAL-FILE",
+                    "INV-ARCHIVE-001",
+                    str(root),
+                    pointer,
+                    f"package path {relative} is a special file",
+                    "Remove sockets, devices, FIFOs, and other special files.",
+                    stage="archive",
+                )
+            )
+            continue
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError:
+            resolved = None
+        if resolved is None or not resolved.is_relative_to(resolved_root):
+            diagnostics.append(
+                _diag(
+                    "SGV-PACKAGE-PATH-ESCAPE",
+                    "INV-ARCHIVE-001",
+                    str(root),
+                    pointer,
+                    f"package path {relative} resolves outside the package root",
+                    "Keep every package path contained beneath the package root.",
+                    stage="archive",
+                )
+            )
+    return diagnostics
+
+
+def _unsafe_manifest_path(relative: object) -> bool:
+    if not isinstance(relative, str) or not relative or "\x00" in relative:
+        return True
+    if "\\" in relative or relative.endswith("/"):
+        return True
+    posix_path = PurePosixPath(relative)
+    windows_path = PureWindowsPath(relative)
+    return (
+        posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or bool(windows_path.drive)
+        or ".." in posix_path.parts
+        or "." in posix_path.parts
+        or posix_path.as_posix() != relative
+    )
+
+
 def _expected_generated_files(
     root: Path,
 ) -> tuple[dict[str, bytes], object | None, list[Diagnostic]]:
@@ -366,15 +495,7 @@ def _manifest_records(
             )
             continue
         relative = item.get("path")
-        if (
-            not isinstance(relative, str)
-            or not relative
-            or relative in records
-            or relative.startswith("/")
-            or "\\" in relative
-            or ".." in Path(relative).parts
-            or "\x00" in relative
-        ):
+        if _unsafe_manifest_path(relative) or relative in records:
             diagnostics.append(
                 _diag(
                     "SGV-PACKAGE-MANIFEST-PATH",
@@ -481,6 +602,7 @@ def _validate_mutable_plane(
             )
 
     state: State | None = None
+    projection_matches = False
     state_path = root / "runtime" / "STATE.json"
     if state_path.is_file():
         try:
@@ -496,12 +618,14 @@ def _validate_mutable_plane(
                 else set()
             )
             goal_id = getattr(getattr(contract, "goal", None), "id", None)
+            contract_revision = getattr(contract, "contract_revision", None)
             if (
                 state.state_revision < 1
                 or state.lifecycle == "DRAFT"
                 or state.lifecycle not in LIFECYCLES
                 or state.goal_id != goal_id
                 or state.contract_sha256 != contract_sha256
+                or state.contract_revision != contract_revision
                 or state.current_phase_id not in phase_ids
             ):
                 raise ValueError("state identity or lifecycle is inconsistent")
@@ -522,6 +646,7 @@ def _validate_mutable_plane(
         try:
             if projection_path.read_bytes() != render_state_md(state).encode("utf-8"):
                 raise ValueError("projection mismatch")
+            projection_matches = True
         except Exception:
             diagnostics.append(
                 _mutable_diagnostic(
@@ -534,6 +659,8 @@ def _validate_mutable_plane(
             )
 
     events_path = root / "runtime" / "events.jsonl"
+    journal_tail_state: State | None = None
+    journal_valid = False
     if events_path.is_file():
         try:
             raw_events = events_path.read_bytes()
@@ -553,6 +680,8 @@ def _validate_mutable_plane(
                 else set()
             )
             goal_id = getattr(getattr(contract, "goal", None), "id", None)
+            contract_revision = getattr(contract, "contract_revision", None)
+            event_states: list[State] = []
             for index, event in enumerate(events, 1):
                 if set(event) != EVENT_FIELDS:
                     raise ValueError("event fields are invalid")
@@ -564,25 +693,32 @@ def _validate_mutable_plane(
                 if type(revision) is not int or revision < previous_revision or revision < 1:
                     raise ValueError("event revision is invalid")
                 previous_revision = revision
+                event_state = State.from_dict(event.get("state"))
+                event_states.append(event_state)
                 if (
                     event.get("goal_id") != goal_id
                     or event.get("contract_sha256") != contract_sha256
+                    or event.get("contract_revision") != contract_revision
                     or event.get("phase_id") not in phase_ids
                     or not isinstance(event.get("actor"), str)
                     or not isinstance(event.get("event_type"), str)
                     or not isinstance(event.get("evidence_ids"), list)
+                    or not all(isinstance(item, str) for item in event["evidence_ids"])
                     or not isinstance(event.get("timestamp"), str)
                     or not _TIMESTAMP_PATTERN.fullmatch(event["timestamp"])
                     or not isinstance(event.get("state_sha256"), str)
                     or not _SHA256_PATTERN.fullmatch(event["state_sha256"])
+                    or event_state.goal_id != goal_id
+                    or event_state.contract_sha256 != contract_sha256
+                    or event_state.contract_revision != contract_revision
+                    or event.get("state_revision") != event_state.state_revision
+                    or event.get("phase_id") != event_state.current_phase_id
+                    or event.get("state_sha256")
+                    != _sha256_bytes(state_json_bytes(event_state))
                 ):
                     raise ValueError("event identity is invalid")
-            if state is None:
-                raise ValueError("state unavailable")
-            if events[-1].get("state_revision") != state.state_revision:
-                raise ValueError("event tail revision differs from state")
-            if events[-1].get("state_sha256") != _sha256_bytes(state_path.read_bytes()):
-                raise ValueError("event tail state hash differs from state")
+            journal_tail_state = event_states[-1]
+            journal_valid = True
         except Exception:
             diagnostics.append(
                 _mutable_diagnostic(
@@ -593,6 +729,19 @@ def _validate_mutable_plane(
                     "Recover the event chain or recompile a pristine package.",
                 )
             )
+    if journal_valid and (
+        state is None or journal_tail_state != state or not projection_matches
+    ):
+        diagnostics.append(
+            _diag(
+                "SGV-PACKAGE-STATE-RECOVERY-REQUIRED",
+                "INV-RECOVERY-001",
+                str(root),
+                "/runtime/events.jsonl",
+                "the valid event journal is ahead of or differs from its state projections",
+                "Replay the event journal tail into runtime/STATE.json and STATE.md.",
+            )
+        )
 
     evidence_path = root / "runtime" / "evidence.json"
     if evidence_path.is_file():
@@ -626,48 +775,31 @@ def _validate_mutable_plane(
         )
     for relative in (
         "reports/final-audit.json",
+        "reports/final-audit.md",
+        "reports/terminal-record.txt",
         "out/review-md-files-delivery-receipt.json",
         "out/final-artifacts-delivery-receipt.json",
         "out/final-artifacts-manifest.json",
     ):
         path = root / relative
-        if path.is_file():
-            try:
-                if not isinstance(json.loads(path.read_text(encoding="utf-8")), dict):
-                    raise ValueError("mutable JSON must be an object")
-            except Exception:
-                diagnostics.append(
-                    _mutable_diagnostic(
-                        "SGV-PACKAGE-MUTABLE-MALFORMED",
-                        root,
-                        relative,
-                        f"{relative} is malformed",
-                        "Regenerate the mutable artifact through sgctl.",
-                    )
+        if path.exists():
+            diagnostics.append(
+                _mutable_diagnostic(
+                    "SGV-PACKAGE-MUTABLE-UNSUPPORTED",
+                    root,
+                    relative,
+                    f"{relative} cannot be trusted before its semantic validator is available",
+                    "Remove the artifact and recreate it through a supported sgctl command.",
                 )
-    for relative in ("reports/final-audit.md", "reports/terminal-record.txt"):
-        path = root / relative
-        if path.is_file():
-            try:
-                data = path.read_bytes()
-                data.decode("utf-8")
-                if b"\r" in data:
-                    raise ValueError("mutable text must use LF")
-            except Exception:
-                diagnostics.append(
-                    _mutable_diagnostic(
-                        "SGV-PACKAGE-MUTABLE-MALFORMED",
-                        root,
-                        relative,
-                        f"{relative} is not canonical UTF-8/LF text",
-                        "Regenerate the mutable artifact through sgctl.",
-                    )
-                )
+            )
     return diagnostics
 
 
 def validate_package(root: str | Path) -> list[Diagnostic]:
     package_root = Path(root)
+    path_diagnostics = _package_path_diagnostics(package_root)
+    if path_diagnostics:
+        return path_diagnostics
     manifest, records, manifest_diagnostics = _manifest_records(package_root)
     if isinstance(manifest, dict) and manifest.get("manifest_version") != "1.1":
         return manifest_diagnostics
@@ -772,7 +904,22 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
     )
     if records:
         record_files = sorted(records)
-        if actual_sealed != record_files or not required_sealed <= set(records):
+        allowed_directories: set[str] = set()
+        for relative in {*records, *MUTABLE_PATH_NAMES, "MANIFEST.json"}:
+            parent = PurePosixPath(relative).parent
+            while parent != PurePosixPath("."):
+                allowed_directories.add(parent.as_posix())
+                parent = parent.parent
+        actual_directories = {
+            path.relative_to(package_root).as_posix()
+            for path, stat_result in iter_tree_no_follow(package_root)
+            if stat.S_ISDIR(stat_result.st_mode)
+        }
+        if (
+            actual_sealed != record_files
+            or not required_sealed <= set(records)
+            or not actual_directories <= allowed_directories
+        ):
             diagnostics.append(
                 _diag(
                     "SGV-PACKAGE-MANIFEST-FILESET",
@@ -829,13 +976,12 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
     )
 
     unique: list[Diagnostic] = []
-    seen: set[tuple[str, str, str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     for diagnostic in diagnostics:
         identity = (
             diagnostic.code,
             diagnostic.artifact,
             diagnostic.pointer,
-            diagnostic.message,
         )
         if identity not in seen:
             seen.add(identity)

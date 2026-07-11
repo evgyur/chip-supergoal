@@ -22,7 +22,7 @@ class FullRunE2ETest(unittest.TestCase):
         c = self.contract(); sim = GoalManagerSimulator()
         with tempfile.TemporaryDirectory() as td:
             store = StateStore(td)
-            store.initialize(State(goal_id=c.goal.id, contract_sha256=DIGEST, state_revision=0, lifecycle="READY_TO_DISPATCH", current_phase_id="P01", phase_status="READY"))
+            store.initialize(State(goal_id=c.goal.id, contract_sha256=DIGEST, contract_revision=c.contract_revision, state_revision=0, lifecycle="READY_TO_DISPATCH", current_phase_id="P01", phase_status="READY"))
             running = store.transition("RUNNING", expected_revision=0, phase_status="EXECUTING")
             self.assertEqual(sim.classify("SUPERGOAL_PHASE_DONE\nGoal complete: no"), "continue")
             auditing = store.transition("AUDITING", expected_revision=1, phase_id=None, phase_status="VERIFYING")
@@ -52,10 +52,10 @@ class FullRunE2ETest(unittest.TestCase):
 
     def test_audit_gap_repair_then_complete(self):
         c = self.contract()
-        auditing = State(goal_id=c.goal.id, contract_sha256=DIGEST, state_revision=3, lifecycle="AUDITING", current_phase_id=None, phase_status="VERIFYING")
+        auditing = State(goal_id=c.goal.id, contract_sha256=DIGEST, contract_revision=c.contract_revision, state_revision=3, lifecycle="AUDITING", current_phase_id=None, phase_status="VERIFYING")
         gap_report = audit_contract(c, [], state=auditing)
         self.assertFalse(gap_report.can_complete)
-        done = State(goal_id=c.goal.id, contract_sha256=DIGEST, state_revision=4, lifecycle="DONE", current_phase_id=None, phase_status="COMPLETE")
+        done = State(goal_id=c.goal.id, contract_sha256=DIGEST, contract_revision=c.contract_revision, state_revision=4, lifecycle="DONE", current_phase_id=None, phase_status="COMPLETE")
         evidence = [EvidenceRecord.pass_record(evidence_id="EVD-000001", goal_id=c.goal.id, contract_revision=c.contract_revision, phase_id="P01", criterion_id="P01-C01")]
         fixed = audit_contract(c, evidence, state=done)
         self.assertTrue(fixed.can_complete)
@@ -65,7 +65,7 @@ class FullRunE2ETest(unittest.TestCase):
         c = self.contract()
         with tempfile.TemporaryDirectory() as td:
             store = StateStore(td)
-            store.initialize(State(goal_id=c.goal.id, contract_sha256=DIGEST, state_revision=0, lifecycle="READY_TO_DISPATCH", current_phase_id="P01", phase_status="READY"))
+            store.initialize(State(goal_id=c.goal.id, contract_sha256=DIGEST, contract_revision=c.contract_revision, state_revision=0, lifecycle="READY_TO_DISPATCH", current_phase_id="P01", phase_status="READY"))
             store.transition("RUNNING", expected_revision=0, phase_status="EXECUTING")
             reloaded = StateStore(td)
             self.assertEqual(reloaded.state_json.read_text(), store.state_json.read_text())

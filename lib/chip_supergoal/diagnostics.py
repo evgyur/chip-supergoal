@@ -18,7 +18,7 @@ class DiagnosticMetadata:
 
 
 _CATALOG_VERSION = "1.0"
-_EXPECTED_CODE_COUNT = 76
+_EXPECTED_CODE_COUNT = 78
 _CATALOG_PATH = Path(__file__).resolve().parents[2] / "spec/diagnostic-catalog.json"
 _TOP_LEVEL_KEYS = {"catalog_version", "expected_code_count", "diagnostics"}
 _ENTRY_KEYS = {"code", "invariant", "stage", "remediation_class"}

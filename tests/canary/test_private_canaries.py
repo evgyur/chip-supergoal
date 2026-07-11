@@ -35,7 +35,7 @@ class PrivateCanaryTest(unittest.TestCase):
         c = self.contract()
         with tempfile.TemporaryDirectory() as td:
             store = StateStore(td)
-            store.initialize(State(goal_id=c.goal.id, contract_sha256=DIGEST, state_revision=0, lifecycle="READY_TO_DISPATCH", current_phase_id="P01", phase_status="READY"))
+            store.initialize(State(goal_id=c.goal.id, contract_sha256=DIGEST, contract_revision=c.contract_revision, state_revision=0, lifecycle="READY_TO_DISPATCH", current_phase_id="P01", phase_status="READY"))
             store.transition("RUNNING", expected_revision=0, phase_status="EXECUTING")
             reloaded = StateStore(td)
             state = State.from_dict(__import__('json').loads(reloaded.state_json.read_text()))

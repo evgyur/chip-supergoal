@@ -13,8 +13,10 @@ EVENT_FIELDS = frozenset(
         "event_id",
         "goal_id",
         "contract_sha256",
+        "contract_revision",
         "state_revision",
         "state_sha256",
+        "state",
         "event_type",
         "phase_id",
         "actor",
@@ -35,6 +37,16 @@ def event_hash(event: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_event_payload(event)).hexdigest()
 
 
+def canonical_state_bytes(state: dict[str, Any]) -> bytes:
+    return (
+        json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+
+
+def _state_hash(state: dict[str, Any]) -> str:
+    return hashlib.sha256(canonical_state_bytes(state)).hexdigest()
+
+
 def read_events(path: str | Path) -> list[dict[str, Any]]:
     p = Path(path)
     if not p.exists():
@@ -50,11 +62,29 @@ def verify_event_chain(events: list[dict[str, Any]]) -> list[str]:
     errors: list[str] = []
     prev: str | None = None
     for idx, event in enumerate(events, 1):
+        if set(event) != EVENT_FIELDS:
+            errors.append(f"event {idx} fields mismatch")
+            continue
         if event.get("prev_event_sha256") != prev:
             errors.append(f"event {idx} prev hash mismatch")
         expected = event_hash(event)
         if event.get("event_sha256") != expected:
             errors.append(f"event {idx} hash mismatch")
+        state = event.get("state")
+        if not isinstance(state, dict):
+            errors.append(f"event {idx} target state is invalid")
+        else:
+            if event.get("state_sha256") != _state_hash(state):
+                errors.append(f"event {idx} target state hash mismatch")
+            expected_identity = {
+                "goal_id": state.get("goal_id"),
+                "contract_sha256": state.get("contract_sha256"),
+                "contract_revision": state.get("contract_revision"),
+                "state_revision": state.get("state_revision"),
+                "phase_id": state.get("current_phase_id"),
+            }
+            if any(event.get(key) != value for key, value in expected_identity.items()):
+                errors.append(f"event {idx} target state identity mismatch")
         prev = event.get("event_sha256", "")
     return errors
 
@@ -62,14 +92,10 @@ def verify_event_chain(events: list[dict[str, Any]]) -> list[str]:
 def append_event(
     path: str | Path,
     *,
-    goal_id: str,
-    contract_sha256: str,
-    state_revision: int,
+    state: dict[str, Any],
     event_type: str,
-    phase_id: str | None = None,
     actor: str = "sgctl",
     evidence_ids: list[str] | None = None,
-    state_sha256: str | None = None,
 ) -> dict[str, Any]:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -78,14 +104,17 @@ def append_event(
     if errors:
         raise ValueError("invalid existing event chain: " + "; ".join(errors))
     prev = events[-1]["event_sha256"] if events else None
+    target_state = dict(state)
     event = {
         "event_id": f"EVT-{len(events)+1:06d}",
-        "goal_id": goal_id,
-        "contract_sha256": contract_sha256,
-        "state_revision": state_revision,
-        "state_sha256": state_sha256,
+        "goal_id": target_state.get("goal_id"),
+        "contract_sha256": target_state.get("contract_sha256"),
+        "contract_revision": target_state.get("contract_revision"),
+        "state_revision": target_state.get("state_revision"),
+        "state_sha256": _state_hash(target_state),
+        "state": target_state,
         "event_type": event_type,
-        "phase_id": phase_id,
+        "phase_id": target_state.get("current_phase_id"),
         "actor": actor,
         "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "evidence_ids": evidence_ids or [],

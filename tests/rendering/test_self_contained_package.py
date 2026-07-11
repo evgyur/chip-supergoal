@@ -15,9 +15,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib"))
 
 from chip_supergoal.compile import CompileSafetyError, compile_contract_file
+import chip_supergoal.compile as compile_module
+import chip_supergoal.state as state_module
 from chip_supergoal.diagnostics import Diagnostic
 from chip_supergoal.events import append_event, read_events, verify_event_chain
-from chip_supergoal.state import State, read_state, render_state_md, write_state_atomic
+from chip_supergoal.state import State, StateStore, read_state, recover_from_events, render_state_md, write_state_atomic
 from chip_supergoal.validate import validate_package
 
 
@@ -219,6 +221,7 @@ class SelfContainedPackageTest(unittest.TestCase):
             state = read_state(state_path)
             contract_hash = hashlib.sha256((package / "CONTRACT.json").read_bytes()).hexdigest()
             self.assertEqual(state.schema_version, "3.0")
+            self.assertEqual(state.contract_revision, 1)
             self.assertEqual(state.lifecycle, "COMPILED")
             self.assertEqual(state.state_revision, 1)
             self.assertEqual(state.current_phase_id, "P02")
@@ -237,7 +240,43 @@ class SelfContainedPackageTest(unittest.TestCase):
             self.assertEqual(event["state_revision"], 1)
             self.assertEqual(event["goal_id"], state.goal_id)
             self.assertEqual(event["contract_sha256"], contract_hash)
+            self.assertEqual(event["contract_revision"], state.contract_revision)
+            self.assertEqual(event["state"], state.to_dict())
             self.assertEqual(event["state_sha256"], hashlib.sha256(state_path.read_bytes()).hexdigest())
+
+    def test_validator_requires_recovery_when_journal_tail_is_ahead_of_projections(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = self.compile_package(Path(td))
+            store = StateStore(package)
+            current = read_state(store.state_json)
+
+            with mock.patch.object(
+                state_module,
+                "write_state_atomic",
+                side_effect=OSError("injected projection crash"),
+            ):
+                with self.assertRaisesRegex(OSError, "projection crash"):
+                    store.transition(
+                        "PLAN_REVIEWED",
+                        expected_revision=current.state_revision,
+                    )
+
+            diagnostics = validate_package(package)
+            recovery = [
+                item
+                for item in diagnostics
+                if item.code == "SGV-PACKAGE-STATE-RECOVERY-REQUIRED"
+            ]
+            self.assertEqual(len(recovery), 1, diagnostics)
+            self.assertNotIn(
+                "SGV-PACKAGE-EVENTS-MALFORMED",
+                {item.code for item in diagnostics},
+            )
+
+            recovered = recover_from_events(package)
+            self.assertIsNotNone(recovered)
+            self.assertEqual(recovered.state_revision, current.state_revision + 1)
+            self.assertEqual(validate_package(package), [])
 
     def test_relocated_package_validates_with_scrubbed_python_environment(self):
         with tempfile.TemporaryDirectory() as td:
@@ -296,12 +335,8 @@ class SelfContainedPackageTest(unittest.TestCase):
             (package / "STATE.md").write_text(render_state_md(updated), encoding="utf-8", newline="\n")
             append_event(
                 package / "runtime" / "events.jsonl",
-                goal_id=updated.goal_id,
-                contract_sha256=updated.contract_sha256,
-                state_revision=updated.state_revision,
+                state=updated.to_dict(),
                 event_type="transition:COMPILED->PLAN_REVIEWED",
-                phase_id=updated.current_phase_id,
-                state_sha256=hashlib.sha256(state_path.read_bytes()).hexdigest(),
             )
             evidence = [{
                 "evidence_id": "EV-001",
@@ -344,6 +379,47 @@ class SelfContainedPackageTest(unittest.TestCase):
                 (package / relative).write_bytes(content)
                 self.assertIn(expected_code, diagnostic_codes(package))
 
+    def test_optional_mutable_outputs_fail_closed_until_semantic_validators_exist(self):
+        cases = {
+            "final_audit_json": ("reports/final-audit.json", b"{}\n"),
+            "final_audit_markdown": ("reports/final-audit.md", b"# forged audit\n"),
+            "terminal_record": ("reports/terminal-record.txt", b"AUDIT_COMPLETE\n"),
+            "review_receipt": ("out/review-md-files-delivery-receipt.json", b"{}\n"),
+            "final_receipt": ("out/final-artifacts-delivery-receipt.json", b"{}\n"),
+            "archive_result": ("out/final-artifacts-manifest.json", b"{}\n"),
+        }
+        for label, (relative, content) in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as td:
+                package = self.compile_package(Path(td))
+                path = package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+
+                diagnostics = validate_package(package)
+                targeted = [
+                    item
+                    for item in diagnostics
+                    if item.code == "SGV-PACKAGE-MUTABLE-UNSUPPORTED"
+                    and item.pointer == f"/{relative}"
+                ]
+
+                self.assertEqual(len(targeted), 1, diagnostics)
+
+    def test_missing_state_projection_is_reported_once(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = self.compile_package(Path(td))
+            (package / "STATE.md").unlink()
+
+            diagnostics = validate_package(package)
+            missing = [
+                item
+                for item in diagnostics
+                if item.code == "SGV-PACKAGE-MISSING-FILE"
+                and item.pointer == "/STATE.md"
+            ]
+
+            self.assertEqual(len(missing), 1, diagnostics)
+
     def test_unknown_files_and_nested_manifest_are_blocked(self):
         for relative in ("UNSEALED.md", "out/evil.json", "nested/MANIFEST.json"):
             with self.subTest(relative=relative), tempfile.TemporaryDirectory() as td:
@@ -352,6 +428,155 @@ class SelfContainedPackageTest(unittest.TestCase):
                 extra.parent.mkdir(parents=True, exist_ok=True)
                 extra.write_text("unsealed\n", encoding="utf-8")
                 self.assertIn("SGV-PACKAGE-MANIFEST-FILESET", diagnostic_codes(package))
+
+    def test_unknown_empty_directory_fails_exact_inventory(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = self.compile_package(Path(td))
+            (package / "unknown-empty-directory").mkdir()
+
+            self.assertIn("SGV-PACKAGE-MANIFEST-FILESET", diagnostic_codes(package))
+
+    def test_optional_mutable_directory_is_not_treated_as_absent(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = self.compile_package(Path(td))
+            path = package / "reports" / "final-audit.json"
+            path.mkdir(parents=True)
+
+            diagnostics = validate_package(package)
+
+            self.assertTrue(
+                any(
+                    item.code == "SGV-PACKAGE-SPECIAL-FILE"
+                    and item.pointer == "/reports/final-audit.json"
+                    for item in diagnostics
+                ),
+                diagnostics,
+            )
+
+    def test_validator_rejects_sealed_and_mutable_file_symlinks(self):
+        cases = {
+            "sealed": "THINKING.md",
+            "mutable": "runtime/evidence.json",
+        }
+        for label, relative in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as td:
+                parent = Path(td)
+                package = self.compile_package(parent)
+                path = package / relative
+                outside = parent / f"outside-{label}.txt"
+                outside.write_bytes(path.read_bytes())
+                path.unlink()
+                try:
+                    path.symlink_to(outside)
+                except OSError as exc:
+                    self.skipTest(f"symlink creation unavailable: {exc}")
+
+                diagnostics = validate_package(package)
+
+                self.assertIn("SGV-PACKAGE-SYMLINK", {item.code for item in diagnostics})
+                self.assertTrue(
+                    any(item.pointer == f"/{relative}" for item in diagnostics),
+                    diagnostics,
+                )
+
+    def test_validator_rejects_unknown_symlink_directory_without_following_it(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            package = self.compile_package(parent)
+            outside = parent / "outside-directory"
+            outside.mkdir()
+            (outside / "secret.txt").write_text("outside\n", encoding="utf-8")
+            linked = package / "linked-directory"
+            try:
+                linked.symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlink creation unavailable: {exc}")
+
+            diagnostics = validate_package(package)
+
+            self.assertIn("SGV-PACKAGE-SYMLINK", {item.code for item in diagnostics})
+            self.assertTrue(
+                any(item.pointer == "/linked-directory" for item in diagnostics),
+                diagnostics,
+            )
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO creation is unsupported")
+    def test_validator_rejects_special_file_without_opening_it(self):
+        with tempfile.TemporaryDirectory() as td:
+            package = self.compile_package(Path(td))
+            fifo = package / "runtime" / "unexpected.fifo"
+            os.mkfifo(fifo)
+
+            diagnostics = validate_package(package)
+
+            self.assertIn("SGV-PACKAGE-SPECIAL-FILE", {item.code for item in diagnostics})
+            self.assertTrue(
+                any(item.pointer == "/runtime/unexpected.fifo" for item in diagnostics),
+                diagnostics,
+            )
+
+    def test_manifest_rejects_drive_qualified_and_absolute_paths(self):
+        unsafe_paths = ("C:/escape", "//server/share/escape", "/absolute", "../escape")
+        for unsafe in unsafe_paths:
+            with self.subTest(path=unsafe), tempfile.TemporaryDirectory() as td:
+                package = self.compile_package(Path(td))
+                manifest_path = package / "MANIFEST.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                manifest["artifacts"][0]["path"] = unsafe
+                joined = "\n".join(
+                    f"{item['path']} {item['sha256']} {item['bytes']} {item['mode']}"
+                    for item in manifest["artifacts"]
+                )
+                manifest["package_fingerprint"] = hashlib.sha256(joined.encode()).hexdigest()
+                manifest_path.write_text(
+                    json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                    newline="\n",
+                )
+
+                diagnostics = validate_package(package)
+
+                self.assertIn("SGV-PACKAGE-MANIFEST-PATH", {item.code for item in diagnostics})
+
+    def test_runtime_inventory_copy_rejects_symlinked_source_resource(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            resources = parent / "resources"
+            for directory in ("profiles", "spec", "templates"):
+                shutil.copytree(ROOT / directory, resources / directory)
+            outside = parent / "outside-state-template.md"
+            outside.write_text("outside resource\n", encoding="utf-8")
+            source = resources / "templates" / "STATE.md"
+            source.unlink()
+            try:
+                source.symlink_to(outside)
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with self.assertRaisesRegex(CompileSafetyError, "resource"):
+                compile_contract_file(
+                    CONTRACT,
+                    parent / "package",
+                    resource_root=resources,
+                )
+
+            self.assertFalse((parent / "package").exists())
+
+    def test_compile_rejects_broken_output_symlink_without_creating_its_target(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            output = parent / "package"
+            outside = parent / "missing-outside-target"
+            try:
+                output.symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with self.assertRaises(CompileSafetyError):
+                compile_contract_file(CONTRACT, output)
+
+            self.assertTrue(output.is_symlink())
+            self.assertFalse(outside.exists())
 
     def test_old_manifest_gets_one_actionable_recompile_diagnostic(self):
         with tempfile.TemporaryDirectory() as td:
@@ -441,6 +666,87 @@ class SelfContainedPackageTest(unittest.TestCase):
             )
             self.assertEqual(residue, [])
 
+    def test_target_mutation_after_precheck_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            package = self.compile_package(parent)
+            original_validate = compile_module.validate_package
+            mutated_snapshot: dict[str, bytes] = {}
+            injected = False
+
+            def validate_with_concurrent_transition(root: Path):
+                nonlocal injected, mutated_snapshot
+                diagnostics = original_validate(root)
+                if Path(root) != package and not injected:
+                    injected = True
+                    store = StateStore(package)
+                    state = read_state(store.state_json)
+                    store.transition("PLAN_REVIEWED", expected_revision=state.state_revision)
+                    mutated_snapshot = {
+                        path.relative_to(package).as_posix(): path.read_bytes()
+                        for path in package.rglob("*")
+                        if path.is_file()
+                    }
+                return diagnostics
+
+            with mock.patch(
+                "chip_supergoal.compile.validate_package",
+                side_effect=validate_with_concurrent_transition,
+            ):
+                with self.assertRaises(CompileSafetyError):
+                    compile_contract_file(CONTRACT, package)
+
+            self.assertTrue(injected)
+            after = {
+                path.relative_to(package).as_posix(): path.read_bytes()
+                for path in package.rglob("*")
+                if path.is_file()
+            }
+            self.assertEqual(after, mutated_snapshot)
+            self.assertEqual(read_state(package / "runtime/STATE.json").state_revision, 2)
+
+    def test_double_fault_preserves_backup_and_reports_recovery_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            package = self.compile_package(parent)
+            before = {
+                path.relative_to(package).as_posix(): path.read_bytes()
+                for path in package.rglob("*")
+                if path.is_file()
+            }
+            original_rename = Path.rename
+            backup: Path | None = None
+
+            def fail_swap_and_restore(path: Path, target: Path) -> Path:
+                nonlocal backup
+                if path == package:
+                    backup = Path(target)
+                    return original_rename(path, target)
+                if path.name.startswith(".package.tmp-") and target == package:
+                    raise OSError("injected staging swap failure")
+                if backup is not None and path == backup and target == package:
+                    raise OSError("injected backup restore failure")
+                return original_rename(path, target)
+
+            with mock.patch.object(Path, "rename", fail_swap_and_restore):
+                with self.assertRaises(CompileSafetyError) as raised:
+                    compile_contract_file(CONTRACT, package)
+
+            self.assertIsNotNone(backup)
+            self.assertIn(str(backup), str(raised.exception))
+            self.assertFalse(package.exists())
+            self.assertTrue(backup.is_dir())
+            backup_snapshot = {
+                path.relative_to(backup).as_posix(): path.read_bytes()
+                for path in backup.rglob("*")
+                if path.is_file()
+            }
+            self.assertEqual(backup_snapshot, before)
+            self.assertEqual(
+                [path for path in parent.iterdir() if path.name.startswith(".package.tmp-")],
+                [],
+            )
+
     def test_pristine_recompile_is_allowed_but_started_runtime_is_refused(self):
         with tempfile.TemporaryDirectory() as td:
             parent = Path(td)
@@ -453,12 +759,8 @@ class SelfContainedPackageTest(unittest.TestCase):
             (package / "STATE.md").write_text(render_state_md(updated), encoding="utf-8", newline="\n")
             append_event(
                 package / "runtime" / "events.jsonl",
-                goal_id=updated.goal_id,
-                contract_sha256=updated.contract_sha256,
-                state_revision=updated.state_revision,
+                state=updated.to_dict(),
                 event_type="transition:COMPILED->PLAN_REVIEWED",
-                phase_id=updated.current_phase_id,
-                state_sha256=hashlib.sha256(state_path.read_bytes()).hexdigest(),
             )
             before = state_path.read_bytes()
 

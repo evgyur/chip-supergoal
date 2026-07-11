@@ -1,6 +1,6 @@
 {
   "catalog_version": "1.0",
-  "expected_code_count": 76,
+  "expected_code_count": 78,
   "diagnostics": [
     {
       "code": "SGV-CONTRACT-MALFORMED",
@@ -177,6 +177,12 @@
       "remediation_class": "package_rebuild"
     },
     {
+      "code": "SGV-PACKAGE-MUTABLE-UNSUPPORTED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "state_recovery"
+    },
+    {
       "code": "SGV-PACKAGE-PATH-ESCAPE",
       "invariant": "INV-ARCHIVE-001",
       "stage": "archive",
@@ -203,6 +209,12 @@
     {
       "code": "SGV-PACKAGE-STATE-MALFORMED",
       "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-PACKAGE-STATE-RECOVERY-REQUIRED",
+      "invariant": "INV-RECOVERY-001",
       "stage": "preflight",
       "remediation_class": "state_recovery"
     },

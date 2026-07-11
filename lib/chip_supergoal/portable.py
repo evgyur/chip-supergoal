@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import errno
 import os
 from pathlib import Path
+import stat
 import tempfile
 import time
 from typing import BinaryIO, Iterator
@@ -97,6 +98,32 @@ REQUIRED_MUTABLE_PATHS = frozenset(
 )
 
 
+def is_reparse_point(stat_result: os.stat_result) -> bool:
+    attributes = getattr(stat_result, "st_file_attributes", 0)
+    marker = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(attributes & marker)
+
+
+def iter_tree_no_follow(root: str | Path) -> Iterator[tuple[Path, os.stat_result]]:
+    package_root = Path(root)
+    pending = [package_root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as iterator:
+            entries = sorted(iterator, key=lambda item: item.name)
+        child_directories: list[Path] = []
+        for entry in entries:
+            path = Path(entry.path)
+            stat_result = entry.stat(follow_symlinks=False)
+            yield path, stat_result
+            if stat.S_ISDIR(stat_result.st_mode) and not (
+                stat.S_ISLNK(stat_result.st_mode)
+                or is_reparse_point(stat_result)
+            ):
+                child_directories.append(path)
+        pending.extend(reversed(child_directories))
+
+
 class StateLockTimeout(TimeoutError):
     pass
 
@@ -134,18 +161,67 @@ def logical_mode(relative_path: str | Path) -> str:
 
 def _open_lock_file(path: Path) -> BinaryIO:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
-    stream = os.fdopen(descriptor, "r+b", buffering=0)
     try:
-        if os.fstat(descriptor).st_size == 0:
+        before = path.lstat()
+    except FileNotFoundError:
+        before = None
+    if before is not None and (
+        not stat.S_ISREG(before.st_mode)
+        or stat.S_ISLNK(before.st_mode)
+        or is_reparse_point(before)
+    ):
+        raise OSError(f"lock path is not a regular file: {path}")
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o644)
+    try:
+        opened = os.fstat(descriptor)
+        current = path.lstat()
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or not stat.S_ISREG(current.st_mode)
+            or stat.S_ISLNK(current.st_mode)
+            or is_reparse_point(current)
+            or (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino)
+        ):
+            raise OSError(f"lock path changed while opening: {path}")
+        stream = os.fdopen(descriptor, "r+b", buffering=0)
+        descriptor = -1
+        if opened.st_size == 0:
             stream.seek(0)
             stream.write(b"\0")
             stream.flush()
-            os.fsync(descriptor)
+            os.fsync(stream.fileno())
+        elif opened.st_size != 1:
+            raise OSError(f"lock file must contain exactly one byte: {path}")
         return stream
     except BaseException:
-        stream.close()
+        if descriptor >= 0:
+            os.close(descriptor)
+        else:
+            stream.close()
         raise
+
+
+def package_operation_lock_path(root: str | Path) -> Path:
+    package_root = Path(root).resolve(strict=False)
+    return package_root.parent / f".{package_root.name}.operation.lock"
+
+
+@contextmanager
+def package_operation_lock(
+    root: str | Path,
+    *,
+    timeout: float = 10.0,
+    retry_interval: float = 0.05,
+) -> Iterator[None]:
+    with package_lock(
+        package_operation_lock_path(root),
+        timeout=timeout,
+        retry_interval=retry_interval,
+    ):
+        yield
 
 
 def _acquire_nonblocking(stream: BinaryIO) -> None:

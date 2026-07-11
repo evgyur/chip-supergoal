@@ -21,6 +21,10 @@
       "pattern": "^[a-f0-9]{64}$",
       "type": "string"
     },
+    "contract_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
     "current_phase_id": {
       "type": [
         "string",
@@ -64,6 +68,7 @@
     "schema_version",
     "goal_id",
     "contract_sha256",
+    "contract_revision",
     "state_revision",
     "lifecycle",
     "current_phase_id",

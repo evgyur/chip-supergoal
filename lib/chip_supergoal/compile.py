@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 
@@ -19,7 +20,10 @@ from .portable import (
     RUNTIME_SCRIPTS,
     RUNTIME_SPEC_FILES,
     RUNTIME_TEMPLATES,
+    is_reparse_point,
+    iter_tree_no_follow,
     logical_mode,
+    package_operation_lock,
     write_bytes_atomic,
     write_utf8_lf,
 )
@@ -44,16 +48,18 @@ def file_sha256(path: Path) -> str:
 
 
 def _iter_package_files(root: Path) -> list[Path]:
-    return sorted(
-        (
-            p
-            for p in root.rglob("*")
-            if p.is_file()
-            and p.relative_to(root).as_posix() != "MANIFEST.json"
-            and p.relative_to(root).as_posix() not in MUTABLE_PATH_NAMES
-        ),
-        key=lambda path: path.relative_to(root).as_posix(),
-    )
+    files: list[Path] = []
+    for path, stat_result in iter_tree_no_follow(root):
+        if stat.S_ISLNK(stat_result.st_mode) or is_reparse_point(stat_result):
+            raise CompileSafetyError("package inventory contains a symlink or reparse point")
+        if stat.S_ISDIR(stat_result.st_mode):
+            continue
+        if not stat.S_ISREG(stat_result.st_mode):
+            raise CompileSafetyError("package inventory contains a special file")
+        relative = path.relative_to(root).as_posix()
+        if relative != "MANIFEST.json" and relative not in MUTABLE_PATH_NAMES:
+            files.append(path)
+    return sorted(files, key=lambda path: path.relative_to(root).as_posix())
 
 
 def file_mode(relative_path: str | Path) -> str:
@@ -86,7 +92,32 @@ def build_manifest(
     }
 
 
-def _copy_text(source: Path, destination: Path) -> None:
+def _assert_safe_source_resource(source: Path, source_root: Path) -> None:
+    source_root = Path(os.path.abspath(source_root))
+    source = Path(os.path.abspath(source))
+    try:
+        relative = source.relative_to(source_root)
+        root_stat = source_root.lstat()
+        if stat.S_ISLNK(root_stat.st_mode) or is_reparse_point(root_stat):
+            raise ValueError
+        current = source_root
+        for part in relative.parts:
+            current /= part
+            current_stat = current.lstat()
+            if stat.S_ISLNK(current_stat.st_mode) or is_reparse_point(current_stat):
+                raise ValueError
+        if not stat.S_ISREG(source.lstat().st_mode):
+            raise ValueError
+        if not source.resolve(strict=True).is_relative_to(source_root.resolve(strict=True)):
+            raise ValueError
+    except (OSError, ValueError) as exc:
+        raise CompileSafetyError(
+            "required package resource is not a contained regular file"
+        ) from exc
+
+
+def _copy_text(source: Path, destination: Path, *, source_root: Path) -> None:
+    _assert_safe_source_resource(source, source_root)
     _write(destination, source.read_text(encoding="utf-8"))
 
 
@@ -98,20 +129,22 @@ def _copy_runtime_inventory(
     risk_policy_source: Path,
 ) -> None:
     code_root = Path(__file__).resolve().parents[2]
+    protocol_root = protocol_source.parent if protocol_source != resource_root / "templates/PROTOCOL.md" else resource_root
+    risk_policy_root = risk_policy_source.parent if risk_policy_source != resource_root / "spec/risk-policy.json" else resource_root
     inventory = (
-        *((code_root / "scripts" / name, Path("scripts") / name) for name in RUNTIME_SCRIPTS),
-        *((code_root / "lib" / "chip_supergoal" / name, Path("lib/chip_supergoal") / name) for name in RUNTIME_MODULES),
-        *((resource_root / "templates" / name, Path("templates") / name) for name in RUNTIME_TEMPLATES if name != "PROTOCOL.md"),
-        *((resource_root / "spec" / name, Path("spec") / name) for name in RUNTIME_SPEC_FILES if name != "risk-policy.json"),
-        *((resource_root / "profiles" / name, Path("profiles") / name) for name in RUNTIME_PROFILES),
-        (protocol_source, Path("templates/PROTOCOL.md")),
-        (risk_policy_source, Path("spec/risk-policy.json")),
+        *((code_root / "scripts" / name, Path("scripts") / name, code_root) for name in RUNTIME_SCRIPTS),
+        *((code_root / "lib" / "chip_supergoal" / name, Path("lib/chip_supergoal") / name, code_root) for name in RUNTIME_MODULES),
+        *((resource_root / "templates" / name, Path("templates") / name, resource_root) for name in RUNTIME_TEMPLATES if name != "PROTOCOL.md"),
+        *((resource_root / "spec" / name, Path("spec") / name, resource_root) for name in RUNTIME_SPEC_FILES if name != "risk-policy.json"),
+        *((resource_root / "profiles" / name, Path("profiles") / name, resource_root) for name in RUNTIME_PROFILES),
+        (protocol_source, Path("templates/PROTOCOL.md"), protocol_root),
+        (risk_policy_source, Path("spec/risk-policy.json"), risk_policy_root),
     )
-    for source, relative in inventory:
+    for source, relative, source_root in inventory:
         if not source.is_file():
             raise FileNotFoundError(f"required package resource is missing: {source}")
         destination = out_path / relative
-        _copy_text(source, destination)
+        _copy_text(source, destination, source_root=source_root)
         if logical_mode(relative) == "0755":
             os.chmod(destination, 0o755)
 
@@ -124,6 +157,7 @@ def initial_state(contract: Contract, contract_sha256: str) -> State:
     return State(
         goal_id=contract.goal.id,
         contract_sha256=contract_sha256,
+        contract_revision=contract.contract_revision,
         state_revision=1,
         lifecycle="COMPILED",
         current_phase_id=phase.id,
@@ -207,6 +241,18 @@ def _assert_not_source_container(out_path: Path, contract_source: Path | None) -
         raise CompileSafetyError("output target cannot be the contract file, source root, or a source ancestor")
 
 
+def _assert_safe_unresolved_output_leaf(path: Path) -> None:
+    absolute = Path(os.path.abspath(path))
+    if not os.path.lexists(absolute):
+        return
+    try:
+        stat_result = absolute.lstat()
+    except OSError as exc:
+        raise CompileSafetyError("output target cannot be inspected safely") from exc
+    if stat.S_ISLNK(stat_result.st_mode) or is_reparse_point(stat_result):
+        raise CompileSafetyError("output target must not be a symlink or reparse point")
+
+
 def _render_package(
     resolved: ResolvedContract,
     out_path: Path,
@@ -262,6 +308,7 @@ def _compile_resolved(
 ) -> Path:
     contract = resolved.contract
     raw_out = Path(out)
+    _assert_safe_unresolved_output_leaf(raw_out)
     out_path = raw_out.resolve(strict=False)
     parent = out_path.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -285,30 +332,40 @@ def _compile_resolved(
         if diagnostics:
             codes = ", ".join(sorted({diagnostic.code for diagnostic in diagnostics}))
             raise CompileSafetyError(f"staging package validation failed: {codes}")
-        if out_path.exists():
-            backup = parent / f".{out_path.name}.backup-{os.getpid()}-{next(tempfile._get_candidate_names())}"
-            out_path.rename(backup)
-            backup_created = True
-        staging.rename(out_path)
-        swap_completed = True
-        if backup_created and backup is not None:
+        with package_operation_lock(out_path):
             try:
-                shutil.rmtree(backup)
-            except OSError:
-                pass
+                # The preflight check above is an early failure optimization only.
+                # This check and the swap are the atomic overwrite decision.
+                _assert_safe_target(out_path, contract)
+                if out_path.exists():
+                    backup = parent / f".{out_path.name}.backup-{os.getpid()}-{next(tempfile._get_candidate_names())}"
+                    out_path.rename(backup)
+                    backup_created = True
+                staging.rename(out_path)
+                swap_completed = True
+                if backup_created and backup is not None:
+                    try:
+                        shutil.rmtree(backup)
+                    except OSError:
+                        pass
+            except Exception:
+                if (
+                    backup_created
+                    and not swap_completed
+                    and backup is not None
+                    and backup.exists()
+                    and not out_path.exists()
+                ):
+                    try:
+                        backup.rename(out_path)
+                    except OSError:
+                        raise CompileSafetyError(
+                            "package swap failed and automatic restore failed; "
+                            f"recover the existing package from {backup}"
+                        ) from None
+                raise
         return out_path
     except Exception:
-        if (
-            backup_created
-            and not swap_completed
-            and backup is not None
-            and backup.exists()
-            and not out_path.exists()
-        ):
-            try:
-                backup.rename(out_path)
-            except OSError:
-                pass
         if not swap_completed:
             shutil.rmtree(staging, ignore_errors=True)
         raise
