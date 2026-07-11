@@ -409,6 +409,33 @@ class CompileFailClosedTest(unittest.TestCase):
             after = {p.relative_to(output).as_posix(): p.read_bytes() for p in output.rglob("*") if p.is_file()}
             self.assertEqual(after, before)
 
+    def test_non_object_manifest_roots_are_sanitized_and_preserved(self):
+        cases = {
+            "list": "[]",
+            "null": "null",
+            "string": '"manifest-private-payload"',
+            "number": "987654321",
+        }
+        for label, payload in cases.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                source = self.write_contract(root, self.fixture())
+                output = root / "package"
+                output.mkdir()
+                (output / "CONTRACT.json").write_text(json.dumps(self.fixture()), encoding="utf-8")
+                (output / "MANIFEST.json").write_text(payload, encoding="utf-8")
+                before = {p.relative_to(output).as_posix(): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+
+                result = self.run_sgctl("compile", str(source), "--out", str(output))
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("compile error: existing output manifest has unsupported shape", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertNotIn("AttributeError", result.stderr)
+                self.assertNotIn(payload, result.stdout + result.stderr)
+                after = {p.relative_to(output).as_posix(): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+                self.assertEqual(after, before)
+
     def test_secret_bearing_contract_error_uses_stable_message(self):
         secret = "contract-private-token"
         data = self.fixture()

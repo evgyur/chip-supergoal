@@ -68,6 +68,8 @@ def _load_sealed_manifest(root: Path) -> dict:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except Exception as exc:
         raise CompileSafetyError("existing output manifest is malformed") from exc
+    if not isinstance(manifest, dict):
+        raise CompileSafetyError("existing output manifest has unsupported shape")
     if manifest.get("manifest_version") != "1.0" or not isinstance(manifest.get("artifacts"), list):
         raise CompileSafetyError("existing output manifest has unsupported shape")
     expected = build_manifest(root)
