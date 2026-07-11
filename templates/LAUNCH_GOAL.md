@@ -1,24 +1,44 @@
 # Launch Goal: {{TASK_TITLE}}
 
-Reply `/goal` to this file/message to start the generated SuperGoal executor through the standard upstream Hermes GoalManager.
+Reply `/goal` to this file/message to start the generated package through the
+standard upstream Hermes GoalManager.
 
-- **SuperGoal root:** `{{SUPERGOAL_ROOT}}`
-- **Protocol:** `{{SUPERGOAL_ROOT}}/PROTOCOL.md`
-- **Loop design:** `{{SUPERGOAL_ROOT}}/LOOP_DESIGN.md`
-- **Roadmap:** `{{SUPERGOAL_ROOT}}/ROADMAP.md`
-- **State:** `{{SUPERGOAL_ROOT}}/STATE.md`
-- **Phase specs:** `{{SUPERGOAL_ROOT}}/phases/phase-*.md`
+## Relocatable package locator
 
-SUPERGOAL_GOAL_BODY: Execute the disk-backed SuperGoal package in `{{SUPERGOAL_ROOT}}` using standard Hermes `/goal` continuation only. First read `{{SUPERGOAL_ROOT}}/PROTOCOL.md`, `{{SUPERGOAL_ROOT}}/LOOP_DESIGN.md`, `{{SUPERGOAL_ROOT}}/STATE.md`, `{{SUPERGOAL_ROOT}}/ROADMAP.md`, and `{{SUPERGOAL_ROOT}}/phases/phase-*.md`. Trust `STATE.md` over chat memory and use `LOOP_DESIGN.md` as the execution harness for reviewer/judge roles, gates, stop/budget limits, boundaries, and recovery. Do not stop at numbered phase boundaries: after each `SUPERGOAL_PHASE_DONE`, update `STATE.md` and immediately continue to the next phase/audit until `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE`, a forced platform cutoff, or a real safety/approval blocker. Weak blockers are forbidden: private verification/readback, local checks, read-only probes, usage/log queries, report/state writes, and requested repo cleanup are not approval blockers. If forced to yield before completion, print `SUPERGOAL_TURN_YIELD`, `Goal complete: no`, `Next: <phase|AUDIT|blocked marker>`, and `Completion requires: AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE in the same final response.` Do not claim the whole goal is done after a phase. Run final audit after all phases. The whole `/goal` is complete only when the same final response contains both `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE` plus `Goal complete: yes`. If truly blocked, print `BLOCKED_BY_APPROVAL`, `FAILURE_HANDOFF`, or `AUDIT_HANDOFF` with the exact missing input and stop.
+- Package root: the parent directory of the `LAUNCH_GOAL.md` being executed.
+- Resolve the package root at execution time; never substitute a compile-time output path.
+
+## Launch context
+
+- `CONTRACT.json`
+- `THINKING.md`
+- {{OPTIONAL_RESEARCH_CONTEXT}}
+- `LOOP_DESIGN.md`
+- `ROADMAP.md`
+- `runtime/STATE.json`
+- `STATE.md` (projection only)
+- `phases/phase-*.md`
+- `PROTOCOL.md`
+
+## Preflight
+
+From the package root, run every emitted preflight command:
+
+- `python scripts/sgctl.py validate-package . --strict`
+- `python scripts/sgctl.py validate-loop-design LOOP_DESIGN.md --instantiated`
+- {{PHASE_PREFLIGHT_COMMANDS}}
+- {{OPTIONAL_RESEARCH_PREFLIGHT_COMMAND}}
+
+## Delivery boundary
+
+{{RESOLVED_DELIVERY_JSON_OR_NOT_DECLARED}}
+
+## Approval boundary
+
+{{APPROVALS_JSON_OR_NOT_DECLARED}}
+
+SUPERGOAL_GOAL_BODY: Resolve the package root as the parent directory of the LAUNCH_GOAL.md being executed. From that root read CONTRACT.json, every emitted executor view, authoritative runtime/STATE.json, and its STATE.md projection. Run every Python command in the Preflight section from the package root before phase execution. Enforce exactly the resolved delivery and approval records printed above; do not add undeclared defaults. Use standard Hermes `/goal` continuation only, with no custom runner or nested `/goal`. Continue until final audit passes, a contract-declared boundary blocks progress, or the host forces a yield. After runtime authority permits completion, host compatibility requires `AUDIT_COMPLETE`, `SUPERGOAL_RUN_COMPLETE`, and `Goal complete: yes` together in the final response; those strings do not create runtime authority.
 
 ## Human-readable goal
 
 {{ONE_LINE_TASK}}
-
-## Completion condition
-
-The standard Hermes `/goal` loop should continue until all planned phases are complete, final audit has passed, required delivery receipts exist, and the executor prints `AUDIT_COMPLETE`, `SUPERGOAL_RUN_COMPLETE`, and `Goal complete: yes` in the final response.
-
-## Upstream `/goal` compatibility
-
-This file is a compiler output for standard Hermes GoalManager. It does not require a custom runner. Phase state, receipts, approvals, and audit are handled by the generated package files; `/goal` only provides continuation turns and judge decisions.

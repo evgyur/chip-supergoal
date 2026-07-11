@@ -1,246 +1,366 @@
 from __future__ import annotations
 
+import json
+from dataclasses import fields, is_dataclass
+from typing import Any
+
 from .model import Contract
-from .research import research_report, research_required
+from .research import research_gate, research_report, research_required
 
 
-def _list_lines(items, *, fallback="none") -> str:
-    values = [str(x).strip() for x in items if str(x).strip()]
-    return "\n".join(f"- {x}" for x in values) if values else f"- {fallback}"
+NOT_DECLARED = "not declared by CONTRACT.json"
+
+
+def _view_plain(value: Any) -> Any:
+    if is_dataclass(value):
+        return {field.name: _view_plain(getattr(value, field.name)) for field in fields(value)}
+    if isinstance(value, dict):
+        return {key: _view_plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_view_plain(item) for item in value]
+    return value
+
+
+def _compact_json(value: Any) -> str:
+    """Return the lossless, deterministic representation used in list records."""
+    return json.dumps(
+        _view_plain(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+
+
+def _json_block(value: Any) -> str:
+    """Return a readable, lossless JSON block with deterministic key ordering."""
+    return (
+        "```json\n"
+        + json.dumps(_view_plain(value), ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n```"
+    )
+
+
+def _declared_block(value: Any) -> str:
+    if value is None or value == [] or value == {}:
+        return NOT_DECLARED
+    return _json_block(value)
+
+
+def _json_bullets(items: list[Any]) -> list[str]:
+    return [f"- {_compact_json(item)}" for item in items] or [f"- {NOT_DECLARED}"]
+
+
+def _scalar(value: Any) -> str:
+    if value is None or value == "":
+        return NOT_DECLARED
+    if isinstance(value, str):
+        return value
+    return _compact_json(value)
 
 
 def render_thinking(contract: Contract) -> str:
-    architecture = contract.architecture.data
-    assumptions = architecture.get("assumptions", [])
-    memory_hits = architecture.get("memory_hits", [])
-    tools = architecture.get("tools_skills_used", ["chip-supergoal compiler"])
-    best_practices = architecture.get("best_practices", [])
-    if not best_practices:
-        best_practices = [
-            "deterministic rendering and semantic package validation",
-            "historical eval before recurring rollout",
-            "reversible production activation with one bounded approval",
-        ]
-    source_lines = [f"{s.id}: {s.authority} — {s.locator}" for s in contract.source_set]
-    decision_lines = [str(x.get("summary") or x.get("id") or x) for x in contract.decisions]
+    identity = {
+        "contract_revision": contract.contract_revision,
+        "profile": contract.profile,
+        "protocol_version": contract.protocol_version,
+        "schema_version": contract.schema_version,
+    }
     return f"""# THINKING — {contract.goal.title}
 
 ## Goal
 {contract.goal.objective}
 
+## Goal contract
+{_json_block(contract.goal)}
+
 ## Non-goals
-{_list_lines(contract.goal.non_goals)}
+{_declared_block(contract.goal.non_goals)}
 
-## Constraints and permissions
-- Profile: `{contract.profile}`
-- Workspace root: `{contract.goal.workspace_root}`
-- Executor: standard Hermes `/goal`; no nested goal or custom production runner.
-- Data policy: {architecture.get('data_policy', 'private data and secrets stay out of generated/tracked artifacts')}
+## Contract identity
+{_json_block(identity)}
 
-## Risks top 3
-{_list_lines([f'{r.id}: {r.tag} — {r.mitigation or r.severity}' for r in contract.risks[:3]])}
+## Source set
+{_declared_block(contract.source_set)}
 
-## Dependencies/order
-- Phase order is derived from `CONTRACT.json` ordinals and dependencies.
-{_list_lines(decision_lines, fallback='no extra architecture decisions')}
+## Decisions
+{_declared_block(contract.decisions)}
 
-## Assumptions
-{_list_lines(assumptions, fallback='Contract source is canonical; runtime claims must be reverified during execution.')}
+## Architecture contract
+{_declared_block(contract.architecture.data)}
 
-## Memory hits applied
-{_list_lines(memory_hits, fallback='none')}
+## Compatibility contract
+{_declared_block(contract.compatibility)}
 
-## Context evidence
-{_list_lines(source_lines)}
-
-## Tools/skills used
-{_list_lines(tools)}
-
-## Best practices applied
-{_list_lines(best_practices)}
+## Risk contract
+{_declared_block(contract.risks)}
 """
 
 
 def render_loop_design(contract: Contract) -> str:
     loop = contract.loop.data
-    architecture = contract.architecture.data
-    sources = [f"{s.id}: {s.authority}/{s.freshness} — {s.locator}" for s in contract.source_set]
-    stop_conditions = loop.get("stop_conditions", [])
-    approvals = [f"{a.id}: {a.scope}" for a in contract.approvals if a.required]
-    verification = loop.get("verification_gates", [
-        "phase mandatory commands and acceptance criteria",
-        str(loop.get("judge") or "programmatic tests plus evidence-backed final audit"),
-        "strict package validation and RPD/Senior mutation gates",
-    ])
-    checkpoints = loop.get("state_checkpoints", [
-        str(loop.get("state") or "STATE.md plus phase reports"),
-        "write phase evidence and event ledger before advancing",
-        "continue through numbered phases until final audit or a real blocker",
-    ])
-    boundaries = loop.get("boundaries", [
-        str(architecture.get("data_policy") or "secrets and raw private data never leave the approved local boundary"),
-        "no cron, Telegram, gateway, provider, credential, grant, payment, or production-data mutation before its declared approval gate",
-        "no custom runner, daemon, database, web UI, or nested /goal",
-    ])
-    recovery = loop.get("failure_recovery", [
-        "On gate failure, inspect direct evidence, patch the smallest cause, and retry at most the declared limit.",
-        "After two no-progress retries or any privacy/production-boundary breach, stop with FAILURE_HANDOFF and one concrete blocker.",
-        "On rollout failure, execute the manifest rollback and verify the previous cron state before continuing.",
-    ])
+    host = loop.get("host_model")
+    reviewer = loop.get("reviewer")
+    judge = loop.get("judge")
+    verification = loop.get("verification_gates")
+    checkpoints = loop.get("state_checkpoints")
+    stops = loop.get("stop_conditions")
+    boundaries = loop.get("boundaries")
+    recovery = loop.get("failure_recovery")
+
     return f"""# LOOP_DESIGN.md
 
 ## Goal
 {contract.goal.objective}
 
 ## Context sources
-- `CONTRACT.json` is the canonical planning contract.
-{_list_lines(sources)}
+- Canonical source records follow; when empty they are {NOT_DECLARED}.
+{_declared_block(contract.source_set)}
 
 ## Host model
-- Host: {loop.get('host_model', 'standard Hermes /goal executor')}.
-- Service tier: normal; fast mode is not enabled by this package.
+- Contract host model: {_scalar(host)}.
+- Protocol invariant: standard Hermes `/goal` interprets this package without adding undeclared host capabilities.
 
 ## Reviewer / judge model
-- Reviewer: {loop.get('reviewer', 'embedded RPD/Senior gate; findings must mutate artifacts or become checked-holds')}.
-- Judge: {loop.get('judge', 'programmatic pass/fail checks against phase acceptance criteria')}.
+- Contract reviewer: {_scalar(reviewer)}.
+- Contract judge: {_scalar(judge)}.
 
 ## Verification gates
-{_list_lines(verification)}
+- Contract verification gates: {_scalar(verification)}.
+- Compiler invariant: generated phase views expose every declared verifier and command record.
 
 ## State checkpoints
-{_list_lines(checkpoints)}
+- Contract state checkpoints: {_scalar(checkpoints)}.
+- Runtime invariant: `runtime/STATE.json` is the authoritative runtime state and `STATE.md` is its projection.
 
 ## Stop conditions
-{_list_lines(stop_conditions, fallback='real blocker, exhausted retry budget, or verified completion')}
+- Contract retry/iteration stop conditions: {_scalar(stops)}.
 
 ## Budget
-- phases: {len(contract.phases)}
-- phase repair rounds: {loop.get('max_iterations', 3)} maximum per failing phase
-- audit rounds: {loop.get('audit_rounds', 3)}
-- architecture budget: {loop.get('budget', 'no unbounded new orchestration layer')}
+- Compiler fact: this contract contains {len(contract.phases)} phase(s).
+- Contract maximum iterations: {_scalar(loop.get('max_iterations'))}.
+- Contract audit rounds: {_scalar(loop.get('audit_rounds'))}.
+- Other budget fields remain in the complete loop contract below.
 
 ## Boundaries
-{_list_lines(boundaries)}
+- Contract secret, private, egress, production, and other boundaries: {_scalar(boundaries)}.
 
 ## Failure recovery
-{_list_lines(recovery)}
+- Contract retry, rollback, recovery, or handoff rules: {_scalar(recovery)}.
 
 ## Human approvals
-{_list_lines(approvals, fallback='none beyond real sensitive gates declared in the contract')}
+{_declared_block(contract.approvals)}
+
+## Declared loop contract
+{_declared_block(loop)}
 
 ## ASCII preview
 ```text
-INTAKE / RECON
-  ↓
-THINKING + RESEARCH
-  ↓
-LOOP_DESIGN.md
-  ↓ gate: loop health + RPD_PLAN_REVIEW
-ROADMAP + PHASE SPECS
-  ↓ gate: strict validation + preflight
-/goal EXECUTION
-  ↓
-PHASE N → tests/evidence → RPD_PHASE_REVIEW when risky
-  ↓
-FINAL AUDIT → RPD_FINAL_REVIEW
-  ↓
-AUDIT_COMPLETE → SUPERGOAL_RUN_COMPLETE
+CONTRACT.json -> generated executor views -> Python package validation
+runtime/STATE.json -> STATE.md projection
+phase contracts -> declared verifiers -> final audit
 ```
 """
 
 
+def _research_emitted(contract: Contract) -> bool:
+    return bool(research_required(contract) or research_gate(contract))
+
+
 def render_roadmap(contract: Contract) -> str:
-    research = research_report(contract)
-    research_line = f"{research['status']} via {research['provider']} — {research['summary'] or 'no summary'}" if research_required(contract) or contract.compatibility.get("research_gate") else "not required"
-    architecture = contract.architecture.data
-    assumptions = architecture.get("assumptions", [])
     lines = [
-        f"# ROADMAP — {contract.goal.title}", "", "## Decision package",
+        f"# ROADMAP — {contract.goal.title}",
+        "",
+        "## Decision package",
         f"- Goal ID: `{contract.goal.id}`",
         f"- Done condition: {contract.goal.done_condition}",
-        f"- Research evidence: {research_line}",
-        "", "## Context summary",
-        f"- Profile: `{contract.profile}`",
-        f"- Contract revision: `{contract.contract_revision}`",
-        f"- Sources: `{len(contract.source_set)}`; phases: `{len(contract.phases)}`; approvals: `{len([a for a in contract.approvals if a.required])}`",
+        f"- Research artifact: {'RESEARCH.md emitted' if _research_emitted(contract) else NOT_DECLARED}",
+        "",
+        "## Goal contract",
+        _json_block(contract.goal),
+        "",
+        "## Source set",
+        _declared_block(contract.source_set),
+        "",
+        "## Decisions",
+        _declared_block(contract.decisions),
+        "",
+        "## Architecture contract",
+        _declared_block(contract.architecture.data),
+        "",
+        "## Loop contract",
+        _declared_block(contract.loop.data),
+        "",
+        "## Compatibility contract",
+        _declared_block(contract.compatibility),
+        "",
+        "## Research record",
+        _json_block(research_report(contract)) if _research_emitted(contract) else NOT_DECLARED,
+        "",
+        "## Risks",
+        _declared_block(contract.risks),
+        "",
+        "## Approval contract",
+        _declared_block(contract.approvals),
+        "",
+        "## Resolved delivery contract",
+        _declared_block(contract.delivery.data),
+        "",
+        "## Phase map",
     ]
-    if contract.decisions:
-        lines += ["", "## Architecture decisions"]
-        lines += [f"- {x.get('id', 'decision')}: {x.get('summary', x)}" for x in contract.decisions]
-    lines += ["", "## Assumptions"]
-    lines += [f"- {x}" for x in assumptions] or ["- Runtime claims are hypotheses until reverified by phase commands."]
-    lines += ["", "## Risk top 3"]
-    lines += [f"- {r.id}: `{r.tag}` — {r.mitigation or r.severity}" for r in contract.risks[:3]] or ["- none"]
-    if contract.approvals:
-        lines += ["", "## Human approval manifest"]
-        lines += [f"- {a.id}: {'required' if a.required else 'not required'} — {a.scope}" for a in contract.approvals]
-    lines += ["", "## Phase map"]
-    for p in contract.phases:
-        deps = ", ".join(p.depends_on) or "none"
-        lines.append(f"- {p.id}: {p.name} — depends on {deps}")
+    for phase in contract.phases:
+        dependencies = ", ".join(phase.depends_on) or "none"
+        lines.append(f"- {phase.id}: {phase.name} — depends on {dependencies}")
+
     lines += ["", "## Phases"]
-    for p in contract.phases:
-        lines += ["", f"### {p.id} — {p.name}", f"Task: {p.task}", "Acceptance criteria:"]
-        lines += [f"- {c.id}: {c.statement}" for c in p.criteria]
-        lines += ["Mandatory commands:"]
-        lines += [f"- {c.id}: `{c.command}`" for c in p.commands]
-        lines += [f"Evidence: {', '.join(sorted({c.evidence_tier for c in p.criteria})) or 'direct_artifact'}"]
-    review = contract.compatibility.get("rpd_plan_review", {})
-    if review:
-        lines += ["", "## RPD_PLAN_REVIEW"]
-        for key in ["pattern_hunter", "gonzo", "devils_advocate", "integrator", "senior_gate", "overengineering_budget", "mutations_applied", "verdict"]:
-            if review.get(key):
-                label = key.replace("_", " ").title()
-                lines.append(f"- {label}: {review[key]}")
+    for phase in contract.phases:
+        lines += [
+            "",
+            f"### {phase.id} — {phase.name}",
+            f"Task: {phase.task}",
+            f"Dependencies: {_compact_json(phase.depends_on)}",
+            f"Risk tags: {_compact_json(phase.risk_tags)}",
+            f"RPD policy: {_compact_json(phase.rpd)}",
+            "",
+            "**Work items:**",
+            *_json_bullets(phase.work_items),
+            "",
+            "**Deliverables:**",
+            *_json_bullets(phase.deliverables),
+            "",
+            "**Acceptance criteria:**",
+            *_json_bullets(phase.criteria),
+            "",
+            "**Mandatory commands:**",
+            *_json_bullets(phase.commands),
+            "",
+            "**Complete phase contract:**",
+            _json_block(phase),
+        ]
+
+    review = contract.compatibility.get("rpd_plan_review")
+    if review is not None:
+        lines += ["", "## RPD_PLAN_REVIEW", _declared_block(review)]
     return "\n".join(lines) + "\n"
 
 
 def render_state(contract: Contract) -> str:
-    baseline = contract.compatibility.get("baseline_ref") or "workspace is non-git; P01 must establish a clean version-controlled baseline before implementation"
-    delivery = contract.delivery.data.get("review_pack_version")
-    delivery_state = f"{delivery} pending delivery receipt under out/" if delivery else "not requested"
-    return f"""# STATE — {contract.goal.title}
+    """Compatibility renderer; live packages use state.render_state_md instead."""
+    return f"""# STATE projection guidance — {contract.goal.title}
 
-Goal identity: `{contract.goal.id}`
-Current phase: 1
-Total phases: {len(contract.phases)}
-Baseline ref: {baseline}
-Status snapshot: READY_TO_DISPATCH
-Goal complete: no
-SUPERGOAL_RUN_COMPLETE: no
-Delivery state: {delivery_state}
-
-## Event ledger
-- EVT-000001 compiled from CONTRACT.json revision {contract.contract_revision}; implementation phases remain pending.
+`runtime/STATE.json` is the authority for runtime state. `STATE.md` is a generated
+projection of that JSON state and is not a second control plane. This compile-time
+compatibility renderer does not declare a baseline, delivery status, phase status,
+or runtime event that is absent from the authoritative runtime record.
 """
 
 
 def render_launch_goal(contract: Contract) -> str:
     marker = "SUPERGOAL" + "_GOAL_BODY:"
-    package_root = "this generated SuperGoal package root (the directory containing LAUNCH_GOAL.md)"
+    context_files = [
+        "CONTRACT.json",
+        "THINKING.md",
+        "LOOP_DESIGN.md",
+        "ROADMAP.md",
+        "runtime/STATE.json",
+        "STATE.md",
+        "phases/phase-*.md",
+        "PROTOCOL.md",
+    ]
+    if _research_emitted(contract):
+        context_files.insert(2, "RESEARCH.md")
+    context_text = ", ".join(f"`{path}`" for path in context_files)
+    preflight_commands = [
+        "python scripts/sgctl.py validate-package . --strict",
+        "python scripts/sgctl.py validate-loop-design LOOP_DESIGN.md --instantiated",
+        *[
+            f"python scripts/sgctl.py validate-phase-markdown phases/phase-{index + 1:02d}.md"
+            for index in range(len(contract.phases))
+        ],
+    ]
+    if _research_emitted(contract):
+        preflight_commands.append(
+            "python scripts/sgctl.py research-gate CONTRACT.json --format json"
+        )
+    delivery = _declared_block(contract.delivery.data)
+    approvals = _declared_block(contract.approvals)
     body = (
-        f"{marker} From the project root `{contract.goal.workspace_root}`, execute {package_root}. "
-        "Read `PROTOCOL.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and `phases/phase-*.md` from that package root. "
-        f"Goal ID `{contract.goal.id}`. "
-        "Start from STATE.md current phase, continue through numbered phases, run the final audit, and finish only after "
-        "AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE appear in the same final response with Goal complete: yes. "
-        "Preserve the planner/compiler boundary: do not create a production runner or nested /goal; standard Hermes /goal remains the executor."
+        f"{marker} Resolve the package root at execution time as the parent directory of the "
+        "LAUNCH_GOAL.md being executed. From that package root, read the declared context files "
+        f"({context_text}). Run every Python command in the Preflight section from the package root. "
+        f"Execute goal `{contract.goal.id}` from the phase selected by authoritative `runtime/STATE.json`; "
+        "treat `STATE.md` only as its projection. Enforce exactly the resolved Delivery boundary and "
+        "Approval boundary printed in this file; do not add undeclared operational defaults. Use standard "
+        "Hermes `/goal` continuation only and do not create a custom runner or nested `/goal`. Dispatch status: "
+        "continue until final audit passes, a contract-declared boundary blocks progress, or the host forces a "
+        "yield. After runtime authority permits completion, host compatibility requires `AUDIT_COMPLETE`, "
+        "`SUPERGOAL_RUN_COMPLETE`, and `Goal complete: yes` together in the final response. Those marker "
+        "strings document compatibility and do not create runtime authority."
     )
-    return f"# LAUNCH_GOAL — {contract.goal.title}\n\n{body}\n"
+    lines = [
+        f"# LAUNCH_GOAL — {contract.goal.title}",
+        "",
+        "## Relocatable package locator",
+        "- Package root: the parent directory of the LAUNCH_GOAL.md being executed.",
+        "- Resolve the root at execution time; no compile-time output path is authoritative.",
+        "",
+        "## Launch context",
+        *[f"- `{path}`" for path in context_files],
+        "",
+        "## Preflight",
+        "- Run each command from the package root:",
+        *[f"  - `{command}`" for command in preflight_commands],
+        "",
+        "## Delivery boundary",
+        delivery,
+        "",
+        "## Approval boundary",
+        approvals,
+        "",
+        body,
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def render_phase(contract: Contract, phase_index: int) -> str:
-    p = contract.phases[phase_index]
-    commands = "; ".join(c.command for c in p.commands)
-    evidence = ", ".join(sorted({c.evidence_tier for c in p.criteria})) or "direct_artifact"
-    deps = ", ".join(p.depends_on) or "none"
-    focus = p.rpd.focus[0] if p.rpd.focus else "none"
-    lines = [f"# {p.id} — {p.name}", "", "SUPERGOAL_PHASE_START", f"Phase: {p.ordinal} of {len(contract.phases)} — {p.name}", f"Task: {p.task}", f"Mandatory commands: {commands}", f"Acceptance criteria: {len(p.criteria)}", f"Evidence required: {evidence}", f"Depends on phases: {deps}", f"RPD required: {'yes' if p.rpd.required else 'no'}", f"RPD focus: {focus}", "", "## Work"]
-    lines += [f"- {w.get('text', w)}" for w in p.work_items] or ["- Execute the phase task."]
-    lines += ["", "## Acceptance criteria"]
-    lines += [f"- {c.statement}" for c in p.criteria]
-    lines += ["", "## Mandatory commands"]
-    lines += [f"- {c.command}" for c in p.commands]
-    lines += ["", "## Evidence required"]
-    lines += [f"- {evidence} evidence for {c.id}" for c in p.criteria]
+    phase = contract.phases[phase_index]
+    command_ids = ", ".join(command.id for command in phase.commands) or NOT_DECLARED
+    evidence = ", ".join(
+        dict.fromkeys(criterion.evidence_tier for criterion in phase.criteria)
+    ) or NOT_DECLARED
+    dependencies = ", ".join(phase.depends_on) or "none"
+    focuses = ", ".join(phase.rpd.focus) or "none"
+    lines = [
+        f"# {phase.id} — {phase.name}",
+        "",
+        "SUPERGOAL_PHASE_START",
+        f"Phase: {phase.ordinal} of {len(contract.phases)} — {phase.name}",
+        f"Task: {phase.task}",
+        f"Mandatory commands: {command_ids}",
+        f"Acceptance criteria: {len(phase.criteria)}",
+        f"Evidence required: {evidence}",
+        f"Depends on phases: {dependencies}",
+        f"RPD required: {'yes' if phase.rpd.required else 'no'}",
+        f"RPD focus: {focuses}",
+        "",
+        "## Work",
+        *_json_bullets(phase.work_items),
+        "",
+        "## Deliverables",
+        *_json_bullets(phase.deliverables),
+        "",
+        "## Acceptance criteria",
+        *(_json_bullets(phase.criteria) if phase.criteria else [NOT_DECLARED]),
+        "",
+        "## Mandatory commands",
+        *_json_bullets(phase.commands),
+        "",
+        "## Evidence required",
+        *(_json_bullets(phase.criteria) if phase.criteria else [NOT_DECLARED]),
+        "",
+        "## Risk tags",
+        _declared_block(phase.risk_tags),
+        "",
+        "## RPD policy",
+        _json_block(phase.rpd),
+        "",
+        "## Complete phase contract",
+        _json_block(phase),
+    ]
     return "\n".join(lines) + "\n"

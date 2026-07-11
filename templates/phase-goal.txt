@@ -1,8 +1,8 @@
-# Phase spec template — write to .supergoal/phases/phase-N.md
+# Phase spec template — write to phases/phase-NN.md from the package root
 #
 # This is a free-form work spec the executing agent reads from disk.
-# No char budget. The agent follows .supergoal/PROTOCOL.md for the
-# execution loop, failure recovery, and memory writeback.
+# No char budget. The agent follows package-root-relative PROTOCOL.md for
+# execution semantics declared by CONTRACT.json.
 #
 # Replace {{...}} placeholders. Keep the SUPERGOAL_PHASE_START block
 # verbatim so validate-phase.sh and the runtime can anchor on it.
@@ -50,7 +50,7 @@ RPD focus: {{RPD_FOCUS}}
 
 - Required: {{RPD_REQUIRED}}
 - Focus: {{RPD_FOCUS}}
-- If required, run `RPD_PHASE_REVIEW` from `.supergoal/PROTOCOL.md` before `SUPERGOAL_PHASE_DONE`.
+- If required, use the `RPD_PHASE_REVIEW` compatibility block documented in `PROTOCOL.md` before `SUPERGOAL_PHASE_DONE`.
 - Every RPD finding must mutate the work/spec or be marked `checked-holds` with evidence.
 
 ## Notes
@@ -59,8 +59,7 @@ RPD focus: {{RPD_FOCUS}}
 
 ---
 
-The agent will, during execution, print SUPERGOAL_PHASE_START (above),
-do the work, then print SUPERGOAL_PHASE_VERIFY, MEMORY_SAVED, and
-SUPERGOAL_PHASE_DONE in order. On failure, the agent follows the
-3-strike recovery protocol in .supergoal/PROTOCOL.md without further
-instruction needed here.
+The agent prints compatibility markers only as documented by `PROTOCOL.md` and
+records authoritative state/evidence through the packaged Python runtime. This
+template does not declare retry, recovery, approval, delivery, or writeback
+behavior that is absent from `CONTRACT.json`.

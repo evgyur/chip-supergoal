@@ -156,9 +156,11 @@ def validate_phase_markdown(path: str | Path) -> list[Diagnostic]:
     if meta.get("RPD required") not in {None, "yes", "no"}:
         diagnostics.append(_diag("SGV-PHASE-RPD-ENUM", "INV-RPD-001", str(p), "/metadata/RPD required", "RPD required must be yes or no", "Use yes/no."))
     focus = meta.get("RPD focus")
-    if focus and focus not in {"security", "integration", "ux", "migration", "data-loss", "gateway", "payments", "none"}:
+    allowed_focuses = {"security", "integration", "ux", "migration", "data-loss", "gateway", "payments", "none"}
+    focuses = [item.strip() for item in focus.split(",")] if focus else []
+    if focuses and (any(item not in allowed_focuses for item in focuses) or ("none" in focuses and len(focuses) != 1)):
         diagnostics.append(_diag("SGV-PHASE-RPD-FOCUS-ENUM", "INV-RPD-001", str(p), "/metadata/RPD focus", "RPD focus has unsupported value", "Use the allowed focus enum."))
-    if meta.get("RPD required") == "no" and focus and focus != "none":
+    if meta.get("RPD required") == "no" and focuses and focuses != ["none"]:
         diagnostics.append(_diag("SGV-PHASE-RPD-MISMATCH", "INV-RPD-001", str(p), "/metadata/RPD", "RPD focus is set while RPD required is no", "Set RPD required yes or focus none with a waiver."))
     deps = meta.get("Depends on phases") or ""
     if total is not None and deps.lower() != "none":

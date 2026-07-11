@@ -53,14 +53,14 @@ def research_report(contract: Contract) -> dict[str, Any]:
     gate = research_gate(contract)
     required = research_required(contract)
     status = research_status(contract)
-    provider = str(gate.get("provider") or ("perplex" if required else "none"))
+    provider = str(gate.get("provider") or "")
     sources = research_sources(contract)
     return {
         "schema_version": "1.0",
         "required": required,
         "status": status,
         "provider": provider,
-        "query": str(gate.get("query") or contract.goal.objective),
+        "query": str(gate.get("query") or ""),
         "summary": str(gate.get("summary") or ""),
         "sources": sources,
         "planning_implications": list(gate.get("planning_implications", [])) if isinstance(gate.get("planning_implications", []), list) else [],
@@ -71,54 +71,15 @@ def research_report(contract: Contract) -> dict[str, Any]:
 
 def render_research_markdown(contract: Contract) -> str:
     report = research_report(contract)
-    provider_line = f"- Skill `perplex`: {'used' if report['provider'] == 'perplex' and report['status'] == 'satisfied' else 'preferred'}"
-    if not report["required"]:
-        provider_line = "- Skill `perplex`: skipped-with-reason"
-    lines = [
-        "# Research gate record",
-        "",
-        f"Status: {report['status']}",
-        f"Required: {'yes' if report['required'] else 'no'}",
-        f"Provider: {report['provider']}",
-        f"Query: {report['query']}",
-        "",
-        "## Trigger",
-        f"- {'Research required by contract/risk triggers before roadmap compilation.' if report['required'] else 'Research not required for this contract.'}",
-        "",
-        "## Research tool priority",
-        provider_line,
-        "- Official docs / Context7: fallback or verification source",
-        "- Generic web search: fallback-only",
-        "",
-        "## Summary",
-        f"- {report['summary'] or ('blocked until research evidence is attached' if report['required'] else 'not required')}",
-        "",
-        "## Fallback justification",
-        f"- {report['provider_unavailable_reason'] or ('not needed; Perplex used or research not required' if report['provider'] == 'perplex' or not report['required'] else 'missing')}",
-        "",
-        "## Sources",
-    ]
-    if report["sources"]:
-        for src in report["sources"]:
-            title = src.get("title") or src.get("url") or "source"
-            url = src.get("url") or src.get("locator") or ""
-            provider = src.get("provider") or report["provider"]
-            lines.append(f"- [{provider}] {title} — {url}")
-    else:
-        lines.append("- none")
-    lines += ["", "## Planning implications"]
-    if report["planning_implications"]:
-        lines += [f"- {x}" for x in report["planning_implications"]]
-    else:
-        lines.append("- none")
-    lines += ["", "## Unverified assumptions"]
-    if report["required"] and report["status"] != "satisfied":
-        lines.append("- Assumption: research evidence missing")
-        lines.append("  - Impact: roadmap cannot be considered strict-ready")
-        lines.append("  - Handling: blocked until Perplex/official-docs research is attached")
-    else:
-        lines.append("- none")
-    return "\n".join(lines) + "\n"
+    return (
+        "# Research gate record\n\n"
+        "This is a deterministic projection of the research record declared by "
+        "`CONTRACT.json`; it does not add tool, provider, or fallback claims.\n\n"
+        "## Declared research record\n"
+        "```json\n"
+        + json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n```\n"
+    )
 
 
 def write_research_report(contract: Contract, path: str | Path) -> None:

@@ -50,6 +50,71 @@ class CompileDeterminismTest(unittest.TestCase):
                 self.assertEqual(verify_event_chain(events), [])
                 self.assertIn("timestamp", events[0])
 
+    def test_launch_hydrates_context_preflight_and_resolved_boundaries(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "sg"
+            self.compile_to(out)
+            launch = (out / "LAUNCH_GOAL.md").read_text(encoding="utf-8")
+            resolved = json.loads((out / "CONTRACT.json").read_text(encoding="utf-8"))
+
+            for text in [
+                "CONTRACT.json",
+                "THINKING.md",
+                "RESEARCH.md",
+                "LOOP_DESIGN.md",
+                "ROADMAP.md",
+                "STATE.md",
+                "runtime/STATE.json",
+                "phases/phase-*.md",
+                "python scripts/sgctl.py validate-package . --strict",
+                "python scripts/sgctl.py validate-loop-design LOOP_DESIGN.md --instantiated",
+                "python scripts/sgctl.py validate-phase-markdown phases/phase-01.md",
+                "Delivery boundary",
+                "Approval boundary",
+                "Dispatch status: continue until final audit passes",
+            ]:
+                self.assertIn(text, launch)
+            self.assertIn(resolved["delivery"]["transport"], launch)
+            self.assertIn("not declared by CONTRACT.json", launch)
+
+    def test_launch_omits_research_context_when_no_research_artifact_is_emitted(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent = Path(td)
+            data = json.loads(
+                (ROOT / "examples/brownfield-feature/CONTRACT.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            data["profile"] = "public-clean"
+            data["risks"] = []
+            for phase in data["phases"]:
+                phase["risk_tags"] = []
+                phase["rpd"] = {"required": False, "focus": []}
+            data["compatibility"].pop("research_gate", None)
+            source = parent / "without-research.json"
+            source.write_text(json.dumps(data), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/sgctl.py",
+                    "compile",
+                    str(source),
+                    "--out",
+                    str(parent / "sg"),
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            package = parent / "sg"
+            self.assertFalse((package / "RESEARCH.md").exists())
+            self.assertNotIn(
+                "RESEARCH.md",
+                (package / "LAUNCH_GOAL.md").read_text(encoding="utf-8"),
+            )
+
 class CompileSafetyTest(unittest.TestCase):
     def run_compile(self, out: Path):
         return subprocess.run([sys.executable, "scripts/sgctl.py", "compile", "examples/brownfield-feature/CONTRACT.json", "--out", str(out)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

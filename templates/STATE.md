@@ -1,59 +1,11 @@
-# State: {{TASK_TITLE}}
+# STATE projection
 
-**Status:** PLANNING → READY_TO_DISPATCH → IN_PROGRESS → COMPLETE
-**Current phase:** —  <!-- phase number, or AUDIT after the last numbered phase -->
-**Started:** {{DATE}}
-**Last update:** {{DATE}}
-**Baseline ref:** {{BASELINE_SHA}}    <!-- HEAD sha captured at Stage 7 dispatch; the audit + cleanliness checks compare the COMPLETE working tree (committed + staged + unstaged + untracked) against it via repo-state.sh -->
+`runtime/STATE.json` is the authority for runtime state. This file is its
+generated human-readable projection and is not an independent control plane.
 
+Do not edit this projection manually. Package runtime transitions must update
+the authoritative JSON record and regenerate the projection atomically.
 
-## Phase progress
-
-| # | Phase | Status | Started | Completed | Notes |
-|---|-------|--------|---------|-----------|-------|
-| 1 | {{P1_NAME}} | pending | — | — | — |
-| 2 | {{P2_NAME}} | pending | — | — | — |
-| ... | ... | pending | — | — | — |
-| N | Polish & Harden | pending | — | — | — |
-
-## Engineering check status
-
-Updated by each phase as it runs. Cleared at the start of the next phase, so this always reflects the **most recent** engineering check.
-
-- Build: —
-- Typecheck: —
-- Lint: —
-- Tests: —
-
-## Live status snapshot
-
-Human-readable status rendering fields. These are for `SUPERGOAL_STATUS` only; `Current phase`, `Phase progress`, and the visible transcript markers remain authoritative.
-
-- Phase count: {{N}}
-- Current phase name: —
-- Phase status: pending
-- Last action: —
-- Last evidence: —
-- Last checks: build=—, typecheck=—, lint=—, tests=—
-- Failure attempt: 0
-
-## Delivery state
-
-Track requested review/final artifact delivery separately from phase progress. Completion claims that require Telegram/native files must cite a receipt here.
-
-- Review files: not_requested
-- Final artifacts: not_requested
-- Latest receipt: —
-
-## Notable events
-
-Append-only log of anything noteworthy that happened during execution (assumption corrected mid-run, retry, manual intervention, etc.). Each phase writes a line here.
-
-- {{DATE}} — Plan locked, {{N}} phases.
-- ...
-
-## Failure log
-
-If a phase hits FAILURE_PROBE, record it here:
-
-- Phase {{N}} ({{NAME}}): {{WHAT_FAILED}} — {{WHAT_WAS_TRIED}} — {{NEXT_MOVE}}
+The concrete package projection contains only fields derived from its current
+`runtime/STATE.json`; undeclared baseline, delivery, approval, phase, or event
+claims must not be added here.
