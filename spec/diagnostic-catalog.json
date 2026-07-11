@@ -1,0 +1,431 @@
+{
+  "catalog_version": "1.0",
+  "diagnostics": [
+    {
+      "code": "SGV-CONTRACT-MALFORMED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "semantic",
+      "remediation_class": "contract_edit"
+    },
+    {
+      "code": "SGV-CONTRACT-SEMANTIC",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "semantic",
+      "remediation_class": "contract_edit"
+    },
+    {
+      "code": "SGV-CRITERION-WEAK",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-BOUNDARY-MISSING",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-BUDGET-MISSING-LIMIT",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-EMPTY-SECTION",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-GATE-NOT-PROGRAMMATIC",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-LAUNCH-BODY",
+      "invariant": "INV-LAUNCH-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-MISSING-SECTION",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-RECOVERY-MISSING",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-REVIEWER-MISSING",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-STOP-MISSING-LIMIT",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-LOOP-WEAK-SECTION",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PACKAGE-CASE-COLLISION",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-CONTRACT-MALFORMED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-FINGERPRINT-MISMATCH",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-GENERATED-DRIFT",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-LAUNCH-MARKER",
+      "invariant": "INV-LAUNCH-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-MANIFEST-FILESET",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-MANIFEST-HASH",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-MANIFEST-MALFORMED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-MANIFEST-PATH",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-MANIFEST-SHAPE",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-MISSING-FILE",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-MISSING-MANIFEST",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "package-validation",
+      "remediation_class": "package_rebuild"
+    },
+    {
+      "code": "SGV-PACKAGE-PATH-ESCAPE",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-SECRET",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-SPECIAL-FILE",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-SYMLINK",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-ZIP-HASH-MISMATCH",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PACKAGE-ZIP-TRAVERSAL",
+      "invariant": "INV-ARCHIVE-001",
+      "stage": "archive",
+      "remediation_class": "package_security_fix"
+    },
+    {
+      "code": "SGV-PHASE-BAD-ORDINAL",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-COUNT-MISMATCH",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-EMPTY-SECTION",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-MISSING-DEPENDENCY",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-MISSING-MARKER",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-MISSING-METADATA",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-MISSING-SECTION",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-ORDINAL-OUT-OF-RANGE",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-PLACEHOLDER-COMMAND",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PHASE-RPD-ENUM",
+      "invariant": "INV-RPD-001",
+      "stage": "preflight",
+      "remediation_class": "contract_edit"
+    },
+    {
+      "code": "SGV-PHASE-RPD-FOCUS-ENUM",
+      "invariant": "INV-RPD-001",
+      "stage": "preflight",
+      "remediation_class": "contract_edit"
+    },
+    {
+      "code": "SGV-PHASE-RPD-MISMATCH",
+      "invariant": "INV-RPD-001",
+      "stage": "preflight",
+      "remediation_class": "contract_edit"
+    },
+    {
+      "code": "SGV-PHASE-SELF-DEPENDENCY",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "preflight",
+      "remediation_class": "artifact_regeneration"
+    },
+    {
+      "code": "SGV-PROFILE-CYCLE",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "profile",
+      "remediation_class": "profile_fix"
+    },
+    {
+      "code": "SGV-PROFILE-DEPTH",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "profile",
+      "remediation_class": "profile_fix"
+    },
+    {
+      "code": "SGV-PROFILE-INVALID",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "profile",
+      "remediation_class": "profile_fix"
+    },
+    {
+      "code": "SGV-PROFILE-NOT-FOUND",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "profile",
+      "remediation_class": "profile_fix"
+    },
+    {
+      "code": "SGV-PROFILE-PUBLIC-AMBIGUITY",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "profile",
+      "remediation_class": "profile_fix"
+    },
+    {
+      "code": "SGV-RESEARCH-PERPLEX-FIRST",
+      "invariant": "INV-RESEARCH-001",
+      "stage": "research",
+      "remediation_class": "research_completion"
+    },
+    {
+      "code": "SGV-RESEARCH-PERPLEX-SOURCE",
+      "invariant": "INV-RESEARCH-001",
+      "stage": "research",
+      "remediation_class": "research_completion"
+    },
+    {
+      "code": "SGV-RESEARCH-PROVIDER",
+      "invariant": "INV-RESEARCH-001",
+      "stage": "research",
+      "remediation_class": "research_completion"
+    },
+    {
+      "code": "SGV-RESEARCH-REQUIRED",
+      "invariant": "INV-RESEARCH-001",
+      "stage": "research",
+      "remediation_class": "research_completion"
+    },
+    {
+      "code": "SGV-RESEARCH-SOURCE-PROVIDER",
+      "invariant": "INV-RESEARCH-001",
+      "stage": "research",
+      "remediation_class": "research_completion"
+    },
+    {
+      "code": "SGV-RESEARCH-SOURCE-SHAPE",
+      "invariant": "INV-RESEARCH-001",
+      "stage": "research",
+      "remediation_class": "research_completion"
+    },
+    {
+      "code": "SGV-RESEARCH-SOURCES",
+      "invariant": "INV-RESEARCH-001",
+      "stage": "research",
+      "remediation_class": "research_completion"
+    },
+    {
+      "code": "SGV-RESEARCH-SUMMARY",
+      "invariant": "INV-RESEARCH-001",
+      "stage": "research",
+      "remediation_class": "research_completion"
+    },
+    {
+      "code": "SGV-RISK-APPROVAL-MISSING",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "policy",
+      "remediation_class": "risk_control_update"
+    },
+    {
+      "code": "SGV-RISK-POLICY",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "policy",
+      "remediation_class": "risk_control_update"
+    },
+    {
+      "code": "SGV-RISK-POLICY-MALFORMED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "policy",
+      "remediation_class": "risk_control_update"
+    },
+    {
+      "code": "SGV-RISK-ROLLBACK-MISSING",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "policy",
+      "remediation_class": "risk_control_update"
+    },
+    {
+      "code": "SGV-RISK-RPD-FOCUS-MISSING",
+      "invariant": "INV-RPD-001",
+      "stage": "policy",
+      "remediation_class": "risk_control_update"
+    },
+    {
+      "code": "SGV-RISK-RPD-MISSING",
+      "invariant": "INV-RPD-001",
+      "stage": "policy",
+      "remediation_class": "risk_control_update"
+    },
+    {
+      "code": "SGV-RISK-UNDECLARED",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "policy",
+      "remediation_class": "risk_control_update"
+    },
+    {
+      "code": "SGV-RISK-UNKNOWN",
+      "invariant": "INV-VALIDATOR-001",
+      "stage": "policy",
+      "remediation_class": "risk_control_update"
+    },
+    {
+      "code": "SGV-STATE-CONTRACT-MISMATCH",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-ILLEGAL-TRANSITION",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-LOCK-TIMEOUT",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-STALE-WRITER",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-TERMINAL-REOPEN",
+      "invariant": "INV-AUDIT-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    },
+    {
+      "code": "SGV-STATE-WRITE-VERIFY-FAILED",
+      "invariant": "INV-RECOVERY-001",
+      "stage": "runtime",
+      "remediation_class": "state_recovery"
+    }
+  ]
+}

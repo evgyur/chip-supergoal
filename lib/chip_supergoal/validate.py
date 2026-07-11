@@ -8,8 +8,7 @@ from typing import Iterable
 
 from .diagnostics import Diagnostic
 from .model import canonical_json, load_contract
-from .normalize import semantic_errors
-from .policy import load_risk_policy
+from .pipeline import contract_diagnostics, repository_resource_root
 from .portable import logical_mode
 from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_state, render_thinking
 from .research import render_research_markdown, research_gate, research_report, research_required, validate_research_gate
@@ -159,17 +158,20 @@ def validate_phase_markdown(path: str | Path) -> list[Diagnostic]:
     return diagnostics
 
 
-def validate_contract_file(path: str | Path, risk_policy_path: str | Path | None = None) -> list[Diagnostic]:
-    p = Path(path)
-    try:
-        contract = load_contract(p)
-        policy = load_risk_policy(risk_policy_path) if risk_policy_path else None
-        errors = semantic_errors(contract, policy)
-    except Exception as exc:
-        return [_diag("SGV-CONTRACT-MALFORMED", "INV-VALIDATOR-001", str(p), "/", str(exc), "Fix the contract JSON shape/version/fields.")]
-    diagnostics = [_diag("SGV-CONTRACT-SEMANTIC", "INV-VALIDATOR-001", str(p), "/", e, "Fix the semantic contract error.") for e in errors]
-    diagnostics.extend(validate_research_gate(contract, artifact=str(p)))
-    return diagnostics
+def validate_contract_file(
+    path: str | Path,
+    risk_policy_path: str | Path | None = None,
+    *,
+    resource_root: str | Path | None = None,
+) -> list[Diagnostic]:
+    root = Path(resource_root) if resource_root is not None else None
+    if root is None and risk_policy_path is not None:
+        root = Path(risk_policy_path).resolve().parent.parent
+    result = contract_diagnostics(
+        path,
+        resource_root=root if root is not None else repository_resource_root(),
+    )
+    return list(result.diagnostics)
 
 
 def _sha256_bytes(data: bytes) -> str:

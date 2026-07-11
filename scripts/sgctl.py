@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 
 from chip_supergoal.validate import validate_contract_file, validate_loop_design, validate_package, validate_phase_markdown
-from chip_supergoal.compile import compile_contract_file
+from chip_supergoal.compile import CompileSafetyError, compile_contract_file
 from chip_supergoal.migrate import migrate_v2_package
-from chip_supergoal.diagnostics import diagnostics_to_json
+from chip_supergoal.diagnostics import ContractValidationError, diagnostics_to_json
 from chip_supergoal.model import load_contract
 from chip_supergoal.research import research_report, validate_research_gate
 
@@ -47,7 +47,23 @@ def main(argv=None) -> int:
     p.add_argument("path"); p.add_argument("--instantiated", action="store_true"); p.add_argument("--format", choices=["human","json"], default="human")
     args = parser.parse_args(argv)
     if args.cmd == "compile":
-        compile_contract_file(args.contract, args.out, template_protocol=ROOT / "templates/PROTOCOL.md")
+        try:
+            compile_contract_file(
+                args.contract,
+                args.out,
+                template_protocol=ROOT / "templates/PROTOCOL.md",
+                resource_root=ROOT,
+            )
+        except ContractValidationError as exc:
+            for diagnostic in exc.diagnostics:
+                print(diagnostic.render_human(), file=sys.stderr)
+            return 1
+        except CompileSafetyError as exc:
+            print(f"compile error: {exc}", file=sys.stderr)
+            return 1
+        except OSError as exc:
+            print(f"compile error: {exc}", file=sys.stderr)
+            return 1
         print(args.out)
         return 0
     if args.cmd == "migrate-v2":
@@ -55,7 +71,7 @@ def main(argv=None) -> int:
         print(args.out)
         return 0
     if args.cmd == "validate-contract":
-        return emit(validate_contract_file(args.path, ROOT / "spec/risk-policy.json"), args.format)
+        return emit(validate_contract_file(args.path, resource_root=ROOT), args.format)
     if args.cmd == "validate-package":
         return emit(validate_package(args.root), args.format)
     if args.cmd == "research-gate":

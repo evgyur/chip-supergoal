@@ -1,0 +1,256 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import re
+
+from .diagnostics import Diagnostic
+from .model import Contract, canonical_json, contract_from_dict
+from .normalize import semantic_errors
+from .policy import load_risk_policy, risk_policy_errors
+from .profiles import ProfileError, ResolvedContract, resolve_contract
+from .research import validate_research_gate
+
+
+REPOSITORY_RESOURCE_ROOT = Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True)
+class ContractPipelineResult:
+    resolved: ResolvedContract | None
+    diagnostics: tuple[Diagnostic, ...]
+
+    def __post_init__(self) -> None:
+        if (self.resolved is None) == (not self.diagnostics):
+            raise ValueError(
+                "pipeline result must contain either a resolved contract or diagnostics"
+            )
+
+    @property
+    def resolved_contract(self) -> ResolvedContract | None:
+        return self.resolved
+
+    @property
+    def ok(self) -> bool:
+        return self.resolved is not None
+
+    def __iter__(self):
+        yield self.resolved
+        yield list(self.diagnostics)
+
+
+def repository_resource_root() -> Path:
+    return REPOSITORY_RESOURCE_ROOT
+
+
+def _diagnostic(
+    code: str,
+    *,
+    artifact: str,
+    pointer: str,
+    message: str,
+    remediation: str,
+    stage: str,
+    invariant: str = "INV-VALIDATOR-001",
+) -> Diagnostic:
+    return Diagnostic(
+        code=code,
+        severity="error",
+        blocking_stage=stage,
+        invariant_id=invariant,
+        artifact=artifact,
+        pointer=pointer,
+        message=message,
+        remediation=remediation,
+    )
+
+
+def _malformed_diagnostic(artifact: str, exc: Exception) -> Diagnostic:
+    return _diagnostic(
+        "SGV-CONTRACT-MALFORMED",
+        artifact=artifact,
+        pointer="/",
+        message=str(exc) or type(exc).__name__,
+        remediation="Fix the contract JSON shape, version, and required fields.",
+        stage="model",
+    )
+
+
+def _profile_diagnostic(artifact: str, exc: Exception) -> Diagnostic:
+    text = str(exc)
+    if "not found" in text:
+        code = "SGV-PROFILE-NOT-FOUND"
+        message = "the selected contract profile or one of its parents was not found"
+        remediation = "Select an available profile or add the missing profile resource."
+    elif "inheritance cycle" in text:
+        code = "SGV-PROFILE-CYCLE"
+        message = "the selected contract profile contains an inheritance cycle"
+        remediation = "Remove the cycle from the profile extends chain."
+    elif "maximum profile inheritance depth" in text:
+        code = "SGV-PROFILE-DEPTH"
+        message = "the selected contract profile exceeds the inheritance depth limit"
+        remediation = "Flatten the profile inheritance chain."
+    elif "public-clean redaction" in text:
+        code = "SGV-PROFILE-PUBLIC-AMBIGUITY"
+        message = "public-clean resolution cannot safely redact a private reference"
+        remediation = "Remove private locators from execution-significant fields."
+    else:
+        code = "SGV-PROFILE-INVALID"
+        message = "the selected contract profile is invalid"
+        remediation = "Fix the profile shape, version, and enforcement fields."
+    return _diagnostic(
+        code,
+        artifact=artifact,
+        pointer="/profile",
+        message=message,
+        remediation=remediation,
+        stage="profile",
+    )
+
+
+def _semantic_diagnostics(contract: Contract, artifact: str) -> list[Diagnostic]:
+    return [
+        _diagnostic(
+            "SGV-CONTRACT-SEMANTIC",
+            artifact=artifact,
+            pointer="/phases",
+            message=error,
+            remediation="Fix the contract graph, identifiers, or phase ordinals.",
+            stage="semantic",
+        )
+        for error in semantic_errors(contract)
+    ]
+
+
+def _risk_code(error: str) -> tuple[str, str, str]:
+    if error.startswith("contract risk ") and "unknown risk tag" in error:
+        return "SGV-RISK-UNKNOWN", "/risks", "Use a risk tag from the risk policy."
+    if "uses unknown risk tag" in error:
+        return "SGV-RISK-UNKNOWN", "/phases", "Declare and use a risk tag from the risk policy."
+    if " is not declared in contract risks" in error:
+        return "SGV-RISK-UNDECLARED", "/risks", "Declare the phase risk in contract risks."
+    if " missing RPD focus:" in error:
+        return "SGV-RISK-RPD-FOCUS-MISSING", "/phases", "Add every policy-required RPD focus."
+    if re.search(r" risk \S+ requires RPD$", error):
+        return "SGV-RISK-RPD-MISSING", "/phases", "Enable RPD for the risk-bearing phase."
+    if " requires required " in error and " approval scoped to " in error:
+        return "SGV-RISK-APPROVAL-MISSING", "/approvals", "Add the required approval with an allowed scope."
+    if " requires a nonempty architecture.rollback " in error:
+        return "SGV-RISK-ROLLBACK-MISSING", "/architecture/rollback", "Declare a concrete architecture or loop rollback path."
+    return "SGV-RISK-POLICY", "/risks", "Bring the contract into compliance with the risk policy."
+
+
+def _risk_diagnostics(
+    contract: Contract, policy: dict, artifact: str
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    for error in risk_policy_errors(contract, policy):
+        code, pointer, remediation = _risk_code(error)
+        diagnostics.append(
+            _diagnostic(
+                code,
+                artifact=artifact,
+                pointer=pointer,
+                message=error,
+                remediation=remediation,
+                stage="policy",
+                invariant=(
+                    "INV-RPD-001"
+                    if code
+                    in {
+                        "SGV-RISK-RPD-FOCUS-MISSING",
+                        "SGV-RISK-RPD-MISSING",
+                    }
+                    else "INV-VALIDATOR-001"
+                ),
+            )
+        )
+    return diagnostics
+
+
+def validate_contract_source(
+    source: bytes | Contract,
+    *,
+    artifact: str = "CONTRACT.json",
+    resource_root: str | Path | None = None,
+) -> ContractPipelineResult:
+    root = Path(resource_root) if resource_root is not None else repository_resource_root()
+    try:
+        source_bytes = (
+            canonical_json(source).encode("utf-8")
+            if isinstance(source, Contract)
+            else bytes(source)
+        )
+        loaded = json.loads(source_bytes)
+        if not isinstance(loaded, dict):
+            raise ValueError("contract JSON must be an object")
+        contract = contract_from_dict(loaded, strict=True)
+    except Exception as exc:
+        return ContractPipelineResult(None, (_malformed_diagnostic(artifact, exc),))
+
+    try:
+        resolved = resolve_contract(contract, root / "profiles", source_bytes)
+    except ProfileError as exc:
+        return ContractPipelineResult(None, (_profile_diagnostic(artifact, exc),))
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        return ContractPipelineResult(None, (_malformed_diagnostic(artifact, exc),))
+
+    try:
+        diagnostics = _semantic_diagnostics(resolved.contract, artifact)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        return ContractPipelineResult(None, (_malformed_diagnostic(artifact, exc),))
+    try:
+        policy = load_risk_policy(root / "spec/risk-policy.json")
+        if not isinstance(policy, dict) or not isinstance(policy.get("risk_tags"), dict):
+            raise ValueError("risk policy must contain a risk_tags object")
+    except Exception as exc:
+        diagnostics.append(
+            _diagnostic(
+                "SGV-RISK-POLICY-MALFORMED",
+                artifact=str(root / "spec/risk-policy.json"),
+                pointer="/",
+                message=str(exc) or type(exc).__name__,
+                remediation="Restore a valid repository risk-policy.json resource.",
+                stage="policy",
+            )
+        )
+        return ContractPipelineResult(None, tuple(diagnostics))
+
+    try:
+        diagnostics.extend(_risk_diagnostics(resolved.contract, policy, artifact))
+    except Exception as exc:
+        diagnostics.append(
+            _diagnostic(
+                "SGV-RISK-POLICY-MALFORMED",
+                artifact=str(root / "spec/risk-policy.json"),
+                pointer="/risk_tags",
+                message=str(exc) or type(exc).__name__,
+                remediation="Restore valid rule objects in risk-policy.json.",
+                stage="policy",
+            )
+        )
+        return ContractPipelineResult(None, tuple(diagnostics))
+    diagnostics.extend(validate_research_gate(resolved.contract, artifact=artifact))
+    if diagnostics:
+        return ContractPipelineResult(None, tuple(diagnostics))
+    return ContractPipelineResult(resolved, ())
+
+
+def contract_diagnostics(
+    path: str | Path,
+    *,
+    resource_root: str | Path | None = None,
+) -> ContractPipelineResult:
+    source_path = Path(path)
+    try:
+        source_bytes = source_path.read_bytes()
+    except Exception as exc:
+        return ContractPipelineResult(
+            None, (_malformed_diagnostic(str(source_path), exc),)
+        )
+    return validate_contract_source(
+        source_bytes,
+        artifact=str(source_path),
+        resource_root=resource_root,
+    )

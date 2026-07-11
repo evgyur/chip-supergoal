@@ -66,3 +66,11 @@ def diagnostics_to_json(diagnostics: Iterable[Diagnostic]) -> str:
 
 def has_blocking(diagnostics: Iterable[Diagnostic]) -> bool:
     return any(d.blocking for d in diagnostics)
+
+
+class ContractValidationError(ValueError):
+    def __init__(self, diagnostics: Iterable[Diagnostic]):
+        self.diagnostics = tuple(diagnostics)
+        if not self.diagnostics:
+            raise ValueError("ContractValidationError requires diagnostics")
+        super().__init__("contract validation failed")

@@ -6,12 +6,14 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Iterable
 
+from .diagnostics import ContractValidationError
 from .model import Contract, canonical_json, load_contract
-from .portable import logical_mode, write_utf8_lf
+from .pipeline import ContractPipelineResult, contract_diagnostics, validate_contract_source
+from .portable import logical_mode, write_bytes_atomic, write_utf8_lf
+from .profiles import ResolvedContract
 from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_state, render_thinking
-from .research import render_research_markdown, research_report, research_required, research_gate, validate_research_gate
+from .research import render_research_markdown, research_report, research_required, research_gate
 
 
 REQUIRED_GENERATED = {"CONTRACT.json", "THINKING.md", "LOOP_DESIGN.md", "ROADMAP.md", "STATE.md", "PROTOCOL.md", "LAUNCH_GOAL.md"}
@@ -103,11 +105,12 @@ def _assert_not_source_container(out_path: Path, contract_source: Path | None) -
         raise CompileSafetyError("output target cannot be the contract file, source root, or a source ancestor")
 
 
-def _render_package(contract: Contract, out_path: Path, *, template_protocol: str | Path | None = None) -> None:
+def _render_package(resolved: ResolvedContract, out_path: Path, *, template_protocol: str | Path | None = None) -> None:
+    contract = resolved.contract
     out_path.mkdir(parents=True, exist_ok=False)
     phases_dir = out_path / "phases"
     phases_dir.mkdir()
-    _write(out_path / "CONTRACT.json", canonical_json(contract))
+    write_bytes_atomic(out_path / "CONTRACT.json", resolved.canonical_bytes)
     _write(out_path / "THINKING.md", render_thinking(contract))
     if research_required(contract) or research_gate(contract):
         _write(out_path / "RESEARCH.md", render_research_markdown(contract))
@@ -125,11 +128,14 @@ def _render_package(contract: Contract, out_path: Path, *, template_protocol: st
     _write(out_path / "MANIFEST.json", json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 
-def compile_contract(contract: Contract, out: str | Path, *, template_protocol: str | Path | None = None, contract_source: str | Path | None = None) -> Path:
-    research_diags = validate_research_gate(contract, artifact=str(contract_source or "CONTRACT.json"))
-    if research_diags:
-        joined = "\n".join(d.render_human() for d in research_diags)
-        raise CompileSafetyError(f"research gate is not satisfied:\n{joined}")
+def _compile_resolved(
+    resolved: ResolvedContract,
+    out: str | Path,
+    *,
+    template_protocol: str | Path | None = None,
+    contract_source: str | Path | None = None,
+) -> Path:
+    contract = resolved.contract
     raw_out = Path(out)
     out_path = raw_out.resolve(strict=False)
     parent = out_path.parent
@@ -141,7 +147,7 @@ def compile_contract(contract: Contract, out: str | Path, *, template_protocol: 
     backup: Path | None = None
     try:
         shutil.rmtree(staging)
-        _render_package(contract, staging, template_protocol=template_protocol)
+        _render_package(resolved, staging, template_protocol=template_protocol)
         if out_path.exists():
             backup = parent / f".{out_path.name}.backup-{os.getpid()}-{next(tempfile._get_candidate_names())}"
             out_path.rename(backup)
@@ -158,6 +164,47 @@ def compile_contract(contract: Contract, out: str | Path, *, template_protocol: 
         raise
 
 
-def compile_contract_file(path: str | Path, out: str | Path, *, template_protocol: str | Path | None = None) -> Path:
+def _resolved_or_raise(result: ContractPipelineResult) -> ResolvedContract:
+    if result.diagnostics:
+        raise ContractValidationError(result.diagnostics)
+    if result.resolved is None:
+        raise RuntimeError("canonical contract pipeline returned no result")
+    return result.resolved
+
+
+def compile_contract(
+    contract: Contract,
+    out: str | Path,
+    *,
+    template_protocol: str | Path | None = None,
+    contract_source: str | Path | None = None,
+    resource_root: str | Path | None = None,
+) -> Path:
+    result = validate_contract_source(
+        contract,
+        artifact=str(contract_source or "CONTRACT.json"),
+        resource_root=resource_root,
+    )
+    return _compile_resolved(
+        _resolved_or_raise(result),
+        out,
+        template_protocol=template_protocol,
+        contract_source=contract_source,
+    )
+
+
+def compile_contract_file(
+    path: str | Path,
+    out: str | Path,
+    *,
+    template_protocol: str | Path | None = None,
+    resource_root: str | Path | None = None,
+) -> Path:
     contract_path = Path(path)
-    return compile_contract(load_contract(contract_path), out, template_protocol=template_protocol, contract_source=contract_path)
+    result = contract_diagnostics(contract_path, resource_root=resource_root)
+    return _compile_resolved(
+        _resolved_or_raise(result),
+        out,
+        template_protocol=template_protocol,
+        contract_source=contract_path,
+    )
