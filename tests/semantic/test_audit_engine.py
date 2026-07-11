@@ -372,6 +372,49 @@ class AuditEngineTest(unittest.TestCase):
         self.assertFalse(expired.can_complete)
         self.assertEqual(expired.delivery_status, "invalid")
 
+    def test_delivery_ack_freshness_override_applies_at_exact_boundary(self):
+        contract = self.contract(review_delivery=True)
+        contract.loop.data["evidence_max_age_by_type"] = {"delivery_ack": 60}
+        root, _, state, events = self.authority(contract)
+        anchor = datetime.strptime(
+            events[-1]["timestamp"], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=timezone.utc)
+
+        inclusive = (anchor - timedelta(seconds=60)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        self.write_review_receipt(root, state, inclusive)
+        fresh = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertTrue(fresh.can_complete, fresh.issues)
+        self.assertEqual(fresh.delivery_status, "verified")
+
+        stale = (anchor - timedelta(seconds=61)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        self.write_review_receipt(root, state, stale)
+        expired = audit_contract(
+            contract,
+            self.evidence(contract, state, events),
+            state=state,
+            events=events,
+            package_root=root,
+        )
+        self.assertFalse(expired.can_complete)
+        self.assertEqual(expired.delivery_status, "invalid")
+        self.assertTrue(
+            any(
+                "sent_at exceeds the 60-second maximum age" in issue.message
+                for issue in expired.issues
+            ),
+            expired.issues,
+        )
+
     def test_review_receipt_requires_canonical_full_file_order(self):
         contract = self.contract(review_delivery=True)
         root, _, state, events = self.authority(contract)

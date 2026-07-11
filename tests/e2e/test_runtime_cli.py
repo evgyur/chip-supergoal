@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -108,7 +109,7 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
                 revision = state["state_revision"]
         return state
 
-    def compile_delivery_package(self, *, final=False):
+    def compile_delivery_package(self, *, final=False, max_age=None):
         data = json.loads(
             (ROOT / "examples/brownfield-feature/CONTRACT.json").read_text(
                 encoding="utf-8"
@@ -126,6 +127,10 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
         data["phases"][0]["risk_tags"] = []
         data["phases"][0]["rpd"] = {"required": False, "focus": []}
         data["compatibility"].pop("research_gate", None)
+        if max_age is not None:
+            data["loop"]["evidence_max_age_by_type"] = {
+                "delivery_ack": max_age
+            }
         label = "final" if final else "review"
         source = self.parent / f"{label}-delivery-source.json"
         source.write_text(json.dumps(data), encoding="utf-8")
@@ -321,6 +326,51 @@ class RelocatedRuntimeCliE2ETest(unittest.TestCase):
         self.assertFalse(
             (self.package / "out/final-artifacts-delivery-receipt.json").exists()
         )
+
+    def test_package_audit_honors_delivery_ack_freshness_override_boundary(self):
+        self.compile_delivery_package(max_age=60)
+        self.progress_to_auditing()
+        payload = self.evidence_payload()
+        self.run_cli(
+            "record-evidence", "--input", "-", input=json.dumps(payload)
+        )
+        contract = json.loads((self.package / "CONTRACT.json").read_text("utf-8"))
+        active_files = sorted(
+            name
+            for name in contract["delivery"]["files"]
+            if name != "RESEARCH.md" or (self.package / name).exists()
+        )
+        args = ["delivery-review-record", "--target", "current-thread"]
+        for name in active_files:
+            args.extend(["--message-id", f"msg-{name}"])
+        receipt = json.loads(self.run_cli(*args).stdout)
+        receipt_path = self.package / "out/review-md-files-delivery-receipt.json"
+        anchor = datetime.strptime(
+            json.loads(
+                (self.package / "runtime/events.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[-1]
+            )["timestamp"],
+            "%Y-%m-%dT%H:%M:%SZ",
+        ).replace(tzinfo=timezone.utc)
+
+        for age, expected_complete in ((60, True), (61, False)):
+            receipt["sent_at"] = (anchor - timedelta(seconds=age)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            receipt_path.write_text(
+                json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            report = json.loads(self.run_cli("audit").stdout)
+            self.run_cli("validate-package", self.package, "--strict")
+            self.assertEqual(report["can_complete"], expected_complete, report)
+            self.assertEqual(
+                report["delivery_status"],
+                "verified" if expected_complete else "invalid",
+            )
 
 
 if __name__ == "__main__":

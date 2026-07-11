@@ -333,6 +333,7 @@ def _delivery_status(
     *,
     audit_anchor: str,
     default_max_age: int,
+    max_age_by_type: dict[str, int],
 ) -> tuple[str, list[AuditIssue]]:
     delivery = contract.delivery.data
     try:
@@ -361,6 +362,7 @@ def _delivery_status(
         return "invalid", [
             AuditIssue("AUDIT_CORRUPTION", "required delivery target is not declared")
         ]
+    delivery_max_age = max_age_by_type.get("delivery_ack", default_max_age)
     issues: list[AuditIssue] = []
     if review_required:
         path = package_root / "out/review-md-files-delivery-receipt.json"
@@ -399,7 +401,7 @@ def _delivery_status(
             freshness = _receipt_freshness_issue(
                 receipt["sent_at"],
                 anchor=audit_anchor,
-                max_age=default_max_age,
+                max_age=delivery_max_age,
             )
             if freshness is not None:
                 raise ReceiptValidationError(freshness)
@@ -418,6 +420,13 @@ def _delivery_status(
                 raise FileNotFoundError
             receipt = read_receipt(path, package_root)
             validate_final_receipt(receipt, state=state, target=target)
+            freshness = _receipt_freshness_issue(
+                receipt["sent_at"],
+                anchor=audit_anchor,
+                max_age=delivery_max_age,
+            )
+            if freshness is not None:
+                raise ReceiptValidationError(freshness)
         except FileNotFoundError:
             issues.append(AuditIssue("AUDIT_GAP", "required final delivery receipt is missing"))
         except (OSError, ValueError, ReceiptValidationError) as exc:
@@ -662,6 +671,7 @@ def audit_contract(
         Path(package_root) if package_root is not None else None,
         audit_anchor=anchor,
         default_max_age=default_max_age,
+        max_age_by_type=overrides,
     )
     issues.extend(delivery_issues)
     rpd_required = any(phase.rpd.required for phase in contract.phases)
