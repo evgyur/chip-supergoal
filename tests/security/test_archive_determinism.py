@@ -25,6 +25,15 @@ from chip_supergoal.state import StateStore
 SOURCE = ROOT / "examples" / "brownfield-feature" / "CONTRACT.json"
 
 
+def _physical_path_key(path: str | Path) -> str:
+    resolved = Path(path).resolve(strict=False)
+    return os.path.normcase(os.path.normpath(str(resolved)))
+
+
+def _same_physical_path(left: str | Path, right: str | Path) -> bool:
+    return _physical_path_key(left) == _physical_path_key(right)
+
+
 class ArchiveDeterminismTest(unittest.TestCase):
     def compile_package(self, parent: Path) -> Path:
         return compile_contract_file(SOURCE, parent / "compiled")
@@ -230,7 +239,7 @@ class ArchiveDeterminismTest(unittest.TestCase):
                 return original_atomic(path, content, root=root, **kwargs)
 
             def observe_replace(source, target, *args, **kwargs):
-                if Path(source) == destination:
+                if _same_physical_path(source, destination):
                     move_away.append((Path(source), Path(target)))
                 return original_replace(source, target, *args, **kwargs)
 
@@ -241,7 +250,15 @@ class ArchiveDeterminismTest(unittest.TestCase):
             ):
                 deterministic_zip(package, destination, result_path)
 
-            self.assertIn((destination, destination.parent), atomic_calls)
+            self.assertTrue(
+                any(
+                    _same_physical_path(path, destination)
+                    and root is not None
+                    and _same_physical_path(root, destination.parent)
+                    for path, root in atomic_calls
+                ),
+                atomic_calls,
+            )
             self.assertEqual(move_away, [])
 
     def test_captured_mutable_semantics_are_revalidated_from_snapshot(self):

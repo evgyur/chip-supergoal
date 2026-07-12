@@ -29,6 +29,15 @@ from chip_supergoal.state import StateStore
 from chip_supergoal.validate import validate_package
 
 
+def _physical_path_key(path: str | Path) -> str:
+    resolved = Path(path).resolve(strict=False)
+    return os.path.normcase(os.path.normpath(str(resolved)))
+
+
+def _same_physical_path(left: str | Path, right: str | Path) -> bool:
+    return _physical_path_key(left) == _physical_path_key(right)
+
+
 class ArchiveResourceLimitTest(unittest.TestCase):
     def root_with(self, parent: Path, **files: bytes) -> Path:
         root = parent / "package"
@@ -557,7 +566,7 @@ class RootIdentityRaceTest(unittest.TestCase):
 
             def swap_nonleaf_then_write(path, content, *, root=None, **kwargs):
                 nonlocal swapped
-                if Path(path) == destination and not swapped:
+                if _same_physical_path(path, destination) and not swapped:
                     ancestor.rename(parked)
                     replacement = ancestor / "publish"
                     replacement.mkdir(parents=True)
@@ -909,18 +918,27 @@ stage_path = archive._archive_stage_path(destination)
 backup_path = archive._archive_backup_path(destination)
 intent_writes = 0
 
+def same_path(left, right):
+    left = os.path.normcase(
+        os.path.normpath(str(Path(left).resolve(strict=False)))
+    )
+    right = os.path.normcase(
+        os.path.normpath(str(Path(right).resolve(strict=False)))
+    )
+    return left == right
+
 def checkpoint(target, temporary):
     global intent_writes
     target = Path(target)
-    if target == intent_path:
+    if same_path(target, intent_path):
         intent_writes += 1
     should_kill = (
-        (mode == "stage" and target == stage_path)
-        or (mode == "backup" and target == backup_path)
-        or (mode == "destination" and target == destination)
-        or (mode == "result" and target == result_path)
-        or (mode == "intent-initial" and target == intent_path and intent_writes == 1)
-        or (mode == "intent-update" and target == intent_path and intent_writes == 2)
+        (mode == "stage" and same_path(target, stage_path))
+        or (mode == "backup" and same_path(target, backup_path))
+        or (mode == "destination" and same_path(target, destination))
+        or (mode == "result" and same_path(target, result_path))
+        or (mode == "intent-initial" and same_path(target, intent_path) and intent_writes == 1)
+        or (mode == "intent-update" and same_path(target, intent_path) and intent_writes == 2)
     )
     if should_kill:
         os._exit(91)
@@ -929,7 +947,7 @@ def progress_checkpoint(target, temporary, written, total):
     del temporary
     if (
         mode == "stage-midwrite"
-        and Path(target) == stage_path
+        and same_path(target, stage_path)
         and 0 < written < total
     ):
         os._exit(91)

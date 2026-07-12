@@ -24,6 +24,15 @@ from chip_supergoal.portable import (
 SOURCE = ROOT / "examples" / "brownfield-feature" / "CONTRACT.json"
 
 
+def _physical_path_key(path: str | Path) -> str:
+    resolved = Path(path).resolve(strict=False)
+    return os.path.normcase(os.path.normpath(str(resolved)))
+
+
+def _same_physical_path(left: str | Path, right: str | Path) -> bool:
+    return _physical_path_key(left) == _physical_path_key(right)
+
+
 class ArchiveSymlinkSecurity(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "native Windows ancestor junction regression")
     def test_archive_rejects_ancestor_junction_before_creating_locks(self):
@@ -203,7 +212,7 @@ class ArchiveSymlinkSecurity(unittest.TestCase):
 
             def swap_parent(path, content, *, root=None, **kwargs):
                 nonlocal swapped
-                if Path(path) == destination and not swapped:
+                if _same_physical_path(path, destination) and not swapped:
                     publish.rename(trusted)
                     publish.symlink_to(attacker, target_is_directory=True)
                     swapped = True
@@ -246,7 +255,7 @@ class ArchiveSymlinkSecurity(unittest.TestCase):
 
             def swap_parent(path, content, *, root=None, **kwargs):
                 nonlocal swapped
-                if Path(path) == destination and not swapped:
+                if _same_physical_path(path, destination) and not swapped:
                     publish.rename(trusted)
                     completed = __import__("subprocess").run(
                         ["cmd", "/c", "mklink", "/J", str(publish), str(attacker)],
