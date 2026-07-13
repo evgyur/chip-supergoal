@@ -168,6 +168,10 @@ def empty_report_for_test(decision: str) -> dict[str, Any]:
             "kind": "whole_hardening",
             "sha": "5725192154dfca78032e861edbd29570bb2d94e8",
         },
+        "review_receipts": [
+            {"kind": "false_green", "path": "evals/b2/results/false-green-review.json", "sha256": "a" * 64},
+            {"kind": "rpd", "path": "evals/b2/results/rpd-review.json", "sha256": "b" * 64},
+        ],
         "unresolved_findings": [],
     }
 
@@ -200,6 +204,12 @@ def verify_report(
         raise ValueError(f"unresolved P0/P1 findings: {unresolved_p0_p1}")
     if report.get("semantic_false_green", {}).get("fixture_count") != 5:
         raise ValueError("semantic false-green fixture count must be five")
+    review_receipts = report.get("review_receipts", [])
+    if {item.get("kind") for item in review_receipts} != {"false_green", "rpd"}:
+        raise ValueError("independent review receipts must include false_green and rpd")
+    for receipt in review_receipts:
+        if not receipt.get("path") or len(str(receipt.get("sha256", ""))) != 64:
+            raise ValueError("independent review receipts require path and SHA-256")
     if report.get("native_windows_v1", {}).get("status") != "pass":
         raise ValueError("native_windows_v1 is not green")
     if sorted(report["native_windows_v1"].get("python_versions", [])) != ["3.11.9", "3.13.14"]:
@@ -414,6 +424,10 @@ def command_audit(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     manifest_path = (repo / args.manifest).resolve()
     manifest = load_manifest(manifest_path)
+    if args.main is not None and args.main != manifest["main_sha"]:
+        raise ValueError("--main does not match frozen manifest main_sha")
+    if args.hardening is not None and args.hardening != manifest["hardening_sha"]:
+        raise ValueError("--hardening does not match frozen manifest hardening_sha")
     facts = validate_manifest(manifest, repo)
     probe_path = repo / manifest["neutral_probe"]["path"]
     probe_sha256 = _sha256(probe_path)
@@ -564,12 +578,24 @@ def command_audit(args: argparse.Namespace) -> int:
             "kind": "whole_hardening" if decision == "adopt_whole" else "pending_boundary",
             "sha": manifest["hardening_sha"],
         },
+        "review_receipts": [
+            {
+                "kind": "false_green",
+                "path": "evals/b2/results/false-green-review.json",
+                "sha256": _sha256(repo / "evals/b2/results/false-green-review.json"),
+            },
+            {
+                "kind": "rpd",
+                "path": "evals/b2/results/rpd-review.json",
+                "sha256": _sha256(repo / "evals/b2/results/rpd-review.json"),
+            },
+        ],
         "unresolved_findings": findings,
     }
     output = (repo / args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(_canonical_bytes(report))
-    dispositions_path = repo / "evals/b2/results/cluster-dispositions.json"
+    dispositions_path = repo / "evals/b2/b2-disposition-manifest.json"
     _write_dispositions(dispositions_path, manifest, composition_records)
     print(
         json.dumps(
@@ -607,6 +633,8 @@ def build_parser() -> argparse.ArgumentParser:
     audit = subparsers.add_parser("audit")
     audit.add_argument("--repo", default=".")
     audit.add_argument("--manifest", required=True)
+    audit.add_argument("--main")
+    audit.add_argument("--hardening")
     audit.add_argument("--output", required=True)
     audit.set_defaults(func=command_audit)
 

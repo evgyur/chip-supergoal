@@ -1,0 +1,42 @@
+{
+  "schema_version": "b2-false-green-review-v1",
+  "reviewed_at": "2026-07-13T22:41:37Z",
+  "reviewer": "standard-hermes-goal-rpd",
+  "assertion_owner": "quality-leap-plan",
+  "implementation_independent": true,
+  "powered_equivalence_test": false,
+  "fixtures": [
+    {
+      "id": "B2-FG-01",
+      "sha256": "1d426603c5cdd7a688632259f9c300cf5f22bf6931bd8aac6d021466b0c7bfbd",
+      "failure_class": "requirement-command-evidence binding gap",
+      "verdict": "confirmed_false_green"
+    },
+    {
+      "id": "B2-FG-02",
+      "sha256": "61a34e6431dfc3dd373090b1b70e130c20b6e549b0362247a218e978906d8d90",
+      "failure_class": "unretrievable or mutable source locator",
+      "verdict": "confirmed_false_green"
+    },
+    {
+      "id": "B2-FG-03",
+      "sha256": "c3c70c6781d2538e6ccf3b80272318d393af3198cf07fb6415ff81c77d766fcc",
+      "failure_class": "command-level dependency ordering defect",
+      "verdict": "confirmed_false_green"
+    },
+    {
+      "id": "B2-FG-04",
+      "sha256": "54a6632f2e14cb176662dd76c1ed0276909c6d387272d258cc03cc443bfe5295",
+      "failure_class": "approval scope does not authorize live side effect",
+      "verdict": "confirmed_false_green"
+    },
+    {
+      "id": "B2-FG-05",
+      "sha256": "e0c4444367c4dda70071ad1b8fc5b2380e711e641475d151ce65b728e571550c",
+      "failure_class": "projection or transcript used as runtime authority",
+      "verdict": "confirmed_false_green"
+    }
+  ],
+  "effect_statement": "no measured plan-quality improvement",
+  "reason": "The hardening branch changes execution/runtime infrastructure; neither frozen implementation generates enough independent plans for a powered 2x2 McNemar comparison. The fixtures therefore establish known semantic failure classes but do not support an equivalence claim."
+}

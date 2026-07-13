@@ -1,0 +1,40 @@
+{
+  "schema_version": "b2-rpd-review-v1",
+  "reviewed_at": "2026-07-13T23:39:46Z",
+  "focus": [
+    "integration",
+    "data-loss"
+  ],
+  "reviewer": "standard-hermes-goal-rpd",
+  "decision_reviewed": "adopt_whole",
+  "selected_foundation_sha": "5725192154dfca78032e861edbd29570bb2d94e8",
+  "checks": [
+    {
+      "id": "RPD-INTEGRATION-01",
+      "status": "pass",
+      "evidence": "Dependency-aware compositions fail through C3, then pass through C4 and whole hardening; curating earlier clusters would preserve a false green."
+    },
+    {
+      "id": "RPD-INTEGRATION-02",
+      "status": "pass",
+      "evidence": "Native Windows 3.11.9 and 3.13.14 hardening receipts pass the frozen neutral probe and preserve native_windows_v1."
+    },
+    {
+      "id": "RPD-DATA-LOSS-01",
+      "status": "pass",
+      "evidence": "C2 sealed runtime authority and C5 deterministic archive/recovery are retained_required; plain main is inadmissible."
+    },
+    {
+      "id": "RPD-DATA-LOSS-02",
+      "status": "pass_with_exception",
+      "evidence": "Relative compile and package-size margins are exceeded, but the written exceptions are bounded: compile p95 0.2643 s, archive p95 0.4345 s, package 743321 bytes."
+    },
+    {
+      "id": "RPD-PRIVACY-01",
+      "status": "pass",
+      "evidence": "Changed-only privacy scan emits no violations; receipts contain environment metadata and hashes but no credentials or private corpus content."
+    }
+  ],
+  "unresolved_p0_p1": 0,
+  "verdict": "READY FOR DISCUSSION"
+}

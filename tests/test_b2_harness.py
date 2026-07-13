@@ -68,6 +68,31 @@ class B2HarnessContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "P0/P1"):
             self.runner.verify_report(report, dispositions, require_zero_p0_p1=True)
 
+    def test_contract_audit_command_accepts_frozen_sha_arguments(self):
+        args = self.runner.build_parser().parse_args(
+            [
+                "audit",
+                "--manifest",
+                "evals/b2/b2-audit-manifest.json",
+                "--main",
+                self.manifest["main_sha"],
+                "--hardening",
+                self.manifest["hardening_sha"],
+                "--output",
+                "evals/baselines/b2-branch-comparison.json",
+            ]
+        )
+        self.assertEqual(args.main, self.manifest["main_sha"])
+        self.assertEqual(args.hardening, self.manifest["hardening_sha"])
+
+    def test_verify_requires_independent_review_receipts(self):
+        report = self.runner.empty_report_for_test("adopt_whole")
+        dispositions = self.runner.empty_dispositions_for_test()
+        report.pop("review_receipts")
+
+        with self.assertRaisesRegex(ValueError, "review receipts"):
+            self.runner.verify_report(report, dispositions, require_zero_p0_p1=True)
+
     def test_verify_accepts_complete_allowed_report(self):
         report = self.runner.empty_report_for_test("adopt_whole")
         dispositions = self.runner.empty_dispositions_for_test()

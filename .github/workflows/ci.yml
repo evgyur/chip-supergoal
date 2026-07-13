@@ -107,6 +107,10 @@ jobs:
           $probeExit = $LASTEXITCODE
           $receipt = [Convert]::ToBase64String([IO.File]::ReadAllBytes($output))
           Write-Output "B2_NEUTRAL_RESULT target=${{ matrix.target.id }} python=${{ matrix.python }} payload=${receipt}"
-          if ($probeExit -ne 0 -and "${{ matrix.target.id }}" -ne "main") {
+          if ("${{ matrix.target.id }}" -eq "main") {
+            exit 0
+          }
+          if ($probeExit -ne 0) {
             exit $probeExit
           }
+          exit 0
