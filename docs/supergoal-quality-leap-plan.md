@@ -4,7 +4,7 @@
 
 **Execution:** not started in this chat; no runtime, planner, schema, or default behavior has been changed by this document.
 
-**Recommended execution route after approval:** Project Flow, with Shaw per implementation slice.
+**Recommended execution route after approval:** one compiled SuperGoal package handed to one standard Hermes `/goal` continuation. The package `PROTOCOL.md` governs every phase and `runtime/STATE.json` is the sole runtime authority; no secondary orchestrator or slice runner is part of the route.
 
 **Plan branch:** `plan/quality-leap`
 
@@ -14,7 +14,7 @@
 
 **Non-negotiable foundation capability:** every selectable baseline must provide `native_windows_v1`; a plain `main` checkout is not an admissible quality-work foundation.
 
-**Plan revision:** `0.6`
+**Plan revision:** `0.7`
 **Date:** 2026-07-12
 
 ## 1. Executive decision
@@ -168,7 +168,7 @@ Then choose exactly one branch-level decision:
 
 A `keep_separate`, `reject`, or main-based decision can close only when B2-01 has built that equivalent slice and the neutral Windows suite is green. If no admissible slice can be materialized, B2-01 is blocked; QL-00 must not start and native Windows is never silently demoted to a later quality feature.
 
-This planning document currently lives on a branch derived from `fix/b2-hardening` for review convenience. That ancestry is not adoption evidence. After the verdict, cherry-pick or rebase the reviewed plan onto the exact selected foundation before creating Project Flow state.
+This planning document currently lives on a branch derived from `fix/b2-hardening` for review convenience. That ancestry is not adoption evidence. After the verdict, cherry-pick or rebase the reviewed plan onto the exact selected foundation before the SuperGoal runtime may advance beyond B2-01.
 
 Required artifacts:
 
@@ -898,7 +898,7 @@ Each phase is independently verifiable. Runtime behavior remains unchanged until
 | Phase | Depends on | Write scope | Explicit exclusions |
 |---|---|---|---|
 | B2-00 | none | Neutral comparison harness, branch-value audit, adoption ADR/disposition manifest | Quality-engine implementation or automatic whole-branch merge |
-| B2-01 | B2-00 | Exact selected foundation branch/SHA, provenance/capability manifests including `native_windows_v1`, reviewed-plan transplant, neutral-harness rerun | Quality-engine code, plain-main foundation, or quality Project Flow state |
+| B2-01 | B2-00 | Exact selected foundation branch/SHA, provenance/capability manifests including `native_windows_v1`, reviewed-plan transplant, neutral-harness rerun | Quality-engine code, plain-main foundation, or advancing the SuperGoal runtime to QL-00 |
 | 0 | B2-01 | Quality ADR, selected-foundation baseline manifests, replay/pinning of frozen B2 false-green tests | Planner/runtime behavior |
 | 1 | 0 | Eval schemas, corpus, rubric, manifests, fairness tests | Candidate planner logic |
 | 2 | 0, 1 | Deterministic quality/traceability modules, policy/schema, `sgctl`, quality tests | Model calls, semantic judge, runtime execution |
@@ -917,19 +917,20 @@ Minimum slice contract for every phase:
 - full existing unit/integration/release matrix from Phase 6 onward;
 - no later phase may start while a declared dependency has unresolved P0/P1 or missing evidence.
 
-### 12.2 Post-approval Project Flow seed
+### 12.2 Post-approval SuperGoal → `/goal` chain
 
-Before explicit approval, do not create a Project Flow `STATE.yaml`, claim a slice, or start an executor. After approval, use **two separate Project Flow runs** so branch selection cannot be retroactively justified by quality implementation:
+Before explicit approval, do not advance the compiled package runtime or start implementation. After approval, launch exactly **one standard Hermes `/goal` continuation** from `LAUNCH_GOAL.md`:
 
-1. create a foundation-audit DecisionPackage/`STATE.yaml` containing only B2-00 and B2-01; run both as evidence-gated Shaw slices and close that Flow only after the selected foundation, provenance, and transplanted reviewed plan are verified;
-2. only then create a new quality-leap DecisionPackage/`STATE.yaml` on the exact B2-01 foundation, beginning at QL-00. No quality slice may exist as claimed/in-progress before the foundation Flow is closed.
+1. the executor resolves the package root from the launched `LAUNCH_GOAL.md`, reads the compiled contract and protocol, and runs B2-00 then B2-01 under the same authoritative `runtime/STATE.json`;
+2. only after the P02 closeout receipt proves the exact selected foundation, provenance, `native_windows_v1`, and unchanged reviewed-plan hash may the same `/goal` advance to QL-00;
+3. phases QL-00 through QL-08 continue in that same `/goal` until final audit, a declared approval/safety boundary, or a real blocker. No nested goal, custom runner, resident supervisor, or second execution state is created.
 
-The rows below are seeds for those two runs, not one shared state file.
+The rows below are phase contracts inside that single SuperGoal runtime.
 
 | Slice | Inputs | Outputs | Mandatory verification | Completion evidence | Stop/rollback rule |
 |---|---|---|---|---|---|
 | B2-00 branch value | `main` `35a22fe`, hardening `5725192`, commit/diff clusters, clean Windows/Linux worktrees | neutral harness, five frozen false-green fixtures/review receipts, value audit, adoption ADR, disposition manifest, selected foundation specification | neutral black-box suite and dependency-aware ablations; each branch's native suite; Windows/Linux matrix; preregistered performance/size comparison; independent P0/P1 review | per-cluster failure/benefit/cost evidence, raw command records, exact decision and intended selected composition | No whole-branch adoption by default; unresolved P0/P1 or ambiguous value blocks B2-01; no plain-main quality fallback is authorized |
-| B2-01 foundation materialization | B2-00 ADR, disposition/dependency manifests, reviewed plan commit, `native_windows_v1` contract | exact whole/curated/`main + native_windows_v1` foundation branch and SHA, provenance/cherry-pick and capability manifests, plan transplanted onto that SHA, rerun evidence | clean reconstruct from manifests; native full suite; neutral harness; Windows CPython 3.11/3.13 path/locking/reparse/race/determinism matrix; Linux parity; plan SHA/content check; independent P0/P1 review | exact foundation and rollback SHAs/profiles, `native_windows_v1` implementation/evidence hashes, commit provenance, command records, closed foundation Flow | Any missing Windows capability, unexplained delta, failed retained test, or plan drift reopens B2-00; quality Flow/QL-00 must not be created |
+| B2-01 foundation materialization | B2-00 ADR, disposition/dependency manifests, reviewed plan commit, `native_windows_v1` contract | exact whole/curated/`main + native_windows_v1` foundation branch and SHA, provenance/cherry-pick and capability manifests, plan transplanted onto that SHA, rerun evidence | clean reconstruct from manifests; native full suite; neutral harness; Windows CPython 3.11/3.13 path/locking/reparse/race/determinism matrix; Linux parity; plan SHA/content check; independent P0/P1 review | exact foundation and rollback SHAs/profiles, `native_windows_v1` implementation/evidence hashes, commit provenance, command records, P02 closeout receipt bound to authoritative SuperGoal runtime | Any missing Windows capability, unexplained delta, failed retained test, or plan drift reopens B2-00; the runtime must not advance to QL-00 |
 | QL-00 baseline | B2-01 exact selected foundation SHA, selected compiler, frozen B2 fixtures | quality ADR, pinned baseline adapter/manifest, replayed false-green records | exact selected HEAD; baseline adapter run; `python -m unittest tests.quality.test_baseline_false_greens`; `git diff --check` | command records, environment/version manifest, fixture/report hashes | Stop if selected baseline or B2 fixture verdicts cannot be reproduced on Windows and Linux; no candidate work |
 | QL-01 corpus | QL-00 ADR/defects, sanitized task sources | 24 dev cases, 12 frozen calibration cases/labels, schemas/rubric/policy, sealed manifest | `python -m unittest tests.quality.test_eval_case_contract`; schema validation; two-reviewer fairness receipts | case counts/hashes, review receipts, negative unfair-case result | Remove/repair unfair cases before any candidate scoring; never tune on sealed labels |
 | QL-02 deterministic B | QL-00 defects, QL-01 contracts | `quality.py`, typed model/policy fields, opt-in CLI/profile behavior, mutations | `python -m unittest tests.quality.test_quality_lint tests.mutation.test_quality_false_green_mutations`; focused CLI fixtures; legacy golden outputs | stable diagnostics, negative-fixture matrix, legacy compatibility hashes | If false blocks cannot be bounded, keep report-only mode; do not change default strict behavior |
@@ -1293,7 +1294,7 @@ These are choices for review, not blockers to understanding the plan.
 3. **Cost budget:** target no more than 15% median token growth; permit more only with measured execution lift, with hard caps of 1.5x normal and 2.0x high-risk. Run a semantic judge only where risk or benchmark policy requires it.
 4. **Holdout owner:** private operator-controlled dataset with public manifest hashes.
 5. **Historical corpus:** anonymize the most correction-heavy prior SuperGoals first, not the prettiest successful examples.
-6. **Default execution route after approval:** Project Flow because this is multi-slice, stateful, and benchmark-gated work.
+6. **Default execution route after approval:** one compiled SuperGoal → one standard Hermes `/goal` continuation, because package-native phases, evidence gates, and `runtime/STATE.json` already provide the required stateful control plane.
 7. **Schema strategy:** bounded compatibility canary first; v3.1 only after measured success.
 
 ## 17. Cutover gates
@@ -1315,10 +1316,10 @@ Default behavior must not change until:
 Suggested approval text for a later execution session:
 
 ```text
-APPROVE SUPERGOAL QUALITY LEAP PLAN v1.
-Execute through Project Flow on a dedicated implementation branch.
+APPROVE SUPERGOAL QUALITY LEAP PLAN v0.7.
+Execute the compiled package through one standard Hermes /goal continuation on a dedicated implementation branch.
 Run Gate B2-00 first and do not assume fix/b2-hardening is adopted wholesale.
-Close Gate B2-01 on the exact selected foundation before creating the quality Project Flow.
+Close Gate B2-01 on the exact selected foundation before advancing the same SuperGoal runtime to QL-00.
 Keep existing SuperGoal behavior as default until every promotion gate in
 docs/supergoal-quality-leap-plan.md passes. Do not weaken thresholds after
 seeing candidate results; any change requires a new reviewed plan revision.
