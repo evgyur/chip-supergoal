@@ -211,8 +211,11 @@ def probe_repository(
 
     contract = _fixture_contract(repo)
     compile_seconds: list[float] = []
+    archive_seconds: list[float] = []
     fingerprints: list[str] = []
     package_sizes: list[int] = []
+    validation_failures: list[int] = []
+    archive_failures: list[int] = []
     with tempfile.TemporaryDirectory(prefix="b2-neutral-") as temporary_directory:
         temporary_root = Path(temporary_directory)
         # The long, spaced, Unicode target is a neutral path portability probe.
@@ -236,7 +239,7 @@ def probe_repository(
                 name=f"compile-{index}",
             )
             elapsed = time.perf_counter() - started
-            _run(
+            validation = _run(
                 [
                     sys.executable,
                     str(output / "scripts" / "sgctl.py"),
@@ -247,11 +250,39 @@ def probe_repository(
                 cwd=output,
                 records=records,
                 name=f"self-contained-validate-{index}",
+                expected_returncodes=set(range(0, 256)),
             )
+            if validation.returncode != 0:
+                validation_failures.append(index)
             if index >= warmups:
                 compile_seconds.append(elapsed)
                 fingerprints.append(_tree_fingerprint(output))
                 package_sizes.append(_directory_size(output))
+
+            archive_output = temporary_root / f"archive-{index}.zip"
+            archive_manifest = output / "out" / "final-artifacts-manifest.json"
+            archive_started = time.perf_counter()
+            archive = _run(
+                [
+                    sys.executable,
+                    str(repo / "scripts" / "sgctl.py"),
+                    "archive",
+                    str(output),
+                    "--out",
+                    str(archive_output),
+                    "--manifest",
+                    str(archive_manifest),
+                ],
+                cwd=repo,
+                records=records,
+                name=f"archive-{index}",
+                expected_returncodes=set(range(0, 256)),
+            )
+            archive_elapsed = time.perf_counter() - archive_started
+            if archive.returncode != 0:
+                archive_failures.append(index)
+            elif index >= warmups:
+                archive_seconds.append(archive_elapsed)
 
         malformed = temporary_root / "malformed.CONTRACT.json"
         malformed.write_text("{}\n", encoding="utf-8")
@@ -281,8 +312,24 @@ def probe_repository(
         [float(value) for value in package_sizes],
         expected=repetitions,
     )
+    archive_summary: dict[str, Any]
+    if len(archive_seconds) == repetitions:
+        archive_summary = summarize_measurements(archive_seconds, expected=repetitions)
+    else:
+        archive_summary = {
+            "status": "unavailable",
+            "successful_measurements": len(archive_seconds),
+            "failed_repetitions": len(archive_failures),
+        }
 
-    capability_status = "pass" if aggregate_mode == "full" else "partial"
+    probe_status = "pass" if not validation_failures and not archive_failures else "fail"
+    capability_status = (
+        "pass"
+        if aggregate_mode == "full" and not validation_failures and not archive_failures
+        else "fail"
+        if validation_failures or archive_failures
+        else "partial"
+    )
     capability_evidence = {
         name: {
             "status": capability_status,
@@ -301,12 +348,12 @@ def probe_repository(
         "target_sha": target_sha,
         "capabilities": capability_evidence,
     }
-    if aggregate_mode == "full":
+    if aggregate_mode == "full" and not validation_failures and not archive_failures:
         validate_capability_receipt(receipt, required_capabilities)
     return {
         "schema_version": SCHEMA_VERSION,
         "probe_sha256": _sha256_bytes(Path(__file__).read_bytes()),
-        "status": "pass",
+        "status": probe_status,
         "target_sha": target_sha,
         "environment": {
             "platform": platform.platform(),
@@ -317,13 +364,31 @@ def probe_repository(
         "command_records": records,
         "measurements": {
             "compile_seconds": compile_summary,
+            "archive_seconds": archive_summary,
             "package_bytes": size_summary,
             "warmup_repetitions": warmups,
             "measured_repetitions": repetitions,
             "deterministic_fingerprint": fingerprints[0],
         },
         "capability_receipt": receipt,
-        "findings": [],
+        "findings": (
+            ([
+                {
+                    "id": "self-contained-validation-failed",
+                    "severity": "P2",
+                    "summary": "compiled package failed neutral self-contained strict validation",
+                    "failed_repetition_count": len(validation_failures),
+                }
+            ] if validation_failures else [])
+            + ([
+                {
+                    "id": "archive-measurement-failed",
+                    "severity": "P2",
+                    "summary": "archive command failed during neutral measurement",
+                    "failed_repetition_count": len(archive_failures),
+                }
+            ] if archive_failures else [])
+        ),
     }
 
 

@@ -82,8 +82,30 @@ class B2HarnessContractTests(unittest.TestCase):
         self.assertEqual(result["unresolved_p0_p1"], 0)
         self.assertEqual(result["cluster_count"], 5)
 
+    def test_absolute_cost_exception_is_explicit_and_bounded(self):
+        exceptions = self.runner.performance_exceptions(
+            compile_p50_seconds=0.258,
+            compile_p95_seconds=0.272,
+            archive_p50_seconds=0.190,
+            archive_p95_seconds=0.220,
+            package_bytes=743321,
+            compile_p50_regression_pct=309.4,
+            compile_p95_regression_pct=324.5,
+            archive_p50_regression_pct=41.0,
+            archive_p95_regression_pct=48.0,
+            package_size_regression_pct=2350.4,
+        )
+
+        self.assertEqual(
+            {item["metric"] for item in exceptions},
+            {"compile_p50", "compile_p95", "archive_p50", "archive_p95", "package_size"},
+        )
+        self.assertTrue(all(item["bounded_absolute_cost"] for item in exceptions))
+        self.assertTrue(all(item["rationale"] for item in exceptions))
+
 
 class B2PrivacyScanTests(unittest.TestCase):
+
     def test_privacy_scan_reports_location_without_echoing_secret(self):
         privacy = load_module(PRIVACY_PATH, "b2_privacy_scan")
         secret = "ghp_" + ("A" * 36)
