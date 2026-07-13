@@ -1,0 +1,19 @@
+{
+  "id": "B2-FG-05",
+  "title": "Human projection is accepted as runtime completion authority",
+  "plan_fragment": {
+    "runtime_state": "RUNNING",
+    "projection_state": "DONE",
+    "terminal_markers": [
+      "AUDIT_COMPLETE",
+      "SUPERGOAL_RUN_COMPLETE"
+    ]
+  },
+  "expected_defect": "A structurally plausible transcript can claim completion while authoritative runtime state and fresh evidence do not permit it.",
+  "review": {
+    "reviewer": "standard-hermes-goal-rpd",
+    "method": "exact-file adversarial review",
+    "reviewed_at": "2026-07-13T22:41:37Z",
+    "verdict": "confirmed_false_green"
+  }
+}

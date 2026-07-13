@@ -163,9 +163,9 @@ class ReleaseEngineeringTest(unittest.TestCase):
         self.assertTrue(uses)
         for item in uses:
             self.assertRegex(item, r"@[a-f0-9]{40}$", item)
-        self.assertEqual(uses.count(f"actions/checkout@{CHECKOUT_V7_SHA}"), 2)
-        self.assertEqual(uses.count(f"actions/setup-python@{SETUP_PYTHON_V6_SHA}"), 1)
-        self.assertEqual(len(uses), 3, uses)
+        self.assertEqual(uses.count(f"actions/checkout@{CHECKOUT_V7_SHA}"), 4)
+        self.assertEqual(uses.count(f"actions/setup-python@{SETUP_PYTHON_V6_SHA}"), 2)
+        self.assertEqual(len(uses), 6, uses)
         self.assertNotIn("unavailable", ci)
 
     def test_cross_platform_runtime_contract_is_documented(self):

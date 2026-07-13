@@ -1,0 +1,18 @@
+{
+  "id": "B2-FG-04",
+  "title": "Approval class does not cover the declared live side effect",
+  "plan_fragment": {
+    "risk_tags": [
+      "migration"
+    ],
+    "command": "python scripts/migrate.py --target production",
+    "approval_scope": "plan-launch"
+  },
+  "expected_defect": "A generic launch approval is treated as authority for a destructive live mutation even though the approval boundary excludes it.",
+  "review": {
+    "reviewer": "standard-hermes-goal-rpd",
+    "method": "exact-file adversarial review",
+    "reviewed_at": "2026-07-13T22:41:37Z",
+    "verdict": "confirmed_false_green"
+  }
+}

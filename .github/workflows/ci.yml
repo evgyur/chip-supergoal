@@ -57,3 +57,54 @@ jobs:
             exit 1
           fi
           echo "Ubuntu, native Windows, and shell-quality gates passed"
+
+  b2-neutral-windows:
+    if: github.ref == 'refs/heads/plan/quality-leap' || github.head_ref == 'plan/quality-leap'
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11.9", "3.13.14"]
+        target:
+          - id: main
+            sha: 35a22fe5bc4821559d9a186579bc1ea07ad6ac33
+          - id: hardening-whole
+            sha: 5725192154dfca78032e861edbd29570bb2d94e8
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out neutral harness
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          path: harness
+      - name: Check out frozen target
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ matrix.target.sha }}
+          path: target
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install target test dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check PyYAML
+          if (Test-Path target/requirements-test.txt) {
+            python -m pip install --disable-pip-version-check -r target/requirements-test.txt
+          }
+      - name: Run frozen neutral probe and emit receipt
+        shell: pwsh
+        run: |
+          $label = "${{ matrix.python }}".Replace(".", "")
+          $output = "harness/evals/b2/ci-output/${{ matrix.target.id }}-py${label}.json"
+          $capabilities = '["powershell-safe-cli","long-short-paths","mixed-separators","drive-roots","subst","junction-symlink-reparse-containment","atomic-replace","process-package-locking","path-swap-races","deterministic-compile-archive","public-v2-v3-linux-parity"]'
+          python harness/evals/b2/b2-neutral-harness/probe.py --repo target --output $output --repetitions 5 --warmups 1 --aggregate-mode full --capabilities-json $capabilities
+          $probeExit = $LASTEXITCODE
+          $receipt = [Convert]::ToBase64String([IO.File]::ReadAllBytes($output))
+          Write-Output "B2_NEUTRAL_RESULT target=${{ matrix.target.id }} python=${{ matrix.python }} payload=${receipt}"
+          if ($probeExit -ne 0 -and "${{ matrix.target.id }}" -ne "main") {
+            exit $probeExit
+          }

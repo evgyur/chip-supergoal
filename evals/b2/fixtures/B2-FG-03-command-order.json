@@ -1,0 +1,16 @@
+{
+  "id": "B2-FG-03",
+  "title": "Phase commands consume an artifact produced only by a later phase",
+  "plan_fragment": {
+    "phase": "P02",
+    "command": "python scripts/evaluate.py --manifest out/P04-corpus.json",
+    "declared_dependency": "P01"
+  },
+  "expected_defect": "The phase graph is acyclic on paper but command-level artifact dependencies make execution impossible in declared order.",
+  "review": {
+    "reviewer": "standard-hermes-goal-rpd",
+    "method": "exact-file adversarial review",
+    "reviewed_at": "2026-07-13T22:41:37Z",
+    "verdict": "confirmed_false_green"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "B2-FG-02",
+  "title": "Evidence claim uses an unreadable or mutable source locator",
+  "plan_fragment": {
+    "fact": "The production gateway supports the required flag.",
+    "source_locator": "current chat context",
+    "freshness": "unspecified"
+  },
+  "expected_defect": "Structural validation accepts a decision-critical fact that a later executor cannot independently retrieve or freshness-check.",
+  "review": {
+    "reviewer": "standard-hermes-goal-rpd",
+    "method": "exact-file adversarial review",
+    "reviewed_at": "2026-07-13T22:41:37Z",
+    "verdict": "confirmed_false_green"
+  }
+}

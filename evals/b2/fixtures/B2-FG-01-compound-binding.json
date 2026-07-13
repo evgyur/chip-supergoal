@@ -1,0 +1,19 @@
+{
+  "id": "B2-FG-01",
+  "title": "Compound acceptance text lacks requirement-to-command binding",
+  "plan_fragment": {
+    "acceptance": [
+      "Compilation is deterministic, private data is excluded, and rollback is verified."
+    ],
+    "commands": [
+      "python scripts/sgctl.py validate-package ."
+    ]
+  },
+  "expected_defect": "A structurally valid phase can pass while two of three obligations have no dedicated verifier or evidence binding.",
+  "review": {
+    "reviewer": "standard-hermes-goal-rpd",
+    "method": "exact-file adversarial review",
+    "reviewed_at": "2026-07-13T22:41:37Z",
+    "verdict": "confirmed_false_green"
+  }
+}

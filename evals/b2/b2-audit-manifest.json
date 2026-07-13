@@ -1,0 +1,863 @@
+{
+  "clusters": [
+    {
+      "commits": [
+        "22de849123125a64443e109a02146551859a1fe1",
+        "7ae8f2993e2077c7d10b99af3eec9498b17b9caa",
+        "14fa4c959a5014ea53112fef93c8b8a6192472fa",
+        "bed319330afc8be1a038a3660fc37226920dd710",
+        "b0f885a0967ac86c4314c8d29ffb3d3cc8d5b177",
+        "cd30ed9a754cd03f649014e66d6ab243bce429a3",
+        "c89ba3289512790e12fc5e4fde6bc469a354af36",
+        "dbdc46a143da755a403fff70aa68277fff7da4f4",
+        "023da9dce12a0d9ae1798810ceaf2ef878717c47",
+        "0c18d57eb2faf03ca1ebbe083a25c05524b5521e",
+        "828c2609d45093c1d0a355443b5fd865b8bbe433",
+        "6531309f0297e94ada718f617436e6a71261ec1c",
+        "88af4622627a9895aefa42b5f42c9fd9632cd0cc"
+      ],
+      "depends_on": [],
+      "failure_classes": [
+        "canonical-contract",
+        "profile-policy",
+        "diagnostics",
+        "pipeline",
+        "portable-io-prerequisite"
+      ],
+      "id": "C1",
+      "name": "portable-contract-pipeline"
+    },
+    {
+      "commits": [
+        "402f051e410188604cadd42ee1884b485eed85a9",
+        "6432db7d0d69a7b168f2b3f30bf4cd1fae1ee130",
+        "5d7ff0579941397f7c72d5e8b86dd761c389c4ab",
+        "227746429e37ad8ea0e6cf37432500c57303616d",
+        "779f190a6dd8c6ed6064456987f585122610d000",
+        "3dc233b8f3fb152e912f86709e4cfc42c94a9033",
+        "cfd25af68c747e1b66c9f9112590d5f8bbee2c71"
+      ],
+      "depends_on": [
+        "C1"
+      ],
+      "failure_classes": [
+        "self-contained-package",
+        "runtime-state",
+        "evidence-audit",
+        "terminal-authority",
+        "recovery"
+      ],
+      "id": "C2",
+      "name": "sealed-runtime-authority"
+    },
+    {
+      "commits": [
+        "b5364a4398aaa42bd1147113ef2dc17fc2f52906"
+      ],
+      "depends_on": [
+        "C2"
+      ],
+      "failure_classes": [
+        "native-windows-runtime-authority",
+        "locking",
+        "path-identity"
+      ],
+      "id": "C3",
+      "name": "native-windows-authority"
+    },
+    {
+      "commits": [
+        "5d4e9be2629706a3a98412834b3dc65f70c153d4",
+        "5f92a8d72e87662778fb2a7631abb3cf877bd8a9",
+        "c2b7d1f8ca7c7e7115594f79b756fa0161333b50"
+      ],
+      "depends_on": [
+        "C3"
+      ],
+      "failure_classes": [
+        "delivery-freshness",
+        "archive-publication",
+        "malformed-target-preservation"
+      ],
+      "id": "C4",
+      "name": "archive-delivery-hardening"
+    },
+    {
+      "commits": [
+        "6f96e38f1a73a037ff4f28817023222f97a979ef",
+        "6d6891418c0b30facd3d2060a24af343b028fd69",
+        "0e2b23b3ee8b67df2dfe760dd6e0d031c542413f",
+        "4de862005583da8d29c9dcf14e01d3ca7ecad3e2",
+        "5725192154dfca78032e861edbd29570bb2d94e8"
+      ],
+      "depends_on": [
+        "C4"
+      ],
+      "failure_classes": [
+        "windows-path-race",
+        "linux-parity",
+        "ci-release-evidence",
+        "compatibility-matrix"
+      ],
+      "id": "C5",
+      "name": "native-release-closure"
+    }
+  ],
+  "compositions": [
+    {
+      "id": "main",
+      "included_clusters": [],
+      "sha": "35a22fe5bc4821559d9a186579bc1ea07ad6ac33"
+    },
+    {
+      "id": "through-C1",
+      "included_clusters": [
+        "C1"
+      ],
+      "sha": "88af4622627a9895aefa42b5f42c9fd9632cd0cc"
+    },
+    {
+      "id": "through-C2",
+      "included_clusters": [
+        "C1",
+        "C2"
+      ],
+      "sha": "cfd25af68c747e1b66c9f9112590d5f8bbee2c71"
+    },
+    {
+      "id": "through-C3",
+      "included_clusters": [
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "sha": "b5364a4398aaa42bd1147113ef2dc17fc2f52906"
+    },
+    {
+      "id": "through-C4",
+      "included_clusters": [
+        "C1",
+        "C2",
+        "C3",
+        "C4"
+      ],
+      "sha": "c2b7d1f8ca7c7e7115594f79b756fa0161333b50"
+    },
+    {
+      "id": "hardening-whole",
+      "included_clusters": [
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5"
+      ],
+      "sha": "5725192154dfca78032e861edbd29570bb2d94e8"
+    }
+  ],
+  "decision_policy": {
+    "allowed": [
+      "adopt_whole",
+      "adopt_curated",
+      "keep_separate",
+      "reject"
+    ],
+    "plain_main_forbidden": true,
+    "unresolved_p0_p1_required": 0
+  },
+  "file_inventory": [
+    {
+      "cluster_id": "C5",
+      "path": ".gitattributes"
+    },
+    {
+      "cluster_id": "C5",
+      "path": ".github/workflows/ci.yml"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "AGENT_HANDOFF.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "CHANGELOG.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "README.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "SKILL.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "VERSION"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "docs/README.ru.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "docs/canary-report.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "docs/chip-supergoal-user-stories.csv"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "docs/compatibility-matrix.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "docs/release-checklist.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "docs/superpowers/plans/2026-07-10-chip-supergoal-b2-hardening.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "docs/superpowers/specs/2026-07-10-chip-supergoal-b2-hardening-design.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "docs/traceability.csv"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "examples/brownfield-feature/CONTRACT.json"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "lib/chip_supergoal/archive.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "lib/chip_supergoal/audit.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "lib/chip_supergoal/compile.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "lib/chip_supergoal/delivery.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "lib/chip_supergoal/diagnostics.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "lib/chip_supergoal/events.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "lib/chip_supergoal/evidence.py"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "lib/chip_supergoal/goalmanager_sim.py"
+    },
+    {
+      "cluster_id": "C1",
+      "path": "lib/chip_supergoal/graph.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "lib/chip_supergoal/migrate.py"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "lib/chip_supergoal/model.py"
+    },
+    {
+      "cluster_id": "C1",
+      "path": "lib/chip_supergoal/normalize.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "lib/chip_supergoal/pipeline.py"
+    },
+    {
+      "cluster_id": "C1",
+      "path": "lib/chip_supergoal/policy.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "lib/chip_supergoal/portable.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "lib/chip_supergoal/profiles.py"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "lib/chip_supergoal/render.py"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "lib/chip_supergoal/research.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "lib/chip_supergoal/state.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "lib/chip_supergoal/terminal.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "lib/chip_supergoal/validate.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "profiles/chip-private.json"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/INDEX.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/active-supergoal-skill-review-pause.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/architect-plus-v3-upgrade-execution-lessons.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/artifact-boundaries.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/artifact-schemas.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/auth-ux-polish-phase.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/category-backed-skill-path-validation.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/completed-standing-goal-and-workdir-hygiene.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/core-planning-contract.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/cross-file-consistency-review-hardening.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/dev-history-hardening.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/executable-contract-review.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/execution-state-machine.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/final-audit-packaging.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/follow-on-supergoal-after-completion.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/full-suite-red-scope-boundary.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/goal-format.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/goal-identity-and-audit-lookup.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/goalmanager-recovery.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/ignored-supergoal-package-hygiene.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/live-activation-continuation-hardening.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/loop-design-gate.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/markdown-report-shell-quoting.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/nested-package-preflight.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/no-internal-approval-standing-goal.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/old-server-decommission-drain.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/phase-boundary-state-and-characterization.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/phase-design.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/phase-marker-bookkeeping.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/planner-executor-state-hygiene.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/post-deploy-repair-audit.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/process-integrity-production-runs.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/repeated-approval-blocked-goal-loop.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/reply-md-goal-launch.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/repo-state-comparison.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/research-report-to-supergoal.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/rpd-review-gates.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/rpd-reviewed-supergoal-launch.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/rpd-to-supergoal-handoff.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/skill-feature-audit-user-stories.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/skill-package-sync.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/standing-goal-disambiguation-and-audit-lookup.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/supergoal-continuation-and-package-path-drift.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/supergoal-execution-root-hygiene.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/supergoal-git-cleanup-resume.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/supergoal-goal-code-review-hardening.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/supergoal-goal-pipeline-turn-yield.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/supergoal-hermes-update-preservation.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/supergoal-status-snapshots.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/upstream-goal-compatibility.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/upstream-goal-reconciliation.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "references/v2-v3-migration.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "requirements-test.txt"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/check-cross-file-consistency.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/detect-stack.sh"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/probe-dev-history-contracts.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/probe-upstream-goal-compat.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/repo-state.sh"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/sgctl.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/test-user-stories.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/test.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/test.sh"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/validate-loop-design.sh"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "scripts/validate-phase.sh"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "spec/archive-manifest.schema.json"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "spec/archive-result.schema.json"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "spec/diagnostic-catalog.json"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "spec/event.schema.json"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "spec/evidence.schema.json"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "spec/final-audit.schema.json"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "spec/invariant-catalog.json"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "spec/marker-contract.json"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "spec/state-machine.json"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "spec/state.schema.json"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "templates/LAUNCH_GOAL.md"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "templates/PROTOCOL.md"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "templates/STATE.md"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "templates/delivery/final-artifacts-delivery-receipt.schema.json"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "templates/delivery/package-final-artifacts.sh"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "templates/delivery/review-md-files-delivery-receipt.schema.json"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "templates/delivery/send-final-artifacts.sh"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "templates/delivery/send-review-md-files.sh"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "templates/phase-goal.txt"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "tests/canary/test_private_canaries.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/ci/test_native_runner.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/ci/test_release_engineering.py"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "tests/e2e/test_full_run.py"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "tests/e2e/test_goalmanager_simulator.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/e2e/test_runtime_cli.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/integration/test_live_goalmanager.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/migration/test_v2_migration.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "tests/rendering/test_compile_determinism.py"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "tests/rendering/test_lossless_rendering.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/rendering/test_self_contained_package.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/security/test_archive_determinism.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "tests/security/test_archive_manifest_collision.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/security/test_archive_quality_hardening.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/security/test_archive_symlink.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "tests/security/test_forged_receipt.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "tests/security/test_terminal_authority.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "tests/semantic/test_audit_engine.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "tests/semantic/test_compile_fail_closed.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "tests/semantic/test_current_validator_escape_cases.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "tests/semantic/test_runtime_mutation_safety.py"
+    },
+    {
+      "cluster_id": "C1",
+      "path": "tests/semantic/test_sgctl_semantic_validation.py"
+    },
+    {
+      "cluster_id": "C2",
+      "path": "tests/semantic/test_state_machine.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "tests/semantic/test_task5_audit_boundaries.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "tests/semantic/test_task5_runtime_authority.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/unit/test_delivery_authority.py"
+    },
+    {
+      "cluster_id": "C4",
+      "path": "tests/unit/test_diagnostics_and_invariants.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/unit/test_portable_runtime.py"
+    },
+    {
+      "cluster_id": "C3",
+      "path": "tests/unit/test_profile_policy_pipeline.py"
+    },
+    {
+      "cluster_id": "C5",
+      "path": "tests/unit/test_reference_catalog_profiles.py"
+    }
+  ],
+  "frozen_at": "2026-07-13T22:41:37Z",
+  "hardening_sha": "5725192154dfca78032e861edbd29570bb2d94e8",
+  "main_sha": "35a22fe5bc4821559d9a186579bc1ea07ad6ac33",
+  "measurement": {
+    "archive_p50_max_regression_pct": 10,
+    "archive_p95_max_regression_pct": 20,
+    "compile_p50_max_regression_pct": 10,
+    "compile_p95_max_regression_pct": 20,
+    "hardware_identity_required": true,
+    "insufficient_power_wording": "no measured plan-quality improvement",
+    "measured_repetitions": 5,
+    "package_size_max_regression_pct": 25,
+    "peak_memory_metric": "best_effort_rusage_maxrss",
+    "plan_quality_mcid_points": 6.25,
+    "runtime_identity_required": true,
+    "warmup_repetitions": 1
+  },
+  "merge_base_sha": "35a22fe5bc4821559d9a186579bc1ea07ad6ac33",
+  "native_windows_v1": {
+    "capabilities": [
+      "powershell-safe-cli",
+      "long-short-paths",
+      "mixed-separators",
+      "drive-roots",
+      "subst",
+      "junction-symlink-reparse-containment",
+      "atomic-replace",
+      "process-package-locking",
+      "path-swap-races",
+      "deterministic-compile-archive",
+      "public-v2-v3-linux-parity"
+    ],
+    "required": true,
+    "required_python_versions": [
+      "3.11.9",
+      "3.13.14"
+    ]
+  },
+  "neutral_probe": {
+    "assertions_not_imported_from_target": true,
+    "owner": "quality-leap-plan",
+    "path": "evals/b2/b2-neutral-harness/probe.py"
+  },
+  "platform_matrix": [
+    {
+      "os": "ubuntu-24.04",
+      "python": "3.11.9"
+    },
+    {
+      "os": "ubuntu-24.04",
+      "python": "3.13.14"
+    },
+    {
+      "os": "windows-latest",
+      "python": "3.11.9"
+    },
+    {
+      "os": "windows-latest",
+      "python": "3.13.14"
+    }
+  ],
+  "schema_version": "b2-audit-manifest-v1",
+  "semantic_false_green_fixtures": [
+    {
+      "id": "B2-FG-01",
+      "path": "evals/b2/fixtures/B2-FG-01-compound-binding.json",
+      "sha256": "1d426603c5cdd7a688632259f9c300cf5f22bf6931bd8aac6d021466b0c7bfbd"
+    },
+    {
+      "id": "B2-FG-02",
+      "path": "evals/b2/fixtures/B2-FG-02-source-locator.json",
+      "sha256": "61a34e6431dfc3dd373090b1b70e130c20b6e549b0362247a218e978906d8d90"
+    },
+    {
+      "id": "B2-FG-03",
+      "path": "evals/b2/fixtures/B2-FG-03-command-order.json",
+      "sha256": "c3c70c6781d2538e6ccf3b80272318d393af3198cf07fb6415ff81c77d766fcc"
+    },
+    {
+      "id": "B2-FG-04",
+      "path": "evals/b2/fixtures/B2-FG-04-approval-scope.json",
+      "sha256": "54a6632f2e14cb176662dd76c1ed0276909c6d387272d258cc03cc443bfe5295"
+    },
+    {
+      "id": "B2-FG-05",
+      "path": "evals/b2/fixtures/B2-FG-05-runtime-authority.json",
+      "sha256": "e0c4444367c4dda70071ad1b8fc5b2380e711e641475d151ce65b728e571550c"
+    }
+  ]
+}
