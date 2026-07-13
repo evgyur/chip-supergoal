@@ -1,0 +1,35 @@
+{
+  "schema_version": "p02-rpd-review-v1",
+  "reviewed_at": "2026-07-13T23:54:03Z",
+  "focus": [
+    "migration",
+    "data-loss",
+    "integration"
+  ],
+  "selected_foundation_sha": "5725192154dfca78032e861edbd29570bb2d94e8",
+  "rollback_sha": "35a22fe5bc4821559d9a186579bc1ea07ad6ac33",
+  "checks": [
+    {
+      "id": "P02-RPD-MIGRATION",
+      "status": "pass",
+      "evidence": "Clean detached reconstruction at the immutable selected SHA succeeded; provenance accounts for 29 commits and 151 files."
+    },
+    {
+      "id": "P02-RPD-DATA-LOSS",
+      "status": "pass",
+      "evidence": "The selected foundation retains sealed runtime authority, recovery, deterministic archive publication, and an explicit immutable rollback SHA."
+    },
+    {
+      "id": "P02-RPD-INTEGRATION",
+      "status": "pass",
+      "evidence": "Native Windows 3.11.9/3.13.14 and Linux parity receipts are hash-bound; 441 repository tests and shell gates pass."
+    },
+    {
+      "id": "P02-RPD-PLAN-BINDING",
+      "status": "pass",
+      "evidence": "docs/supergoal-quality-leap-plan.md remains byte-identical at SHA-256 a269af6b6f7190a383d090430ec7ad155c474aa49646d15321d115c4177f132e."
+    }
+  ],
+  "unresolved_p0_p1": 0,
+  "verdict": "READY FOR DISCUSSION"
+}
