@@ -4,6 +4,13 @@
   "profile_version": "1.0",
   "quality": {
     "quality_contract_version": "1.0",
-    "required": true
+    "required": true,
+    "planning_canary": {
+      "b_only_semantic_calls": 0,
+      "dispatch_authority": "explicit_current_stage6_human_approval_only",
+      "max_repair_rounds": 2,
+      "no_progress_stop": true,
+      "persist_raw_chain_of_thought": false
+    }
   }
 }

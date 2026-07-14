@@ -802,6 +802,26 @@
     {
       "domain": [
         "planning",
+        "quality",
+        "control-plane"
+      ],
+      "id": "REF-PLANNER-CRITIC-REPAIR-LOOP",
+      "last_reviewed": "2026-07-14",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/planner-critic-repair-loop.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "quality-canary",
+        "critic-repair",
+        "stage6-authority"
+      ]
+    },
+    {
+      "domain": [
+        "planning",
         "execution",
         "state"
       ],

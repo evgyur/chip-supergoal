@@ -167,7 +167,10 @@ class QualityLintTests(unittest.TestCase):
         base = resolve_profile("base", ROOT / "profiles")
         canary = resolve_profile("quality-canary", ROOT / "profiles")
         self.assertNotIn("quality", base)
-        self.assertEqual(canary["quality"], {"required": True, "quality_contract_version": "1.0"})
+        self.assertTrue(canary["quality"]["required"])
+        self.assertEqual(canary["quality"]["quality_contract_version"], "1.0")
+        self.assertEqual(canary["quality"]["planning_canary"]["max_repair_rounds"], 2)
+        self.assertEqual(canary["quality"]["planning_canary"]["b_only_semantic_calls"], 0)
 
     def test_quality_canary_compiler_pipeline_blocks_quality_findings(self):
         data = json.loads((ROOT / "examples/brownfield-feature/CONTRACT.json").read_text(encoding="utf-8"))

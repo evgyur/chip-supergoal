@@ -37,6 +37,7 @@ RUNTIME_MODULES = (
     "__init__.py",
     "archive.py",
     "audit.py",
+    "canary.py",
     "compile.py",
     "delivery.py",
     "diagnostics.py",
@@ -69,6 +70,7 @@ RUNTIME_SCRIPTS = (
 RUNTIME_TEMPLATES = (
     "LAUNCH_GOAL.md",
     "LOOP_DESIGN.md",
+    "PLAN_QUALITY.md",
     "phase-goal.txt",
     "PROTOCOL.md",
     "RESEARCH.md",

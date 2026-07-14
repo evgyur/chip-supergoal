@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from evals.harness.budget import verify_canary_budget
 from evals.harness.calibration import calibrate as calibrate_judges
 from evals.harness.sandbox_hyperv import probe_hyperv
 from evals.harness.sandbox_podman import probe_podman
@@ -388,6 +389,11 @@ def main() -> int:
     calibration.add_argument("--judges", type=int, required=True)
     calibration.add_argument("--outcome-adjudicators", type=int, required=True)
     calibration.add_argument("--output", type=Path, required=True)
+    budget = sub.add_parser("verify-canary-budget")
+    budget.add_argument("--baseline", type=Path, required=True)
+    budget.add_argument("--output", type=Path, required=True)
+    budget.add_argument("--max-prompt-growth", type=float, required=True)
+    budget.add_argument("--max-repair-rounds", type=int, required=True)
     args = parser.parse_args()
     if args.command == "verify-corpus":
         result = verify_corpus(
@@ -417,7 +423,7 @@ def main() -> int:
         }
         output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
         write_report(output, result)
-    else:
+    elif args.command == "calibrate":
         observations_value = os.environ.get("SUPERGOAL_CALIBRATION_OBSERVATIONS")
         result = calibrate_judges(
             Path(os.environ.get("SUPERGOAL_HOLDOUT_ROOT", DEFAULT_PRIVATE_ROOT)),
@@ -428,6 +434,18 @@ def main() -> int:
         )
         output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
         write_report(output, result)
+    else:
+        baseline = (ROOT / args.baseline).resolve() if not args.baseline.is_absolute() else args.baseline
+        result = verify_canary_budget(
+            ROOT, baseline,
+            max_prompt_growth=args.max_prompt_growth,
+            max_repair_rounds=args.max_repair_rounds,
+        )
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+        if result["status"] != "pass":
+            print(json.dumps(result, sort_keys=True))
+            return 1
     print(json.dumps(result, sort_keys=True))
     return 0
 

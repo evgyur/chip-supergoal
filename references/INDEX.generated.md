@@ -50,6 +50,7 @@ Generated from `spec/reference-catalog.json`.
 - `references/phase-completion-ledger-discipline.md` — incident — no invariant owner
 - `references/phase-design.md` — specialist — no invariant owner
 - `references/phase-marker-bookkeeping.md` — specialist — no invariant owner
+- `references/planner-critic-repair-loop.md` — specialist — no invariant owner
 - `references/planner-executor-state-hygiene.md` — canonical — no invariant owner
 - `references/planning-depth.md` — specialist — no invariant owner
 - `references/polymarket-live-activation-goal-correction.md` — private_profile_only — no invariant owner

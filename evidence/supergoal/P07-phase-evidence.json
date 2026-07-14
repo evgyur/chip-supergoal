@@ -1,0 +1,35 @@
+{
+  "schema_version": "p07-phase-evidence-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P07",
+  "generated_at": "2026-07-14T06:17:41Z",
+  "status": "acceptance_and_rpd_passed",
+  "rpd_review": {
+    "path": "evidence/supergoal/P07-rpd-review.json",
+    "verdict": "READY_FOR_P08_ABLATION",
+    "passed": true
+  },
+  "commands": {
+    "P07-CMD01": "exit_0_3_tests",
+    "P07-CMD02": "exit_0_6_tests",
+    "P07-CMD03": "exit_0_pass_prompt_growth_0.050584",
+    "full_unittest": "515_passed_22_skipped",
+    "native_gates": "9_of_9_passed",
+    "shell_gates": "passed"
+  },
+  "artifacts": {
+    "lib/chip_supergoal/canary.py": "d45bb690e406711bfaffc9ae742e376e64aaadb391f8e49f84eb8a8eed42c61b",
+    "references/planner-critic-repair-loop.md": "e8851755b125e8ffe63d47b0f8d0ec9cd38dd22d879385b1598d334a2d7d68b4",
+    "templates/PLAN_QUALITY.md": "ce5386d949267c0d86ebff53e29aaf4bb7f020412c0bbe4e4eb4fa9a7de23204",
+    "tests/e2e/test_quality_canary_planning.py": "1c181af554eaf4cc159ae67e7b97b4b04b49b024834328eda71b713869986a81",
+    "reports/quality/critic-canary-budget.json": "22376105cdbb523ea50c4cb33668b475db1624a7c5f9034e08349727cfaca946"
+  },
+  "controls": {
+    "max_repair_rounds": 2,
+    "no_progress_stop": true,
+    "b_only_semantic_calls": 0,
+    "raw_chain_of_thought_persisted": false,
+    "quality_only_dispatch_authority": false,
+    "prompt_growth_ratio": 0.050584
+  }
+}
