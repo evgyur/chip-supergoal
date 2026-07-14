@@ -1,0 +1,74 @@
+{
+  "schema_version": "p05-phase-evidence-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P05",
+  "generated_at": "2026-07-14T02:50:15Z",
+  "status": "acceptance_and_rpd_passed",
+  "profile": "quality-canary",
+  "legacy_profiles_unchanged": true,
+  "acceptance_commands": [
+    {
+      "id": "P05-CMD01",
+      "command": "python3 -m unittest tests.quality.test_quality_lint tests.mutation.test_quality_false_green_mutations",
+      "exit_code": 0,
+      "tests_run": 21
+    },
+    {
+      "id": "P05-CMD02",
+      "command": "python3 -m unittest tests.quality.test_quality_determinism tests.security.test_quality_no_network",
+      "exit_code": 0,
+      "tests_run": 9
+    },
+    {
+      "id": "P05-CMD03",
+      "command": "python3 -m unittest discover -s tests && bash scripts/test.sh",
+      "exit_code": 0,
+      "unittest_tests": 492,
+      "unittest_skipped": 22,
+      "user_story_tests": 55,
+      "automated_tests_total": 547,
+      "shell_native_gates": 9
+    },
+    {
+      "id": "P05-CMD04",
+      "command": "python3 quality/run.py lint-fixtures",
+      "exit_code": 0,
+      "frozen_false_green_fixtures": 5
+    }
+  ],
+  "deliverables": [
+    "lib/chip_supergoal/quality.py",
+    "spec/quality-gate.schema.json",
+    "profiles/quality-canary.json",
+    "quality/run.py",
+    "tests/quality/test_quality_lint.py",
+    "tests/quality/test_quality_determinism.py",
+    "tests/security/test_quality_no_network.py",
+    "tests/mutation/test_quality_false_green_mutations.py",
+    "docs/quality-evaluation.md"
+  ],
+  "properties": {
+    "deterministic_report_bytes": true,
+    "no_network_runtime": true,
+    "cataloged_diagnostics": true,
+    "subject_and_report_hash_binding": true,
+    "typed_commands_backward_compatible": true,
+    "machine_readable_report": "reports/plan-quality.json",
+    "policy_version": "plan-quality-policy-v1",
+    "rubric_version": "quality-rubric-v1"
+  },
+  "sha256": {
+    "spec/quality-gate.schema.json": "3430ee6e588823574b74584b5000f6f663cbfef0c5b6bd1e933411a377225712",
+    "spec/plan-quality-policy.json": "f68370155ad262e7d04484d86fddee11a0d34bfce9cff84fb3f6fe376390619c",
+    "spec/quality-rubric.json": "bb7003e68cbed58f7a80dfd81e53d78d523fd198512d1107625c35964104c51b",
+    "profiles/quality-canary.json": "4537a774a2a885abf89ea347f7bd35860e0485cf9848833639d60a55ba439633",
+    "lib/chip_supergoal/quality.py": "c10e3b7c0fabe7894108b1bab17c26edeb64c05708d1d69d990efd599ba3bd66",
+    "tests/quality/test_quality_lint.py": "d03481274b22b2df4b8e09e655161e04fc9f76863a354e6e375ac88d0625a2ad",
+    "tests/quality/test_quality_determinism.py": "f11c0a8f849d6c7990698eca4230ab6da08f2c9fb8c98ed4faf47825a4912b7e"
+  },
+  "rpd_review": {
+    "path": "evidence/supergoal/P05-rpd-review.json",
+    "verdict": "READY FOR DISCUSSION",
+    "passed": true
+  }
+}

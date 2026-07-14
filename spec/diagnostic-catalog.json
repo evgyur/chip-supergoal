@@ -1,7 +1,127 @@
 {
   "catalog_version": "1.0",
-  "expected_code_count": 118,
+  "expected_code_count": 138,
   "diagnostics": [
+    {
+      "code": "QG-APPROVAL-SCOPE",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-COMMAND-TYPE",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-FAKE-COMMAND",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-FUTURE-DEPENDENCY",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-JUDGE-MISMATCH",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-LANE-MISMATCH",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-LAYER-NO-REMOVAL",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-MISSING-TRACE",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-NO-ALTERNATIVE",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-POLICY-VERSION",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-REPORT-HASH",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-REQUIRED",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-RISK-NO-ROLLBACK",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-RUBRIC-VERSION",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-RUNTIME-AUTHORITY",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-SCHEMA",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-SUBJECT-HASH",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-UNBOUND-ASSUMPTION",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-UNBOUND-SOURCE",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
+    {
+      "code": "QG-UNDECLARED-RISK",
+      "invariant": "INV-QUALITY-001",
+      "stage": "semantic",
+      "remediation_class": "quality_contract_edit"
+    },
     {
       "code": "SGV-CONTRACT-MALFORMED",
       "invariant": "INV-VALIDATOR-001",

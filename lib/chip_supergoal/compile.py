@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .diagnostics import ContractValidationError
 from .events import read_events
-from .model import Contract, canonical_json, contract_from_dict
+from .model import Contract, canonical_json, contract_from_dict, to_plain
 from .pipeline import ContractPipelineResult, contract_diagnostics, repository_resource_root, validate_contract_source
 from .portable import (
     MUTABLE_PATH_NAMES,
@@ -29,6 +29,7 @@ from .portable import (
     write_utf8_lf,
 )
 from .profiles import ResolvedContract
+from .quality import quality_report_bytes
 from .render import phase_entries_in_ordinal_order, render_launch_goal, render_loop_design, render_phase, render_roadmap, render_thinking
 from .research import render_research_markdown, research_report, research_required, research_gate
 from .state import State, StateStore, state_json_bytes
@@ -302,6 +303,17 @@ def _render_package(
         )
     if research_required(contract) or research_gate(contract):
         _write(out_path / "reports" / "research.json", json.dumps(research_report(contract), ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    quality_profile = resolved.profile.get("quality", {})
+    if isinstance(quality_profile, dict) and quality_profile.get("required") is True:
+        try:
+            quality_policy = json.loads(read_regular_file_no_follow(resources / "spec/plan-quality-policy.json", resources).decode("utf-8"))
+            quality_rubric = json.loads(read_regular_file_no_follow(resources / "spec/quality-rubric.json", resources).decode("utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise CompileSafetyError("quality policy resources are not readable contained JSON files") from exc
+        write_bytes_atomic(
+            out_path / "reports" / "plan-quality.json",
+            quality_report_bytes(to_plain(contract), quality_policy, quality_rubric),
+        )
     StateStore(out_path).initialize(initial_state(contract, resolved.contract_sha256))
     _write(out_path / "runtime" / "evidence.json", "[]\n")
     write_bytes_atomic(out_path / "runtime" / "operation.lock", b"\0")

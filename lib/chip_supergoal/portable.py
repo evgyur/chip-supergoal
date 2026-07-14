@@ -50,6 +50,7 @@ RUNTIME_MODULES = (
     "policy.py",
     "portable.py",
     "profiles.py",
+    "quality.py",
     "render.py",
     "research.py",
     "state.py",
@@ -90,10 +91,13 @@ RUNTIME_SPEC_FILES = (
     "evidence.schema.json",
     "final-audit.schema.json",
     "marker-contract.json",
+    "plan-quality-policy.json",
+    "quality-gate.schema.json",
+    "quality-rubric.json",
     "state-machine.json",
     "state.schema.json",
 )
-RUNTIME_PROFILES = ("base.json", "public-clean.json", "chip-private.json")
+RUNTIME_PROFILES = ("base.json", "public-clean.json", "chip-private.json", "quality-canary.json")
 DELIVERY_RESERVATION_KINDS = frozenset({"review-md-files", "final-artifacts"})
 SEALED_RUNTIME_PATHS = frozenset(
     [f"scripts/{name}" for name in RUNTIME_SCRIPTS]

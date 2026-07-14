@@ -99,6 +99,13 @@ class Command:
     purpose: str
     safety: str = "local_read_write"
     timeout_seconds: int = 120
+    cwd: str | None = None
+    mutation_class: str | None = None
+    availability_dependencies: list[str] | None = None
+    expected_output: dict[str, Any] | None = None
+    risk_tags: list[str] | None = None
+    risk_waiver: dict[str, Any] | None = None
+    quality_fields_present: frozenset[str] = field(default_factory=frozenset, repr=False, compare=False)
 
 @dataclass(frozen=True)
 class Deliverable:
@@ -182,9 +189,15 @@ def _criterion(data: dict[str, Any]) -> Criterion:
     return Criterion(id=data["id"], statement=data["statement"], verifier=Verifier(**verifier_data), evidence_tier=data["evidence_tier"], blocking=data.get("blocking", True))
 
 def _command(data: dict[str, Any]) -> Command:
-    allowed = {"id","command","purpose","safety","timeout_seconds"}
+    quality_fields = {
+        "cwd", "mutation_class", "availability_dependencies", "expected_output",
+        "risk_tags", "risk_waiver",
+    }
+    allowed = {"id","command","purpose","safety","timeout_seconds"} | quality_fields
     _unknown_keys(data, allowed, "command")
-    return Command(**{k: data.get(k) for k in allowed if k in data})
+    values = {k: data[k] for k in allowed if k in data}
+    values["quality_fields_present"] = frozenset(set(data) & quality_fields)
+    return Command(**values)
 
 def _deliverable(data: dict[str, Any]) -> Deliverable:
     allowed = {"id","kind","path","change_expectation","verification"}
@@ -288,7 +301,10 @@ def to_plain(obj: Any) -> Any:
             "work_items": list(obj.work_items),
         }
     if isinstance(obj, Command):
-        return {"command": obj.command, "id": obj.id, "purpose": obj.purpose, "safety": obj.safety, "timeout_seconds": obj.timeout_seconds}
+        plain = {"command": obj.command, "id": obj.id, "purpose": obj.purpose, "safety": obj.safety, "timeout_seconds": obj.timeout_seconds}
+        for key in sorted(obj.quality_fields_present):
+            plain[key] = to_plain(getattr(obj, key))
+        return plain
     if isinstance(obj, Criterion):
         return {"blocking": obj.blocking, "evidence_tier": obj.evidence_tier, "id": obj.id, "statement": obj.statement, "verifier": to_plain(obj.verifier)}
     if isinstance(obj, Verifier):

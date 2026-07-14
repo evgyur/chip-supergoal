@@ -15,13 +15,14 @@ from chip_supergoal.pipeline import validate_contract_source
 import chip_supergoal.diagnostics as diagnostics_module
 
 
-_SGV_PATTERN = re.compile(r"\bSGV-[A-Z0-9-]+\b")
+_SGV_PATTERN = re.compile(r"\b(?:SGV|QG)-[A-Z0-9-]+\b")
 _DIAGNOSTIC_FACTORIES = {
     "Diagnostic",
     "_diag",
     "_diagnostic",
     "_mutable_diagnostic",
     "_research_diag",
+    "_finding",
 }
 
 
@@ -170,7 +171,7 @@ class DiagnosticsAndInvariantsTest(unittest.TestCase):
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
         self.assertEqual(set(catalog), {"catalog_version", "expected_code_count", "diagnostics"})
         self.assertEqual(catalog["catalog_version"], "1.0")
-        self.assertEqual(catalog["expected_code_count"], 118)
+        self.assertEqual(catalog["expected_code_count"], 138)
         entries = catalog.get("diagnostics", [])
         self.assertEqual(len(entries), catalog["expected_code_count"])
         catalog_codes = [entry.get("code") for entry in entries]
@@ -180,7 +181,7 @@ class DiagnosticsAndInvariantsTest(unittest.TestCase):
                 set(entry),
                 {"code", "invariant", "stage", "remediation_class"},
             )
-            self.assertRegex(entry["code"], r"^SGV-[A-Z0-9-]+$")
+            self.assertRegex(entry["code"], r"^(?:SGV|QG)-[A-Z0-9-]+$")
             self.assertTrue(entry["invariant"].startswith("INV-"))
             self.assertTrue(entry["stage"])
             self.assertTrue(entry["remediation_class"])

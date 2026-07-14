@@ -1,0 +1,468 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/evgyur/chip-supergoal/spec/quality-gate.schema.json",
+  "title": "Chip SuperGoal quality gate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "subject",
+    "attestation"
+  ],
+  "properties": {
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent",
+        "requirements",
+        "constraints",
+        "source_set",
+        "assumptions",
+        "options",
+        "traceability",
+        "failure_modes",
+        "permissions",
+        "overengineering",
+        "budgets"
+      ],
+      "properties": {
+        "intent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "objective",
+            "architecture_affecting",
+            "request_class"
+          ],
+          "properties": {
+            "objective": {
+              "type": "string",
+              "minLength": 1
+            },
+            "architecture_affecting": {
+              "type": "boolean"
+            },
+            "request_class": {
+              "enum": [
+                "instance_level",
+                "class_level"
+              ]
+            }
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "priority",
+              "statement",
+              "criterion_ids",
+              "non_goal"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^REQ-[0-9]{3}$"
+              },
+              "priority": {
+                "enum": [
+                  "must",
+                  "should"
+                ]
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "criterion_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^P[0-9]{2}-C[0-9]{2}$"
+                },
+                "uniqueItems": true
+              },
+              "non_goal": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "non_goals",
+            "source_of_truth"
+          ],
+          "properties": {
+            "non_goals": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "source_of_truth": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "statement",
+              "critical",
+              "evidence_source_id",
+              "falsifier_command_id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^ASM-[0-9]{3}$"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "critical": {
+                "type": "boolean"
+              },
+              "evidence_source_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "falsifier_command_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^P[0-9]{2}-CMD[0-9]{2}$"
+              }
+            }
+          }
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "statement",
+              "selected",
+              "rejection_reason"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^OPT-[0-9]{3}$"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "selected": {
+                "type": "boolean"
+              },
+              "rejection_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "traceability": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requirement_id",
+              "criterion_id",
+              "verifier_command_id",
+              "evidence_tier"
+            ],
+            "properties": {
+              "requirement_id": {
+                "type": "string",
+                "pattern": "^REQ-[0-9]{3}$"
+              },
+              "criterion_id": {
+                "type": "string",
+                "pattern": "^P[0-9]{2}-C[0-9]{2}$"
+              },
+              "verifier_command_id": {
+                "type": "string",
+                "pattern": "^P[0-9]{2}-CMD[0-9]{2}$"
+              },
+              "evidence_tier": {
+                "enum": [
+                  "programmatic",
+                  "behavioral",
+                  "receipt",
+                  "manual"
+                ]
+              }
+            }
+          }
+        },
+        "failure_modes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "severity",
+              "statement",
+              "mitigation",
+              "rollback",
+              "verifier_command_id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^FM-[0-9]{3}$"
+              },
+              "severity": {
+                "enum": [
+                  "P0",
+                  "P1",
+                  "P2",
+                  "P3"
+                ]
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mitigation": {
+                "type": "string"
+              },
+              "rollback": {
+                "type": "string"
+              },
+              "verifier_command_id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "permissions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runtime_authority",
+            "approval_boundaries",
+            "source_authorities"
+          ],
+          "properties": {
+            "runtime_authority": {
+              "type": "string",
+              "minLength": 1
+            },
+            "approval_boundaries": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "source_authorities": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "overengineering": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "layer",
+              "necessity",
+              "simpler_alternative",
+              "removal_condition"
+            ],
+            "properties": {
+              "layer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "necessity": {
+                "type": "string"
+              },
+              "simpler_alternative": {
+                "type": "string"
+              },
+              "removal_condition": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_repair_cycles",
+            "planner_tokens",
+            "time_seconds"
+          ],
+          "properties": {
+            "max_repair_cycles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "planner_tokens": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "time_seconds": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "source_set": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "locator",
+              "freshness",
+              "sha256",
+              "used_by"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^SRC-[0-9]{3}$"
+              },
+              "locator": {
+                "type": "string",
+                "minLength": 1
+              },
+              "freshness": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "used_by": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quality_contract_version",
+        "quality_policy_version",
+        "rubric_version",
+        "status",
+        "semantic_review_lane",
+        "semantic_review_lane_reason",
+        "plan_subject_sha256",
+        "report_path",
+        "report_sha256",
+        "semantic_judge_required",
+        "semantic_judge_status",
+        "semantic_judge_reason"
+      ],
+      "properties": {
+        "quality_contract_version": {
+          "const": "1.0"
+        },
+        "quality_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rubric_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "required",
+            "green",
+            "red"
+          ]
+        },
+        "semantic_review_lane": {
+          "enum": [
+            "b_only",
+            "b_plus_c"
+          ]
+        },
+        "semantic_review_lane_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plan_subject_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "report_path": {
+          "const": "reports/plan-quality.json"
+        },
+        "report_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "semantic_judge_required": {
+          "type": "boolean"
+        },
+        "semantic_judge_status": {
+          "enum": [
+            "not_required",
+            "passed",
+            "failed",
+            "unavailable"
+          ]
+        },
+        "semantic_judge_reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

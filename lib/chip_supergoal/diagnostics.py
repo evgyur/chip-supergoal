@@ -18,11 +18,11 @@ class DiagnosticMetadata:
 
 
 _CATALOG_VERSION = "1.0"
-_EXPECTED_CODE_COUNT = 118
+_EXPECTED_CODE_COUNT = 138
 _CATALOG_PATH = Path(__file__).resolve().parents[2] / "spec/diagnostic-catalog.json"
 _TOP_LEVEL_KEYS = {"catalog_version", "expected_code_count", "diagnostics"}
 _ENTRY_KEYS = {"code", "invariant", "stage", "remediation_class"}
-_CODE_PATTERN = re.compile(r"^SGV-[A-Z0-9]+(?:-[A-Z0-9]+)*$")
+_CODE_PATTERN = re.compile(r"^(?:SGV|QG)-[A-Z0-9]+(?:-[A-Z0-9]+)*$")
 _INVARIANT_PATTERN = re.compile(r"^INV-[A-Z0-9]+-[0-9]{3}$")
 
 
@@ -90,8 +90,8 @@ class Diagnostic:
     def __post_init__(self) -> None:
         if self.severity not in SEVERITIES:
             raise ValueError(f"unsupported severity: {self.severity}")
-        if not self.code.startswith("SGV-"):
-            raise ValueError(f"diagnostic code must start with SGV-: {self.code}")
+        if not self.code.startswith(("SGV-", "QG-")):
+            raise ValueError(f"diagnostic code must start with SGV- or QG-: {self.code}")
         metadata = diagnostic_metadata(self.code)
         if (self.invariant_id, self.blocking_stage) != (metadata.invariant, metadata.stage):
             raise ValueError(f"diagnostic metadata mismatch for {self.code}")

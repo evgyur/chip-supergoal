@@ -12,6 +12,7 @@ from .model import Contract, canonical_json, contract_from_dict, to_plain
 from .normalize import semantic_errors
 from .policy import load_risk_policy, risk_policy_errors
 from .profiles import ProfileError, ResolvedContract, resolve_contract
+from .quality import lint_quality_gate
 from .research import validate_research_gate
 
 
@@ -185,6 +186,52 @@ def _terminal_injection_diagnostics(
     ]
 
 
+def _quality_diagnostics(
+    resolved: ResolvedContract,
+    artifact: str,
+    root: Path,
+    resource_reader: Callable[[Path], bytes] | None,
+) -> list[Diagnostic]:
+    quality_profile = resolved.profile.get("quality", {})
+    if not isinstance(quality_profile, dict) or quality_profile.get("required") is not True:
+        return []
+    plain = to_plain(resolved.contract)
+    compatibility = plain.get("compatibility", {})
+    if not isinstance(compatibility, dict) or "quality_gate_v1" not in compatibility:
+        return [
+            _diagnostic(
+                "QG-REQUIRED",
+                artifact=artifact,
+                pointer="/compatibility/quality_gate_v1",
+                message="quality-canary profile requires quality_gate_v1",
+                remediation="Add the closed quality_gate_v1 subject and attestation overlay.",
+                stage="semantic",
+                invariant="INV-QUALITY-001",
+            )
+        ]
+    def load_quality_resource(name: str) -> dict:
+        path = root / "spec" / name
+        value = json.loads(resource_reader(path) if resource_reader is not None else path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError(f"{name} must be an object")
+        return value
+    policy = load_quality_resource("plan-quality-policy.json")
+    rubric = load_quality_resource("quality-rubric.json")
+    return [
+        _diagnostic(
+            item.code,
+            artifact=artifact,
+            pointer=item.pointer,
+            message=item.message,
+            remediation="Repair the quality overlay before compilation.",
+            stage="semantic",
+            invariant="INV-QUALITY-001",
+        )
+        for item in lint_quality_gate(plain, policy=policy, rubric=rubric)
+        if item.blocking
+    ]
+
+
 def _risk_code(error: str) -> tuple[str, str, str]:
     if error.startswith("contract risk ") and "unknown risk tag" in error:
         return "SGV-RISK-UNKNOWN", "/risks", "Use a risk tag from the risk policy."
@@ -267,6 +314,7 @@ def validate_contract_source(
 
     try:
         diagnostics = _semantic_diagnostics(resolved.contract, artifact)
+        diagnostics.extend(_quality_diagnostics(resolved, artifact, root, resource_reader))
         diagnostics.extend(_delivery_diagnostics(resolved.contract, artifact))
         diagnostics.extend(_terminal_injection_diagnostics(resolved.contract, artifact))
     except (AttributeError, KeyError, TypeError, ValueError):

@@ -4,7 +4,7 @@ import json
 from dataclasses import fields, is_dataclass
 from typing import Any
 
-from .model import Contract, Phase
+from .model import Command, Contract, Phase, to_plain
 from .research import research_gate, research_report, research_required
 
 
@@ -19,6 +19,8 @@ def phase_entries_in_ordinal_order(contract: Contract) -> list[tuple[int, Phase]
 
 
 def _view_plain(value: Any) -> Any:
+    if isinstance(value, Command):
+        return to_plain(value)
     if is_dataclass(value):
         return {field.name: _view_plain(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, dict):

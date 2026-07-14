@@ -216,6 +216,23 @@
         "T-RESEARCH-PACKAGE-DRIFT"
       ],
       "title": "Perplex-first research gate"
+    },
+    {
+      "canonical_reference": "docs/supergoal-quality-leap-plan.md",
+      "description": "The opt-in quality gate rejects deterministic false greens, forged policy routing, shallow execution bindings, and undeclared risky mutations without network or model calls.",
+      "id": "INV-QUALITY-001",
+      "introduced_by": [
+        "QUALITY-LEAP-P05"
+      ],
+      "owner": "plan-quality",
+      "severity_if_broken": "P1",
+      "status": "hard",
+      "tests": [
+        "T-QUALITY-FALSE-GREENS",
+        "T-QUALITY-DETERMINISM",
+        "T-QUALITY-NO-NETWORK"
+      ],
+      "title": "Deterministic plan-quality gate"
     }
   ],
   "source": "CHIP_SUPERGOAL_ARCHITECT_PLUS_UPGRADE_PLAN-1.md sections 2, 9, 11, 12, 13, 14, 15"

@@ -22,6 +22,7 @@ ALLOWED_PROFILE_KEYS = {
     "privacy",
     "public_clean",
     "operator",
+    "quality",
 }
 _ALLOWED_APPROVAL_KEYS = {"dangerous_actions"}
 _ALLOWED_DELIVERY_KEYS = {
@@ -36,6 +37,7 @@ _ALLOWED_PRIVACY_KEYS = {
     "public_export_allowed",
     "strip_private_references",
 }
+_ALLOWED_QUALITY_KEYS = {"required", "quality_contract_version"}
 _PRIVATE_DELIVERY_KEYS = {"files", "operator", "review-pack", "review_pack", "target"}
 
 
@@ -108,6 +110,15 @@ def _validate_profile_fields(name: str, profile: dict[str, Any]) -> None:
         raise ProfileError(f"profile {name!r} public_clean must be a boolean")
     if "operator" in profile and not isinstance(profile["operator"], str):
         raise ProfileError(f"profile {name!r} operator must be a string")
+    if "quality" in profile:
+        quality = profile["quality"]
+        if not isinstance(quality, dict):
+            raise ProfileError(f"profile {name!r} quality must be an object")
+        _unknown_nested_keys(name, "quality", quality, _ALLOWED_QUALITY_KEYS)
+        if type(quality.get("required")) is not bool:
+            raise ProfileError(f"profile {name!r} quality.required must be a boolean")
+        if quality.get("quality_contract_version") != "1.0":
+            raise ProfileError(f"profile {name!r} quality_contract_version must be 1.0")
 
     if "privacy" in profile:
         privacy = profile["privacy"]

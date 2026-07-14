@@ -1,0 +1,9 @@
+{
+  "extends": "base",
+  "name": "quality-canary",
+  "profile_version": "1.0",
+  "quality": {
+    "quality_contract_version": "1.0",
+    "required": true
+  }
+}

@@ -34,6 +34,7 @@ from chip_supergoal.delivery import (
     show_delivery_reservation,
 )
 from chip_supergoal.model import load_contract
+from chip_supergoal.quality import quality_report_bytes
 from chip_supergoal.portable import UnsafeFileError, read_regular_file_no_follow
 from chip_supergoal.research import research_report, validate_research_gate
 from chip_supergoal.audit import audit_json_bytes, audit_package
@@ -442,6 +443,8 @@ def main(argv=None) -> int:
     p.add_argument("source"); p.add_argument("--out", required=True)
     p = sub.add_parser("validate-contract")
     p.add_argument("path"); p.add_argument("--format", choices=["human","json"], default="human"); p.add_argument("--strict", action="store_true")
+    p = sub.add_parser("quality-lint")
+    p.add_argument("path"); p.add_argument("--format", choices=["human","json"], default="human")
     p = sub.add_parser("validate-package")
     p.add_argument("root"); p.add_argument("--format", choices=["human","json"], default="human"); p.add_argument("--strict", action="store_true")
     p = sub.add_parser("research-gate")
@@ -589,6 +592,27 @@ def main(argv=None) -> int:
             return 1
         print(args.out)
         return 0
+    if args.cmd == "quality-lint":
+        try:
+            contract = json.loads(Path(args.path).read_text(encoding="utf-8"))
+            if not isinstance(contract, dict):
+                raise ValueError("contract root must be an object")
+            policy = json.loads((ROOT / "spec/plan-quality-policy.json").read_text(encoding="utf-8"))
+            rubric = json.loads((ROOT / "spec/quality-rubric.json").read_text(encoding="utf-8"))
+            report_bytes = quality_report_bytes(contract, policy, rubric)
+            report = json.loads(report_bytes)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            print(f"quality lint error: {exc}", file=sys.stderr)
+            return 1
+        findings = report["findings"]
+        if args.format == "json":
+            sys.stdout.buffer.write(report_bytes)
+        elif findings:
+            for item in findings:
+                print(f"{item['code']} {item['pointer']}: {item['message']}", file=sys.stderr)
+        else:
+            print(f"quality {report['status']}")
+        return 1 if findings else 0
     if args.cmd == "validate-contract":
         return emit(validate_contract_file(args.path, resource_root=ROOT), args.format)
     if args.cmd == "validate-package":
