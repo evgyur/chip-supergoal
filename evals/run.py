@@ -23,6 +23,7 @@ from evals.harness.budget import verify_canary_budget
 from evals.harness.calibration import calibrate as calibrate_judges
 from evals.harness.sandbox_hyperv import probe_hyperv
 from evals.harness.sandbox_podman import probe_podman
+from evals.b2.privacy_scan import scan_files
 
 DEFAULT_PRIVATE_ROOT = Path.home() / ".hermes/private/chip-supergoal-quality-leap/P04"
 CANONICAL_REMOTE = "https://github.com/evgyur/chip-supergoal.git"
@@ -438,6 +439,71 @@ def verify_profile_rollback(selection: Path, profile: str, baseline: Path) -> di
     }
 
 
+def promotion_study(selection: Path, holdout: Path, policy: Path) -> dict[str, Any]:
+    decision = _selection_decision(selection)
+    if decision != "no_candidate":
+        raise ValueError("candidate promotion execution is not implemented by the no-candidate control path")
+    for path in (holdout, policy):
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"missing regular promotion input: {path.relative_to(ROOT)}")
+    return {
+        "schema_version": "promotion-study-v1", "status": "not_applicable",
+        "decision": "no_candidate", "sealed_holdout_accessed": False,
+        "sealed_task_count": 0, "sandbox_task_count": 0,
+        "selection_sha256": sha256(selection), "holdout_manifest_sha256": sha256(holdout),
+        "promotion_policy_sha256": sha256(policy),
+        "reason": "P08 selected no_candidate before sealed unblinding",
+    }
+
+
+def verify_execution_no_candidate(selection: Path, study: Path) -> dict[str, Any]:
+    if _selection_decision(selection) != "no_candidate":
+        raise ValueError("execution verifier requires a candidate implementation")
+    value = load(study)
+    if value.get("decision") != "no_candidate" or value.get("status") != "not_applicable" or value.get("sealed_holdout_accessed") is not False:
+        raise ValueError("promotion study is not a valid no-candidate receipt")
+    return {
+        "schema_version": "sandbox-execution-results-v1", "status": "not_applicable",
+        "decision": "no_candidate", "rootless_podman_runs": 0, "native_windows_hyperv_runs": 0,
+        "synthetic_containment_claimed": False, "study_sha256": sha256(study),
+        "reason": "no candidate package exists to execute",
+    }
+
+
+def verify_live_canary_no_candidate(selection: Path, allowed: set[str], required_tasks: int, maximum_tasks: int, required_exposures: int) -> dict[str, Any]:
+    if _selection_decision(selection) != "no_candidate":
+        raise ValueError("live canary verifier requires candidate receipts")
+    if allowed != {"no_veto", "veto", "inconclusive", "not_applicable"}:
+        raise ValueError("live canary allowed-outcome set drifted")
+    if required_tasks != 30 or maximum_tasks != 30 or required_exposures != 150:
+        raise ValueError("live canary preregistration drifted")
+    return {
+        "schema_version": "live-canary-veto-v1", "status": "not_applicable",
+        "decision": "no_candidate", "outcome": "not_applicable",
+        "tasks_observed": 0, "phase_exposures": 0, "profile_enabled": False,
+        "live_receipts_accessed": False, "reason": "no candidate was selected for live exposure",
+    }
+
+
+def privacy_scan_report(public_root: Path) -> dict[str, Any]:
+    resolved = public_root.resolve()
+    if not resolved.is_dir() or ROOT.resolve() not in resolved.parents:
+        raise ValueError("public artifact root must be a repository directory")
+    files = [path for path in resolved.rglob("*") if path.is_file() and not path.is_symlink()]
+    violations = scan_files(ROOT, files)
+    forbidden_names = {"sealed-cases", "private-holdout", "raw-chain-of-thought"}
+    for path in files:
+        lowered = path.name.lower()
+        if any(name in lowered for name in forbidden_names):
+            violations.append(f"{path.relative_to(ROOT).as_posix()}:forbidden-private-artifact-name")
+    violations = sorted(set(violations))
+    return {
+        "schema_version": "promotion-privacy-scan-v1", "status": "pass" if not violations else "fail",
+        "files_scanned": len(files), "violations": violations,
+        "raw_private_content_exported": False if not violations else None,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -490,6 +556,30 @@ def main() -> int:
     rollback.add_argument("--profile", required=True)
     rollback.add_argument("--baseline", type=Path, required=True)
     rollback.add_argument("--allow-no-candidate", action="store_true")
+    promote = sub.add_parser("promote-study")
+    promote.add_argument("--selection", type=Path, required=True)
+    promote.add_argument("--holdout", type=Path, required=True)
+    promote.add_argument("--policy", type=Path, required=True)
+    promote.add_argument("--allow-no-candidate", action="store_true")
+    promote.add_argument("--output", type=Path, required=True)
+    execution = sub.add_parser("verify-execution-results")
+    execution.add_argument("--selection", type=Path, required=True)
+    execution.add_argument("--study", type=Path, required=True)
+    execution.add_argument("--require-rootless-podman", action="store_true")
+    execution.add_argument("--require-native-windows-hyperv", action="store_true")
+    execution.add_argument("--allow-no-candidate", action="store_true")
+    execution.add_argument("--output", type=Path, required=True)
+    live = sub.add_parser("verify-live-canary")
+    live.add_argument("--selection", type=Path, required=True)
+    live.add_argument("--receipts", type=Path, required=True)
+    live.add_argument("--required-tasks", type=int, required=True)
+    live.add_argument("--maximum-tasks", type=int, required=True)
+    live.add_argument("--required-phase-exposures", type=int, required=True)
+    live.add_argument("--allow-outcomes", required=True)
+    live.add_argument("--output", type=Path, required=True)
+    privacy = sub.add_parser("privacy-scan")
+    privacy.add_argument("--public-artifacts", type=Path, required=True)
+    privacy.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "verify-corpus":
         result = verify_corpus(
@@ -573,6 +663,36 @@ def main() -> int:
         baseline = (ROOT / args.baseline).resolve() if not args.baseline.is_absolute() else args.baseline
         result = verify_profile_rollback(selection, args.profile, baseline)
         write_report(ROOT / "reports/quality/profile-rollback.json", result)
+    elif args.command == "promote-study":
+        if not args.allow_no_candidate:
+            raise ValueError("no-candidate fail-closed flag is mandatory")
+        selection = (ROOT / args.selection).resolve() if not args.selection.is_absolute() else args.selection
+        holdout = (ROOT / args.holdout).resolve() if not args.holdout.is_absolute() else args.holdout
+        policy = (ROOT / args.policy).resolve() if not args.policy.is_absolute() else args.policy
+        result = promotion_study(selection, holdout, policy)
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+    elif args.command == "verify-execution-results":
+        if not (args.require_rootless_podman and args.require_native_windows_hyperv and args.allow_no_candidate):
+            raise ValueError("both real backend requirements and no-candidate flag are mandatory")
+        selection = (ROOT / args.selection).resolve() if not args.selection.is_absolute() else args.selection
+        study = (ROOT / args.study).resolve() if not args.study.is_absolute() else args.study
+        result = verify_execution_no_candidate(selection, study)
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+    elif args.command == "verify-live-canary":
+        selection = (ROOT / args.selection).resolve() if not args.selection.is_absolute() else args.selection
+        result = verify_live_canary_no_candidate(selection, set(args.allow_outcomes.split(",")), args.required_tasks, args.maximum_tasks, args.required_phase_exposures)
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+    elif args.command == "privacy-scan":
+        public_root = (ROOT / args.public_artifacts).resolve() if not args.public_artifacts.is_absolute() else args.public_artifacts
+        result = privacy_scan_report(public_root)
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+        if result["status"] != "pass":
+            print(json.dumps(result, sort_keys=True))
+            return 1
     else:
         manifest_path = (ROOT / args.manifest).resolve() if not args.manifest.is_absolute() else args.manifest
         result = verify_holdout_secrecy(json.loads(manifest_path.read_text(encoding="utf-8")))

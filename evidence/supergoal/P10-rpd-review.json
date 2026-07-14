@@ -1,0 +1,21 @@
+{
+  "schema_version": "p10-rpd-review-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P10",
+  "reviewed_at": "2026-07-14T07:31:35Z",
+  "mode": "RPD_XHIGH",
+  "focus": ["evidence-quality", "privacy"],
+  "passed": true,
+  "p0": [],
+  "p1": [],
+  "p2": [],
+  "checked_holds": [
+    "P08 no_candidate is consumed before any sealed holdout case is opened",
+    "promotion study records not_applicable with zero sealed and sandbox tasks rather than fabricating execution evidence",
+    "sandbox verifier preserves both real backend requirements but emits no-candidate not_applicable without claiming containment",
+    "live canary preserves the frozen 30-task and 150-exposure contract while recording zero exposure and no receipt access",
+    "quality-canary remains disabled and no live operation, public send, merge, or release occurred",
+    "privacy scan covers every regular report under reports/quality and reports no secret or forbidden private artifact",
+    "no judge, provider, endpoint, threshold, or holdout authority changed"
+  ]
+}

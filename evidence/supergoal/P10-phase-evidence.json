@@ -1,0 +1,23 @@
+{
+  "schema_version": "p10-phase-evidence-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P10",
+  "generated_at": "2026-07-14T07:31:35Z",
+  "status": "acceptance_and_rpd_pass",
+  "decision": "no_candidate",
+  "commands": {
+    "P10-CMD01": "exit_0_not_applicable_no_unblinding",
+    "P10-CMD02": "exit_0_not_applicable_no_synthetic_containment",
+    "P10-CMD03": "exit_0_not_applicable_zero_live_exposure",
+    "P10-CMD04": "exit_0_privacy_pass_11_files"
+  },
+  "artifacts": {
+    "reports/quality/promotion-study.json": "345f8f1c8cd78e77fad34c30b8ea6864cffae246f6e879aaebbe61fd2f38e200",
+    "reports/quality/sandbox-execution-results.json": "aa05efc19690bd1466788f491b453a77a6b07c2f90dd3894d2bff9c56fdbcea1",
+    "reports/quality/live-canary-veto.json": "030a1bd8460ab76afd533abfa115a8a50357dce36c95d98bc84f14855df8905a",
+    "reports/quality/promotion-privacy-scan.json": "949140fd34f5c1e42a07f0f866068e292845359a0c7ea24d635f2ae917674114"
+  },
+  "rpd_review": "evidence/supergoal/P10-rpd-review.json",
+  "sealed_holdout_accessed": false,
+  "live_profile_enabled": false
+}

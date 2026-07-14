@@ -1,0 +1,1 @@
+{"decision":"no_candidate","native_windows_hyperv_runs":0,"reason":"no candidate package exists to execute","rootless_podman_runs":0,"schema_version":"sandbox-execution-results-v1","status":"not_applicable","study_sha256":"345f8f1c8cd78e77fad34c30b8ea6864cffae246f6e879aaebbe61fd2f38e200","synthetic_containment_claimed":false}
