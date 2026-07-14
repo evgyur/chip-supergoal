@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from evals.harness.ablation import compare_manifest, select_candidate, verify_holdout_secrecy
 from evals.harness.budget import verify_canary_budget
 from evals.harness.calibration import calibrate as calibrate_judges
 from evals.harness.sandbox_hyperv import probe_hyperv
@@ -51,9 +52,13 @@ def sha256(path: Path) -> str:
 
 
 def write_report(path: Path, value: Any) -> None:
+    write_text(path, json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_bytes(canonical(value))
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    temporary.write_text(text, encoding="utf-8")
     os.replace(temporary, path)
 
 
@@ -394,6 +399,18 @@ def main() -> int:
     budget.add_argument("--output", type=Path, required=True)
     budget.add_argument("--max-prompt-growth", type=float, required=True)
     budget.add_argument("--max-repair-rounds", type=int, required=True)
+    compare = sub.add_parser("compare")
+    compare.add_argument("--manifest", type=Path, required=True)
+    compare.add_argument("--variants", required=True)
+    compare.add_argument("--output", type=Path, required=True)
+    select = sub.add_parser("select-candidate")
+    select.add_argument("--report", type=Path, required=True)
+    select.add_argument("--policy", type=Path, required=True)
+    select.add_argument("--adr", type=Path, required=True)
+    select.add_argument("--require-zero-p0-p1", action="store_true")
+    select.add_argument("--allow-no-candidate", action="store_true")
+    secrecy = sub.add_parser("verify-holdout-secrecy")
+    secrecy.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "verify-corpus":
         result = verify_corpus(
@@ -434,7 +451,7 @@ def main() -> int:
         )
         output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
         write_report(output, result)
-    else:
+    elif args.command == "verify-canary-budget":
         baseline = (ROOT / args.baseline).resolve() if not args.baseline.is_absolute() else args.baseline
         result = verify_canary_budget(
             ROOT, baseline,
@@ -443,6 +460,29 @@ def main() -> int:
         )
         output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
         write_report(output, result)
+        if result["status"] != "pass":
+            print(json.dumps(result, sort_keys=True))
+            return 1
+    elif args.command == "compare":
+        manifest_path = (ROOT / args.manifest).resolve() if not args.manifest.is_absolute() else args.manifest
+        result = compare_manifest(json.loads(manifest_path.read_text(encoding="utf-8")), args.variants.split(","))
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+    elif args.command == "select-candidate":
+        if not args.require_zero_p0_p1 or not args.allow_no_candidate:
+            raise ValueError("zero-P0/P1 and no-candidate fail-closed flags are mandatory")
+        report_path = (ROOT / args.report).resolve() if not args.report.is_absolute() else args.report
+        policy_path = (ROOT / args.policy).resolve() if not args.policy.is_absolute() else args.policy
+        result, adr = select_candidate(
+            json.loads(report_path.read_text(encoding="utf-8")),
+            json.loads(policy_path.read_text(encoding="utf-8")),
+        )
+        adr_path = (ROOT / args.adr).resolve() if not args.adr.is_absolute() else args.adr
+        write_text(adr_path, adr)
+        write_report(ROOT / "reports/quality/candidate-selection.json", result)
+    else:
+        manifest_path = (ROOT / args.manifest).resolve() if not args.manifest.is_absolute() else args.manifest
+        result = verify_holdout_secrecy(json.loads(manifest_path.read_text(encoding="utf-8")))
         if result["status"] != "pass":
             print(json.dumps(result, sort_keys=True))
             return 1

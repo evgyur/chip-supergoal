@@ -1,0 +1,31 @@
+{
+  "schema_version": "p08-phase-evidence-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P08",
+  "generated_at": "2026-07-14T06:33:16Z",
+  "status": "acceptance_and_rpd_passed_no_candidate",
+  "decision": "no_candidate",
+  "promotion_capable": false,
+  "commands": {
+    "P08-CMD01": "exit_0_complete_no_authoritative_observations",
+    "P08-CMD02": "exit_0_no_candidate_no_go",
+    "P08-CMD03": "exit_0_holdout_secrecy_pass",
+    "full_unittest": "515_passed_22_skipped",
+    "native_gates": "9_of_9_passed",
+    "shell_gates": "passed"
+  },
+  "artifacts": {
+    "reports/quality/ablation-comparison.json": "3f581f4b0d3018cf74a89b6720f583e6b351d67c6b9b24bf9d1dd9293747013f",
+    "reports/quality/candidate-selection.json": "cf9c6543adc3a2e31a946989543a2e6024ab90da62e343d1581445171da507f2",
+    "docs/adr/ADR-005-quality-candidate-selection.md": "e7c559f7be8dfa401bc954d6a53b96d1ef49abcbbc01b4e9ad4a5c01964f1b7e",
+    "evals/manifests/development-calibration.json": "1b380691e80c1e0942325a125edb8d4a6f4c3143b9464296240c7ffdf1bd5d77"
+  },
+  "controls": {
+    "zero_p0_p1_proven": false,
+    "attributable_gain": false,
+    "sealed_holdout_accessed": false,
+    "private_content_exported": false,
+    "critic_repair_retained_in_runtime_candidate": false
+  },
+  "rpd_review": "evidence/supergoal/P08-rpd-review.json"
+}

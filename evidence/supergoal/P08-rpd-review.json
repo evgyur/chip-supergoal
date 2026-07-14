@@ -1,0 +1,35 @@
+{
+  "schema_version": "p08-rpd-review-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P08",
+  "reviewed_at": "2026-07-14T06:33:16Z",
+  "mode": "RPD_XHIGH",
+  "pattern": "new fail-closed no-candidate path",
+  "evidence_tier": "direct_artifact",
+  "assumption_check": {
+    "claim": "missing observations must not be interpreted as zero P0/P1 or equal scores",
+    "status": "true",
+    "evidence": "all unavailable metrics are null; zero_p0_p1_proven=false"
+  },
+  "stress_tests": {
+    "forced_candidate_without_observations": "denied",
+    "aggregate_rescue": "denied",
+    "sealed_holdout_path_export": "denied",
+    "critic_repair_runtime_retention": "denied"
+  },
+  "integration": {
+    "development_tasks": 24,
+    "calibration_commitments": 12,
+    "sealed_tasks_accessed": false,
+    "private_content_exported": false,
+    "runtime_candidate_layers": []
+  },
+  "senior_gate": {
+    "P0": [],
+    "P1": [],
+    "P2": [],
+    "verdict": "The no-candidate result is less impressive but materially safer than fabricated attribution."
+  },
+  "verdict": "NO_CANDIDATE_ACCEPTED",
+  "passed": true
+}

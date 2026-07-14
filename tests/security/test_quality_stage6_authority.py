@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "lib"))
+sys.path.insert(0, str(ROOT))
 
-from chip_supergoal.canary import stage6_dispatch_authorized
+from evals.harness.canary import stage6_dispatch_authorized
 
 
 def digest(value):

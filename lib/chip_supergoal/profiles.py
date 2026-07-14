@@ -37,11 +37,7 @@ _ALLOWED_PRIVACY_KEYS = {
     "public_export_allowed",
     "strip_private_references",
 }
-_ALLOWED_QUALITY_KEYS = {"required", "quality_contract_version", "planning_canary"}
-_ALLOWED_PLANNING_CANARY_KEYS = {
-    "b_only_semantic_calls", "dispatch_authority", "max_repair_rounds",
-    "no_progress_stop", "persist_raw_chain_of_thought",
-}
+_ALLOWED_QUALITY_KEYS = {"required", "quality_contract_version"}
 _PRIVATE_DELIVERY_KEYS = {"files", "operator", "review-pack", "review_pack", "target"}
 
 
@@ -123,20 +119,6 @@ def _validate_profile_fields(name: str, profile: dict[str, Any]) -> None:
             raise ProfileError(f"profile {name!r} quality.required must be a boolean")
         if quality.get("quality_contract_version") != "1.0":
             raise ProfileError(f"profile {name!r} quality_contract_version must be 1.0")
-        if "planning_canary" in quality:
-            planning = quality["planning_canary"]
-            if not isinstance(planning, dict):
-                raise ProfileError(f"profile {name!r} quality.planning_canary must be an object")
-            _unknown_nested_keys(name, "quality.planning_canary", planning, _ALLOWED_PLANNING_CANARY_KEYS)
-            expected = {
-                "b_only_semantic_calls": 0,
-                "dispatch_authority": "explicit_current_stage6_human_approval_only",
-                "max_repair_rounds": 2,
-                "no_progress_stop": True,
-                "persist_raw_chain_of_thought": False,
-            }
-            if planning != expected:
-                raise ProfileError(f"profile {name!r} quality.planning_canary must preserve frozen canary limits")
 
     if "privacy" in profile:
         privacy = profile["privacy"]

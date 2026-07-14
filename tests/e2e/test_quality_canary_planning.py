@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "lib"))
+sys.path.insert(0, str(ROOT))
 
-from chip_supergoal.canary import run_quality_canary
+from evals.harness.canary import run_quality_canary
 
 
 def lint(subject):
