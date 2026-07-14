@@ -1,0 +1,125 @@
+{
+  "approvals": [
+    {
+      "class_name": "production",
+      "id": "APP-001",
+      "required": true,
+      "scope": "gateway"
+    }
+  ],
+  "architecture": {
+    "rollback": "Disable the gateway adapter and restore the previous routing configuration after compatibility verification.",
+    "source_of_truth": []
+  },
+  "compatibility": {
+    "goalmanager_contract": ">=documented-v2",
+    "research_gate": {
+      "planning_implications": [
+        "Keep security/integration RPD focus on the implementation phase.",
+        "Require unit-test evidence before completion."
+      ],
+      "provider": "perplex",
+      "query": "current safe patterns for auth-adjacent brownfield feature planning with tests",
+      "required": true,
+      "sources": [
+        {
+          "provider": "perplex",
+          "title": "Fixture Perplex research record for chip-supergoal tests",
+          "url": "https://example.com/chip-supergoal-research-fixture"
+        }
+      ],
+      "status": "satisfied",
+      "summary": "Fixture research confirms auth-adjacent brownfield work needs source-of-truth checks, explicit tests, and security-focused review before implementation phases."
+    }
+  },
+  "contract_revision": 1,
+  "decisions": [],
+  "delivery": {
+    "items": []
+  },
+  "goal": {
+    "done_condition": "integration and rollback tests pass",
+    "id": "sg-20260714-baseline-gateway-integration",
+    "non_goals": [
+      "live routing change",
+      "production deploy"
+    ],
+    "objective": "Plan a compatible gateway integration",
+    "owner": "chip",
+    "request_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "title": "Gateway integration baseline",
+    "workspace_root": "."
+  },
+  "loop": {
+    "max_iterations": 3
+  },
+  "phases": [
+    {
+      "commands": [
+        {
+          "command": "python -m unittest",
+          "id": "P01-CMD01",
+          "purpose": "prove fixture",
+          "safety": "local_read_write",
+          "timeout_seconds": 120
+        }
+      ],
+      "criteria": [
+        {
+          "blocking": true,
+          "evidence_tier": "direct_artifact",
+          "id": "P01-C01",
+          "statement": "unit fixture test exits 0",
+          "verifier": {
+            "command_id": "P01-CMD01",
+            "expected_assertion": "test passes",
+            "expected_exit": 0,
+            "type": "test"
+          }
+        }
+      ],
+      "deliverables": [
+        {
+          "change_expectation": "created_or_modified",
+          "id": "P01-D01",
+          "kind": "file",
+          "path": "gateway-adapter.json",
+          "verification": "file_hash"
+        }
+      ],
+      "depends_on": [],
+      "id": "P01",
+      "name": "Build gateway integration",
+      "ordinal": 1,
+      "risk_tags": [
+        "gateway"
+      ],
+      "rpd": {
+        "focus": [
+          "gateway",
+          "integration"
+        ],
+        "required": true
+      },
+      "task": "Add a backward-compatible gateway adapter",
+      "work_items": [
+        {
+          "id": "P01-W01",
+          "text": "edit fixture"
+        }
+      ]
+    }
+  ],
+  "profile": "chip-private",
+  "protocol_version": "3.0",
+  "risks": [
+    {
+      "id": "RISK-001",
+      "mitigation": "compatibility test and rollback",
+      "severity": "P1",
+      "tag": "gateway"
+    }
+  ],
+  "schema_version": "3.0",
+  "source_set": []
+}

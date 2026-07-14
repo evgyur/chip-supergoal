@@ -1,0 +1,139 @@
+{
+  "approvals": [
+    {
+      "class_name": "privacy",
+      "id": "APP-001",
+      "required": true,
+      "scope": "all"
+    },
+    {
+      "class_name": "destructive-if-live",
+      "id": "APP-002",
+      "required": true,
+      "scope": "migration"
+    }
+  ],
+  "architecture": {
+    "rollback": "Restore the pre-migration snapshot and verify source/target hashes before any retry.",
+    "source_of_truth": []
+  },
+  "compatibility": {
+    "goalmanager_contract": ">=documented-v2",
+    "research_gate": {
+      "planning_implications": [
+        "Keep security/integration RPD focus on the implementation phase.",
+        "Require unit-test evidence before completion."
+      ],
+      "provider": "perplex",
+      "query": "current safe patterns for auth-adjacent brownfield feature planning with tests",
+      "required": true,
+      "sources": [
+        {
+          "provider": "perplex",
+          "title": "Fixture Perplex research record for chip-supergoal tests",
+          "url": "https://example.com/chip-supergoal-research-fixture"
+        }
+      ],
+      "status": "satisfied",
+      "summary": "Fixture research confirms auth-adjacent brownfield work needs source-of-truth checks, explicit tests, and security-focused review before implementation phases."
+    }
+  },
+  "contract_revision": 1,
+  "decisions": [],
+  "delivery": {
+    "items": []
+  },
+  "goal": {
+    "done_condition": "migration plan and rollback verifier pass",
+    "id": "sg-20260714-baseline-private-data-migration",
+    "non_goals": [
+      "live migration",
+      "production deploy"
+    ],
+    "objective": "Plan a rollback-safe private data migration",
+    "owner": "chip",
+    "request_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "title": "Private data migration baseline",
+    "workspace_root": "."
+  },
+  "loop": {
+    "max_iterations": 3
+  },
+  "phases": [
+    {
+      "commands": [
+        {
+          "command": "python -m unittest",
+          "id": "P01-CMD01",
+          "purpose": "prove fixture",
+          "safety": "local_read_write",
+          "timeout_seconds": 120
+        }
+      ],
+      "criteria": [
+        {
+          "blocking": true,
+          "evidence_tier": "direct_artifact",
+          "id": "P01-C01",
+          "statement": "unit fixture test exits 0",
+          "verifier": {
+            "command_id": "P01-CMD01",
+            "expected_assertion": "test passes",
+            "expected_exit": 0,
+            "type": "test"
+          }
+        }
+      ],
+      "deliverables": [
+        {
+          "change_expectation": "created_or_modified",
+          "id": "P01-D01",
+          "kind": "file",
+          "path": "migration-plan.json",
+          "verification": "file_hash"
+        }
+      ],
+      "depends_on": [],
+      "id": "P01",
+      "name": "Plan private data migration",
+      "ordinal": 1,
+      "risk_tags": [
+        "private_data",
+        "migration"
+      ],
+      "rpd": {
+        "focus": [
+          "security",
+          "migration",
+          "data-loss"
+        ],
+        "required": true
+      },
+      "task": "Create a reversible migration plan",
+      "work_items": [
+        {
+          "id": "P01-W01",
+          "text": "edit fixture"
+        }
+      ]
+    }
+  ],
+  "profile": "chip-private",
+  "protocol_version": "3.0",
+  "risks": [
+    {
+      "id": "RISK-001",
+      "mitigation": "redacted fixture and privacy scan",
+      "severity": "P1",
+      "tag": "private_data"
+    },
+    {
+      "id": "RISK-002",
+      "mitigation": "rollback rehearsal",
+      "severity": "P1",
+      "tag": "migration"
+    }
+  ],
+  "schema_version": "3.0",
+  "source_set": []
+}
