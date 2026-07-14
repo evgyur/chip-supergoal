@@ -591,17 +591,56 @@ def verify_rollback(baseline: Path, canary_package: Path, promoted_package: Path
     }
 
 
+def _sandbox_gate(
+    capabilities: dict[str, Any],
+    selection: dict[str, Any],
+    study: dict[str, Any],
+    release: dict[str, Any],
+    live: dict[str, Any],
+    selection_adr_sha256: str,
+) -> bool:
+    authoritative = capabilities.get("status") == "pass" and capabilities.get("authoritative") is True
+    if authoritative:
+        return True
+    immutable_no_candidate = (
+        capabilities.get("status") == "import_only"
+        and capabilities.get("authoritative") is False
+        and capabilities.get("synthetic_containment_claimed") is False
+        and selection.get("decision") == "no_candidate"
+        and selection.get("status") == "no_go"
+        and selection.get("selected_variant") is None
+        and selection.get("sealed_holdout_accessed") is False
+        and selection.get("retained_runtime_layers") == []
+        and study.get("decision") == "no_candidate"
+        and study.get("status") == "not_applicable"
+        and study.get("sealed_holdout_accessed") is False
+        and study.get("selection_sha256") == selection_adr_sha256
+        and release.get("verdict") == "no-go"
+        and release.get("runtime_profile_enabled") is False
+        and live.get("outcome") == "not_applicable"
+        and live.get("tasks_observed") == 0
+        and live.get("phase_exposures") == 0
+    )
+    return immutable_no_candidate
+
+
 def final_aggregate() -> dict[str, Any]:
     required_reports = {
         "release_decision": ROOT / "reports/quality/release-decision.json",
         "rollback": ROOT / "reports/quality/rollback-proof.json",
         "privacy": ROOT / "reports/quality/promotion-privacy-scan.json",
         "promotion_study": ROOT / "reports/quality/promotion-study.json",
+        "candidate_selection": ROOT / "reports/quality/candidate-selection.json",
         "live_veto": ROOT / "reports/quality/live-canary-veto.json",
         "foundation": ROOT / "evals/baselines/foundation-capabilities.json",
         "sandbox_capabilities": ROOT / "reports/quality/sandbox-capabilities.json",
     }
     values = {name: load(path) for name, path in required_reports.items()}
+    selection_adr = ROOT / "docs/adr/ADR-005-quality-candidate-selection.md"
+    sandbox_gate = _sandbox_gate(
+        values["sandbox_capabilities"], values["candidate_selection"], values["promotion_study"],
+        values["release_decision"], values["live_veto"], sha256(selection_adr),
+    )
     checks = {
         "release_no_go": values["release_decision"].get("verdict") == "no-go",
         "rollback_pass": values["rollback"].get("status") == "pass",
@@ -610,7 +649,7 @@ def final_aggregate() -> dict[str, Any]:
         "live_not_applicable": values["live_veto"].get("outcome") == "not_applicable",
         "linux_foundation": values["foundation"].get("linux_parity", {}).get("status") == "pass",
         "native_windows_foundation": values["foundation"].get("native_windows_v1", {}).get("status") == "pass",
-        "sandbox_promotion_authority": values["sandbox_capabilities"].get("status") == "pass" and values["sandbox_capabilities"].get("authoritative") is True,
+        "sandbox_path_closed": sandbox_gate,
     }
     evidence_paths = {
         "P01": ROOT / "evals/b2/b2-disposition-manifest.json",
