@@ -1,0 +1,16 @@
+{
+  "schema_version": "p11-phase-evidence-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P11",
+  "generated_at": "2026-07-14T07:45:54Z",
+  "status": "blocked",
+  "commands": {
+    "P11-CMD01": "exit_0_no_go_derived",
+    "P11-CMD02": "exit_0_rollback_pass",
+    "P11-CMD03": "exit_1_final_aggregate_blocked_by_P06-C02",
+    "P11-CMD04": "exit_1_runtime_evidence_incomplete"
+  },
+  "rpd_review": "evidence/supergoal/P11-rpd-review.json",
+  "blocker_evidence": "evidence/supergoal/P11-blocker-evidence.json",
+  "terminal_markers_authorized": false
+}

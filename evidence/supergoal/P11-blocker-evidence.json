@@ -1,0 +1,30 @@
+{
+  "schema_version": "p11-blocker-evidence-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P11",
+  "generated_at": "2026-07-14T07:45:54Z",
+  "status": "blocked",
+  "blocking_criterion": "P06-C02",
+  "blocking_contract_rule": "Missing native Windows Hyper-V or failed containment enters a blocker/import_only state and cannot be replaced by mocks.",
+  "observed": {
+    "sandbox_status": "import_only",
+    "sandbox_authoritative": false,
+    "final_aggregate_status": "blocked",
+    "P11-CMD03_exit": 1,
+    "P11-CMD04_exit": 1
+  },
+  "required_external_evidence": [
+    "A real rootless Podman containment receipt accepted by the frozen backend verifier",
+    "A native Windows Hyper-V Gen2 containment receipt accepted by the frozen backend verifier"
+  ],
+  "not_accepted": ["mock receipts", "synthetic pass", "operator waiver converted into promotion evidence"],
+  "safe_completed_outcome": {
+    "release_verdict": "no-go",
+    "sealed_holdout_accessed": false,
+    "live_profile_enabled": false,
+    "baseline_restored": true,
+    "merge": false,
+    "release": false,
+    "live_skill_mutation": false
+  }
+}

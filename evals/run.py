@@ -599,6 +599,7 @@ def final_aggregate() -> dict[str, Any]:
         "promotion_study": ROOT / "reports/quality/promotion-study.json",
         "live_veto": ROOT / "reports/quality/live-canary-veto.json",
         "foundation": ROOT / "evals/baselines/foundation-capabilities.json",
+        "sandbox_capabilities": ROOT / "reports/quality/sandbox-capabilities.json",
     }
     values = {name: load(path) for name, path in required_reports.items()}
     checks = {
@@ -609,9 +610,8 @@ def final_aggregate() -> dict[str, Any]:
         "live_not_applicable": values["live_veto"].get("outcome") == "not_applicable",
         "linux_foundation": values["foundation"].get("linux_parity", {}).get("status") == "pass",
         "native_windows_foundation": values["foundation"].get("native_windows_v1", {}).get("status") == "pass",
+        "sandbox_promotion_authority": values["sandbox_capabilities"].get("status") == "pass" and values["sandbox_capabilities"].get("authoritative") is True,
     }
-    if not all(checks.values()):
-        raise ValueError("final aggregate has a failed hard gate")
     evidence_paths = {
         "P01": ROOT / "evals/b2/b2-disposition-manifest.json",
         "P02": ROOT / "evidence/supergoal/P02-foundation-closeout.json",
@@ -623,8 +623,9 @@ def final_aggregate() -> dict[str, Any]:
         if not path.is_file():
             raise ValueError(f"missing phase evidence: {phase}")
         phase_evidence[phase] = sha256(path)
+    complete = all(checks.values())
     return {
-        "schema_version": "final-audit-inputs-v1", "status": "pass", "verdict": "no-go",
+        "schema_version": "final-audit-inputs-v1", "status": "pass" if complete else "blocked", "verdict": "no-go",
         "hard_gates": checks,
         "reports": {name: {"path": path.relative_to(ROOT).as_posix(), "sha256": sha256(path)} for name, path in required_reports.items()},
         "phase_evidence": phase_evidence,
@@ -882,6 +883,9 @@ def main() -> int:
         result = final_aggregate()
         output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
         write_report(output, result)
+        if result["status"] != "pass":
+            print(json.dumps(result, sort_keys=True))
+            return 1
     elif args.command == "verify-closeout":
         if not (args.require_clean_git and args.forbid_merge and args.forbid_release and args.forbid_live_skill_mutation):
             raise ValueError("all closeout side-effect boundary flags are mandatory")

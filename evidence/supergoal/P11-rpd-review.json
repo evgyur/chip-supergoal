@@ -1,0 +1,30 @@
+{
+  "schema_version": "p11-rpd-review-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P11",
+  "reviewed_at": "2026-07-14T07:45:54Z",
+  "mode": "RPD_XHIGH",
+  "focus": ["migration", "data-loss", "security", "integration"],
+  "passed": false,
+  "p0": [],
+  "p1": [
+    {
+      "code": "P11-RPD-P1-SANDBOX-AUTHORITY",
+      "finding": "The first final aggregate omitted the blocking P06 real-sandbox authority gate and could falsely report pass from import_only evidence.",
+      "mutation": "Added sandbox_promotion_authority to the hard-gate aggregate, regenerated reports/final-audit-inputs.json as blocked, removed the stale closeout receipt, and recorded corrected unverified P11 evidence."
+    }
+  ],
+  "p2": [],
+  "remaining_blocker": {
+    "criterion": "P06-C02",
+    "required": "Authoritative immutable attestations for both rootless Podman and native Windows Hyper-V containment backends.",
+    "observed": "reports/quality/sandbox-capabilities.json is import_only and authoritative=false"
+  },
+  "side_effect_boundary": {
+    "merge": false,
+    "release": false,
+    "live_skill_mutation": false,
+    "sealed_holdout_accessed": false,
+    "live_profile_enabled": false
+  }
+}
