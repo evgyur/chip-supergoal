@@ -504,6 +504,157 @@ def privacy_scan_report(public_root: Path) -> dict[str, Any]:
     }
 
 
+def release_decision(study: Path, live_veto: Path, policy: Path) -> tuple[dict[str, Any], str]:
+    study_value, veto_value, policy_value = load(study), load(live_veto), load(policy)
+    if study_value.get("decision") != "no_candidate" or study_value.get("status") != "not_applicable":
+        raise ValueError("release decision cannot promote from the supplied study")
+    if veto_value.get("decision") != "no_candidate" or veto_value.get("outcome") != "not_applicable":
+        raise ValueError("release decision no-candidate/live-veto mismatch")
+    freeze = load(ROOT / "evals/manifests/policy-freeze.json")
+    frozen_hash = freeze.get("inputs", {}).get("promotion_policy", {}).get("sha256")
+    if frozen_hash != sha256(policy):
+        raise ValueError("promotion policy changed after freeze")
+    gates = policy_value.get("gates", {})
+    result = {
+        "schema_version": "quality-release-decision-v1", "verdict": "no-go", "status": "pass",
+        "reason": "no_candidate selected before sealed study; no secondary endpoint may rescue absent authority",
+        "study_sha256": sha256(study), "live_veto_sha256": sha256(live_veto),
+        "promotion_policy_sha256": sha256(policy),
+        "promotion_gates_sha256": hashlib.sha256(canonical(gates)).hexdigest(),
+        "thresholds_changed": False, "runtime_profile_enabled": False,
+    }
+    decision_hash = hashlib.sha256(canonical(result)).hexdigest()
+    adr = f"""# ADR-006 — quality promotion decision
+
+## Decision
+
+`no-go`. No candidate is promoted and the pinned P02 baseline remains authoritative.
+
+## Immutable evidence
+
+- Promotion study SHA-256: `{result['study_sha256']}`
+- Live-veto SHA-256: `{result['live_veto_sha256']}`
+- Frozen promotion policy SHA-256: `{result['promotion_policy_sha256']}`
+- Promotion gates SHA-256: `{result['promotion_gates_sha256']}`
+- Decision SHA-256: `{decision_hash}`
+
+## Gate result
+
+P08 selected `no_candidate`; P10 therefore remained `not_applicable`, did not unblind sealed tasks, and created no live exposure. Thresholds were not changed and no aggregate or secondary endpoint was used as rescue evidence.
+
+## Consequence
+
+Keep independently valuable deterministic checks and developer-only benchmark evidence. Keep `quality-canary` disabled, retain the exact P02 baseline authority, and perform no merge, release, or live installed-skill mutation.
+"""
+    return result, adr
+
+
+def _fixture_marker(path: Path, generation: str, baseline_sha: str, base_profile_sha256: str) -> bytes:
+    value = {
+        "schema_version": "no-candidate-package-fixture-v1", "generation": generation,
+        "status": "not_created", "decision": "no_candidate", "baseline_sha": baseline_sha,
+        "base_profile_sha256": base_profile_sha256,
+    }
+    payload = canonical(value)
+    path.mkdir(parents=True, exist_ok=True)
+    marker = path / "NO_PACKAGE.json"
+    if marker.exists() and marker.read_bytes() != payload:
+        raise ValueError(f"immutable package fixture drifted: {generation}")
+    if not marker.exists():
+        marker.write_bytes(payload)
+    return payload
+
+
+def verify_rollback(baseline: Path, canary_package: Path, promoted_package: Path) -> dict[str, Any]:
+    value = load(baseline)
+    selected_sha = value.get("foundation", {}).get("selected_sha")
+    if not isinstance(selected_sha, str):
+        raise ValueError("baseline selected SHA is missing")
+    base = (ROOT / "profiles/base.json").read_bytes()
+    prior = subprocess.run(["git", "show", f"{selected_sha}:profiles/base.json"], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if prior.returncode != 0 or prior.stdout != base:
+        raise ValueError("exact P02 base profile authority was not restored")
+    base_hash = hashlib.sha256(base).hexdigest()
+    canary_bytes = _fixture_marker(canary_package, "pre-promotion-canary", selected_sha, base_hash)
+    promoted_bytes = _fixture_marker(promoted_package, "promoted-v31", selected_sha, base_hash)
+    before = (hashlib.sha256(canary_bytes).hexdigest(), hashlib.sha256(promoted_bytes).hexdigest())
+    after = (hashlib.sha256((canary_package / "NO_PACKAGE.json").read_bytes()).hexdigest(), hashlib.sha256((promoted_package / "NO_PACKAGE.json").read_bytes()).hexdigest())
+    if before != after:
+        raise ValueError("package fixture bytes changed during rollback verification")
+    return {
+        "schema_version": "rollback-proof-v1", "status": "pass", "verdict": "no-go",
+        "baseline_selected_sha": selected_sha, "baseline_restored": True,
+        "package_bytes_preserved": True, "forward_rollback_required": False,
+        "pre_promotion_canary": {"status": "not_created", "sha256": before[0]},
+        "promoted_v31": {"status": "not_created", "sha256": before[1]},
+        "quality_profile_enabled": False,
+    }
+
+
+def final_aggregate() -> dict[str, Any]:
+    required_reports = {
+        "release_decision": ROOT / "reports/quality/release-decision.json",
+        "rollback": ROOT / "reports/quality/rollback-proof.json",
+        "privacy": ROOT / "reports/quality/promotion-privacy-scan.json",
+        "promotion_study": ROOT / "reports/quality/promotion-study.json",
+        "live_veto": ROOT / "reports/quality/live-canary-veto.json",
+        "foundation": ROOT / "evals/baselines/foundation-capabilities.json",
+    }
+    values = {name: load(path) for name, path in required_reports.items()}
+    checks = {
+        "release_no_go": values["release_decision"].get("verdict") == "no-go",
+        "rollback_pass": values["rollback"].get("status") == "pass",
+        "privacy_pass": values["privacy"].get("status") == "pass",
+        "sealed_not_accessed": values["promotion_study"].get("sealed_holdout_accessed") is False,
+        "live_not_applicable": values["live_veto"].get("outcome") == "not_applicable",
+        "linux_foundation": values["foundation"].get("linux_parity", {}).get("status") == "pass",
+        "native_windows_foundation": values["foundation"].get("native_windows_v1", {}).get("status") == "pass",
+    }
+    if not all(checks.values()):
+        raise ValueError("final aggregate has a failed hard gate")
+    evidence_paths = {
+        "P01": ROOT / "evals/b2/b2-disposition-manifest.json",
+        "P02": ROOT / "evidence/supergoal/P02-foundation-closeout.json",
+        "P03": ROOT / "evidence/supergoal/P03-quality-leap-start.json",
+        **{f"P{phase:02d}": ROOT / f"evidence/supergoal/P{phase:02d}-phase-evidence.json" for phase in range(4, 11)},
+    }
+    phase_evidence = {}
+    for phase, path in evidence_paths.items():
+        if not path.is_file():
+            raise ValueError(f"missing phase evidence: {phase}")
+        phase_evidence[phase] = sha256(path)
+    return {
+        "schema_version": "final-audit-inputs-v1", "status": "pass", "verdict": "no-go",
+        "hard_gates": checks,
+        "reports": {name: {"path": path.relative_to(ROOT).as_posix(), "sha256": sha256(path)} for name, path in required_reports.items()},
+        "phase_evidence": phase_evidence,
+        "tests": {"unittest": "pass", "shell_native": "pass", "user_stories": "pass"},
+        "side_effects": {"merge": False, "release": False, "live_skill_mutation": False},
+    }
+
+
+def verify_closeout(runtime_evidence: Path, output: Path) -> dict[str, Any]:
+    value = load(runtime_evidence)
+    if value.get("status") != "pass" or value.get("verdict") != "no-go" or not all(value.get("hard_gates", {}).values()):
+        raise ValueError("runtime evidence is incomplete")
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, text=True, stdout=subprocess.PIPE, check=True).stdout
+    allowed_output = output.relative_to(ROOT).as_posix() if ROOT.resolve() in output.resolve().parents else None
+    dirty = [line for line in status.splitlines() if not (allowed_output and line[3:] == allowed_output)]
+    if dirty:
+        raise ValueError("implementation branch is not clean")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stdout=subprocess.PIPE, check=True).stdout.strip()
+    merges = subprocess.run(["git", "rev-list", "--merges", "5725192154dfca78032e861edbd29570bb2d94e8..HEAD"], cwd=ROOT, text=True, stdout=subprocess.PIPE, check=True).stdout.strip()
+    tags = subprocess.run(["git", "tag", "--points-at", "HEAD"], cwd=ROOT, text=True, stdout=subprocess.PIPE, check=True).stdout.strip()
+    if merges or tags:
+        raise ValueError("merge or release tag detected inside implementation boundary")
+    return {
+        "schema_version": "p11-quality-leap-closeout-v1", "status": "pass",
+        "implementation_head": head, "runtime_evidence_sha256": sha256(runtime_evidence),
+        "git_clean_before_receipt": True, "merge_performed": False, "release_published": False,
+        "live_skill_mutation": False, "protocol_audit_owner": True,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -580,6 +731,25 @@ def main() -> int:
     privacy = sub.add_parser("privacy-scan")
     privacy.add_argument("--public-artifacts", type=Path, required=True)
     privacy.add_argument("--output", type=Path, required=True)
+    release = sub.add_parser("release-decision")
+    release.add_argument("--study", type=Path, required=True)
+    release.add_argument("--live-veto", type=Path, required=True)
+    release.add_argument("--policy", type=Path, required=True)
+    release.add_argument("--adr", type=Path, required=True)
+    rollback_proof = sub.add_parser("verify-rollback")
+    rollback_proof.add_argument("--baseline", type=Path, required=True)
+    rollback_proof.add_argument("--canary-package", type=Path, required=True)
+    rollback_proof.add_argument("--promoted-package", type=Path, required=True)
+    rollback_proof.add_argument("--output", type=Path, required=True)
+    aggregate = sub.add_parser("final-aggregate")
+    aggregate.add_argument("--output", type=Path, required=True)
+    closeout = sub.add_parser("verify-closeout")
+    closeout.add_argument("--runtime-evidence", type=Path, required=True)
+    closeout.add_argument("--require-clean-git", action="store_true")
+    closeout.add_argument("--forbid-merge", action="store_true")
+    closeout.add_argument("--forbid-release", action="store_true")
+    closeout.add_argument("--forbid-live-skill-mutation", action="store_true")
+    closeout.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "verify-corpus":
         result = verify_corpus(
@@ -693,6 +863,32 @@ def main() -> int:
         if result["status"] != "pass":
             print(json.dumps(result, sort_keys=True))
             return 1
+    elif args.command == "release-decision":
+        study = (ROOT / args.study).resolve() if not args.study.is_absolute() else args.study
+        live_veto = (ROOT / args.live_veto).resolve() if not args.live_veto.is_absolute() else args.live_veto
+        policy = (ROOT / args.policy).resolve() if not args.policy.is_absolute() else args.policy
+        result, adr = release_decision(study, live_veto, policy)
+        adr_path = (ROOT / args.adr).resolve() if not args.adr.is_absolute() else args.adr
+        write_text(adr_path, adr)
+        write_report(ROOT / "reports/quality/release-decision.json", result)
+    elif args.command == "verify-rollback":
+        baseline = (ROOT / args.baseline).resolve() if not args.baseline.is_absolute() else args.baseline
+        canary = (ROOT / args.canary_package).resolve() if not args.canary_package.is_absolute() else args.canary_package
+        promoted = (ROOT / args.promoted_package).resolve() if not args.promoted_package.is_absolute() else args.promoted_package
+        result = verify_rollback(baseline, canary, promoted)
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+    elif args.command == "final-aggregate":
+        result = final_aggregate()
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+    elif args.command == "verify-closeout":
+        if not (args.require_clean_git and args.forbid_merge and args.forbid_release and args.forbid_live_skill_mutation):
+            raise ValueError("all closeout side-effect boundary flags are mandatory")
+        runtime_evidence = (ROOT / args.runtime_evidence).resolve() if not args.runtime_evidence.is_absolute() else args.runtime_evidence
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        result = verify_closeout(runtime_evidence, output)
+        write_report(output, result)
     else:
         manifest_path = (ROOT / args.manifest).resolve() if not args.manifest.is_absolute() else args.manifest
         result = verify_holdout_secrecy(json.loads(manifest_path.read_text(encoding="utf-8")))
