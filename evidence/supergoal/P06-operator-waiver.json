@@ -1,0 +1,25 @@
+{
+  "schema_version": "p06-operator-waiver-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P06",
+  "recorded_at": "2026-07-14T05:50:43Z",
+  "authority": "explicit_current_session_operator_direction",
+  "decision": "continue_without_current_external_attestations",
+  "waived_for_this_run": [
+    "current execution of rootless Podman adversarial probes",
+    "current execution of native Windows Hyper-V Generation-2 adversarial probes",
+    "current independent judge-family and outcome-adjudicator observations"
+  ],
+  "preserved_fail_closed_semantics": [
+    "sandbox status remains import_only",
+    "judge calibration remains non_authoritative",
+    "no synthetic containment pass is recorded",
+    "no unavailable semantic metric becomes promotion evidence",
+    "a downstream candidate promotion requires future authoritative evidence or must resolve to no_candidate"
+  ],
+  "contract_interpretation": {
+    "P06-C02": "unavailable capabilities are represented by import_only as explicitly declared",
+    "P06-C03": "missing calibration remains explicitly non_authoritative without threshold weakening"
+  },
+  "private_content_exported": false
+}

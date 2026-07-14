@@ -1,0 +1,39 @@
+{
+  "artifacts": {
+    "evals/harness/benchmark.py": "af80c8ffbf6d5aedc47e970162c8d9562f2d574a134b63de05c76eaf58a8563c",
+    "evals/harness/sandbox_hyperv.py": "67e8d6a42f1f0eb7fe143efa7fc0acd47b7762f610053d4162ca511eb0a3b91e",
+    "evals/harness/sandbox_podman.py": "e1ff4b1d73b309810ba373452bb04893137edea420ca8ebd672cf433aea30cda",
+    "evidence/supergoal/P06-operator-waiver.json": "b7966b2ba5b04736943b8ca22cbf52ca7c08c4a6f72a75bcc5d92123d84645ce",
+    "evidence/supergoal/P06-rpd-review.json": "ddb9ba1bbed25d399cf05feed00b1fe01c07312a41f58091e628ba79733f5c3e",
+    "reports/quality/judge-calibration.json": "0b9f7e757f79f6655e23cf416a6f0566f1f251afa19af63b1f25a838dbb72e76",
+    "reports/quality/sandbox-capabilities.json": "5649c52255aa24ffcb202684ddfb26075466a0f2dd1d9ee7f4811a440e1817df",
+    "spec/sandbox-backend.schema.json": "64a5ebaa17b3ad8c9ef8fa0ca858e0a917f181edb8292e29fc66a062b21a504c"
+  },
+  "commands": {
+    "P06-CMD01": "exit_0_6_tests",
+    "P06-CMD02": "exit_0_import_only",
+    "P06-CMD03": "exit_0_non_authoritative",
+    "P06-CMD04": "exit_0_6_tests",
+    "additional_calibration_tests": "exit_0_2_tests"
+  },
+  "generated_at": "2026-07-14T05:50:43Z",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "operator_waiver": "evidence/supergoal/P06-operator-waiver.json",
+  "phase_id": "P06",
+  "prior_ci": {
+    "commit": "93de8b85a6695f1338f90733320dea8303cf27dc",
+    "conclusion": "success",
+    "run_id": 29303891229
+  },
+  "privacy": {
+    "private_holdout_content_exported": false
+  },
+  "promotion_constraint": "import_only and non_authoritative outputs cannot count as candidate evidence",
+  "rpd_review": {
+    "passed": true,
+    "path": "evidence/supergoal/P06-rpd-review.json",
+    "verdict": "READY_WITH_NON_AUTHORITATIVE_LANES"
+  },
+  "schema_version": "p06-phase-evidence-v1",
+  "status": "acceptance_passed_with_declared_non_authoritative_lanes"
+}

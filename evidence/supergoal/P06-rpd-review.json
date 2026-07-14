@@ -1,0 +1,39 @@
+{
+  "schema_version": "p06-rpd-review-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P06",
+  "reviewed_at": "2026-07-14T05:50:43Z",
+  "mode": "RPD_PHASE_REVIEW",
+  "focus": ["security", "integration", "data-loss"],
+  "evidence_tier": "direct_artifact",
+  "findings": {
+    "P0": [],
+    "P1": [],
+    "P2": [
+      {
+        "id": "P06-RPD-P2-01",
+        "status": "checked-holds",
+        "finding": "External sandbox execution and independent judge calibration are unavailable in this run.",
+        "disposition": "Reports remain import_only/non_authoritative; operator continuation does not convert them to pass and downstream promotion must fail closed."
+      }
+    ]
+  },
+  "security_review": {
+    "synthetic_containment_claimed": false,
+    "private_holdout_content_exported": false,
+    "runtime_provider_dependencies_added": false,
+    "immutable_receipt_hash_validation_present": true
+  },
+  "integration_review": {
+    "developer_eval_code_confined_to_evals": true,
+    "runtime_boundary_tests_pass": true,
+    "linux_and_windows_import_paths_ci_pass": true
+  },
+  "data_loss_review": {
+    "run_artifacts_create_only": true,
+    "temporary_report_replace_is_atomic": true,
+    "private_source_bundle_unmodified": true
+  },
+  "verdict": "READY_WITH_NON_AUTHORITATIVE_LANES",
+  "passed": true
+}

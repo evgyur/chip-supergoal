@@ -3,7 +3,7 @@
   "goal_id": "sg-20260714-chip-supergoal-quality-leap",
   "phase_id": "P06",
   "generated_at": "2026-07-14T03:26:00Z",
-  "status": "waiting_external",
+  "status": "operator_waived_external_execution",
   "completed": {
     "blind_paired_harness": true,
     "judge_bias_controls": true,
@@ -22,6 +22,10 @@
     "immutable passing adversarial-containment attestation from a rootless Podman controller",
     "immutable passing adversarial-containment attestation from a native Windows Hyper-V Generation-2 ephemeral VM controller"
   ],
+  "operator_resolution": {
+    "path": "evidence/supergoal/P06-operator-waiver.json",
+    "effect": "continue with import_only and non_authoritative lanes without recording synthetic passes"
+  },
   "optional_authority_upgrade": [
     "aggregate observations from at least two independent judge families",
     "aggregate observations from at least two independent outcome adjudicators"
