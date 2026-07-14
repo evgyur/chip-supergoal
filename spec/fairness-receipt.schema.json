@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chip-supergoal.local/spec/fairness-receipt.schema.json",
+  "title": "Independent aggregate case-fairness receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "reviewer_id",
+    "reviewer_class",
+    "case_author_independent",
+    "candidate_implementation_independent",
+    "fairness_policy_sha256",
+    "ordered_case_commitment_set_sha256",
+    "detailed_receipt_sha256",
+    "cases_reviewed",
+    "aggregate_verdict"
+  ],
+  "properties": {
+    "schema_version": {"const": "fairness-receipt-v1"},
+    "reviewer_id": {"type": "string", "minLength": 3},
+    "reviewer_class": {"enum": ["isolated-agent", "human-expert"]},
+    "case_author_independent": {"const": true},
+    "candidate_implementation_independent": {"const": true},
+    "fairness_policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "ordered_case_commitment_set_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "detailed_receipt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "cases_reviewed": {"type": "integer", "minimum": 1},
+    "aggregate_verdict": {"const": "pass"}
+  }
+}

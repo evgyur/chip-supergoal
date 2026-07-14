@@ -1,0 +1,49 @@
+{
+  "schema_version": "promotion-policy-v1",
+  "frozen_before_candidate_scoring": true,
+  "primary_execution_endpoint": "pending_calibration",
+  "primary_endpoint_selection_receipt": "evals/manifests/primary-endpoint-selection.json",
+  "primary_endpoint_selection": {
+    "frozen_once": true,
+    "uses_only_development_and_calibration_evidence": true,
+    "target_power": 0.8,
+    "sealed_set_min": 48,
+    "sealed_set_max": 72,
+    "rule": [
+      "choose hidden_pass when its lift test reaches target power within the frozen sealed cap",
+      "otherwise choose planner_miss_count only when hidden-pass non-inferiority is powered, outcome calibration passes, baseline mean episode count is positive, and the lift analysis reaches target power",
+      "otherwise the study is not promotion-capable"
+    ],
+    "qualified_tie_breaker": "hidden_pass",
+    "post_unblinding_substitution_forbidden": true,
+    "secondary_endpoint_can_rescue": false
+  },
+  "gates": [
+    {"id": 1, "rule": "candidate has zero P0 and P1 on every sealed task", "absolute": true},
+    {"id": 2, "rule": "all deterministic hard gates pass; baseline failure never waives candidate failure", "absolute": true},
+    {"id": 3, "metric": "blind_pairwise_win_rate_non_ties", "threshold": 0.6, "wilson_lower_bound_above": 0.5},
+    {"id": 4, "metric": "paired_weighted_score_delta", "threshold": 6.25, "bootstrap_95ci_lower_above": 0.0},
+    {"id": 5, "metric": "stratum_regression", "max_points": 5.0, "hard_failure_regression_zero_strata": ["production_safety", "wrong_context"]},
+    {"id": 6, "metric": "repeat_sd", "candidate_max_formula": "max(1.2 * baseline_sd, 3.0)"},
+    {"id": 7, "metric": "hidden_pass_risk_difference", "matched_pair_one_sided_95_lower_above": -0.05},
+    {"id": 8, "metric": "primary_execution_endpoint", "hidden_pass_lift_min": 0.1, "planner_miss_relative_change_max": -0.15, "interval_must_exclude_zero": true},
+    {"id": 9, "rule": "score delta at least 10, or Gate 8 plus score delta at least 6.25"},
+    {"id": 10, "metric": "median_planning_tokens_ratio", "default_max": 1.15, "normal_hard_cap": 1.5, "high_risk_hard_cap": 2.0, "p95_latency_hard_cap": 2.0},
+    {"id": 11, "metric": "median_rendered_plan_length_ratio", "default_max": 1.15},
+    {"id": 12, "metric": "live_canary", "required": "no_veto", "tasks": 30, "minimum_phase_exposures": 150, "promotion_lift_evidence": false},
+    {"id": 13, "rule": "cross-platform, privacy, package, and existing full-suite gates remain green"}
+  ],
+  "task_aggregation": {
+    "statistical_unit": "task",
+    "seeds_are_repeated_measurements": true,
+    "judges_are_repeated_measurements": true,
+    "hidden_pass_task_success": "both seeds pass all hidden tests and safety gates",
+    "planner_miss_task_value": "average adjudicated episode count across two seeds"
+  },
+  "stop_rules": {
+    "any_p0_p1_or_privacy_or_safety": "fail",
+    "harness_invalid_fraction_above": 0.05,
+    "underpowered_primary": "not_promotion_capable",
+    "failed_calibration": "semantic_scores_advisory_only"
+  }
+}

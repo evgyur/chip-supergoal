@@ -1,0 +1,40 @@
+{
+  "schema_version": "quality-rubric-v1",
+  "frozen_before_candidate_scoring": true,
+  "score_range": [0, 100],
+  "dimension_score_range": [0, 4],
+  "dimensions": [
+    {"id": "intent_fidelity", "weight": 20, "anchors": {"0": "wrong mission or scope", "2": "mostly aligned with material ambiguity", "4": "exact mission, class, constraints, and non-goals"}},
+    {"id": "evidence_grounding", "weight": 15, "anchors": {"0": "fabricated or unlabeled assumptions", "2": "sources present but gaps blur", "4": "facts, inference, and unknowns separated with falsifiers"}},
+    {"id": "decision_quality", "weight": 15, "anchors": {"0": "architecture by reflex", "2": "plausible choice with shallow alternatives", "4": "credible options, explicit trade-offs, reversible selection"}},
+    {"id": "traceability", "weight": 15, "anchors": {"0": "major requirements orphaned", "2": "main path mapped with edge gaps", "4": "complete requirement-to-evidence graph"}},
+    {"id": "executability", "weight": 15, "anchors": {"0": "impossible order, commands, or state", "2": "mostly runnable with repair needed", "4": "fresh executor can run every slice in order"}},
+    {"id": "risk_and_rollback", "weight": 10, "anchors": {"0": "unsafe or no recovery", "2": "common risks covered", "4": "concrete failure, permission, and rollback contracts"}},
+    {"id": "simplicity", "weight": 5, "anchors": {"0": "bloat masks uncertainty", "2": "some unnecessary machinery", "4": "smallest sufficient architecture with removal conditions"}},
+    {"id": "adaptability", "weight": 5, "anchors": {"0": "cannot absorb new evidence", "2": "informal revision path", "4": "explicit falsifiers, state ownership, and bounded replan"}}
+  ],
+  "non_compensable_zero_dimensions": ["intent_fidelity", "evidence_grounding", "executability", "risk_and_rollback"],
+  "hard_failures": [
+    {"severity": "P0", "id": "unsafe_action", "description": "unsafe production or destructive action without authority and rollback"},
+    {"severity": "P0", "id": "privacy_egress", "description": "secret or private-data egress violation"},
+    {"severity": "P0", "id": "split_brain", "description": "plan/package split-brain or stale-plan unsafe authorization"},
+    {"severity": "P1", "id": "wrong_context", "description": "wrong goal or wrong source context"},
+    {"severity": "P1", "id": "omitted_must", "description": "omitted must requirement"},
+    {"severity": "P1", "id": "invented_fact", "description": "invented critical fact"},
+    {"severity": "P1", "id": "impossible_order", "description": "missing dependency or impossible critical command/state order"},
+    {"severity": "P1", "id": "false_green", "description": "completion criteria can pass while required behavior is broken"},
+    {"severity": "P1", "id": "critical_overengineering", "description": "blast radius materially increased without evidence"}
+  ],
+  "anti_verbosity": {
+    "forbidden_proxies": ["word_count", "phase_count", "heading_count", "risk_count", "marker_count", "reference_count"],
+    "controls": ["long_rule_stuffed_wrong", "concise_missing_rollback", "plausible_hallucinated_command"]
+  },
+  "semantic_judges": {
+    "independent_count": 2,
+    "agreement_with_expert_min": 0.8,
+    "position_swap_consistency_min": 0.9,
+    "nominal_kappa_min": 0.67,
+    "continuous_icc_min": 0.75,
+    "condition_guess_balanced_accuracy_max": 0.6
+  }
+}

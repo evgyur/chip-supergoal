@@ -1,0 +1,30 @@
+{
+  "schema_version": "p04-fairness-repair-v1",
+  "recorded_at": "2026-07-14T01:34:33Z",
+  "trigger": {
+    "independent_reviewers_reporting_same_defect": 2,
+    "affected_cases": 30,
+    "finding": "Cases marked strategy_flexible=false excluded materially equivalent baseline-first, parallel-characterization, and contract-first strategies without a case-specific constraint."
+  },
+  "repair": {
+    "timing": "before holdout manifest and policy freeze",
+    "affected_cases": 30,
+    "strategy_flexible_cases_after_repair": 60,
+    "accepted_equivalent_strategies_per_repaired_case": 3,
+    "private_content_exposed": false
+  },
+  "post_repair_validation": {
+    "status": "pass",
+    "independent_fairness_reviewers": 2,
+    "cases_reviewed_per_reviewer": 60,
+    "failed_cases": 0,
+    "private_manifest_sha256": "18abe1d3e48553b0eb5ff2c1871806b09d7f05d9eca709fbae88ead97a79824a",
+    "private_validation_report_sha256": "7e206503969905f18a3d83160633124eea0dc63b3739a6809b0b579bf2c754a6",
+    "fairness_receipts_sha256": "adee9ed6498c79c0f50c9e523bf13ab150239063af343b60d29ef2483d831707"
+  },
+  "privacy": {
+    "private_case_ids_in_evidence": false,
+    "private_case_content_in_evidence": false,
+    "reviewer_case_reasons_in_evidence": false
+  }
+}

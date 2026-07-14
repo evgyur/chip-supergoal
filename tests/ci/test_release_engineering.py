@@ -205,7 +205,7 @@ class ReleaseEngineeringTest(unittest.TestCase):
             self.assertIn("CPython 3.11.9", document)
             self.assertNotIn("python3 ", document)
             self.assertNotIn("/tmp/", document)
-        self.assertEqual(read_text("requirements-test.txt"), "PyYAML==6.0.3\n")
+        self.assertEqual(read_text("requirements-test.txt"), "PyYAML==6.0.3\njsonschema==4.26.0\n")
         self.assertIn(
             "python scripts/sgctl.py validate-phase-markdown <phase-file>", skill
         )

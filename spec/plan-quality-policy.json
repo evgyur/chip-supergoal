@@ -1,0 +1,90 @@
+{
+  "schema_version": "plan-quality-policy-v1",
+  "frozen_before_candidate_scoring": true,
+  "corpus": {
+    "total": 84,
+    "development": 24,
+    "calibration": 12,
+    "sealed": 48,
+    "strata": 6,
+    "per_stratum": {"development": 4, "calibration": 2, "sealed": 8},
+    "source_composition": {"historical": 42, "public_repo": 24, "adversarial": 18},
+    "metamorphic_case_minimum": 20
+  },
+  "fairness": {
+    "independent_reviewers": 2,
+    "clarification_oracle_for_material_unknown": true,
+    "minimum_valid_strategies_when_flexible": 2,
+    "private_context_dependency_forbidden": true,
+    "immutable_sources_required": true,
+    "distinguishing_reason_required": true
+  },
+  "paired_protocol": {
+    "plans_per_condition_per_task": 2,
+    "judges_per_plan": 2,
+    "statistical_unit": "task",
+    "bootstrap_unit": "sealed_task_delta",
+    "bootstrap_stratified_by": "stratum",
+    "seed_or_judge_as_independent_sample": false,
+    "task_win_votes_required": 3,
+    "task_votes_total": 4
+  },
+  "mcid": {
+    "paired_task_score_0_to_4": 0.25,
+    "weighted_score_0_to_100": 6.25,
+    "mutable_after_freeze": false,
+    "assumed_paired_sd": 0.55,
+    "target_power": 0.8,
+    "alpha_two_sided": 0.05
+  },
+  "semantic_review_lane": {
+    "routing": "deterministic_hash(task_id,seed_id,judge_slot,policy_sha256)",
+    "judge_slots": 2,
+    "condition_blind": true,
+    "position_swap_subset": true,
+    "judge_identity_reuse_as_independent_sample": false,
+    "raw_outputs_controller_only": true,
+    "fallback_on_missing_judge": "invalidate_pair_not_substitute",
+    "receipt_schema": "spec/outcome-receipt.schema.json"
+  },
+  "outcome_taxonomy": [
+    "plan_followed",
+    "external_change",
+    "acceptable_discovery",
+    "planner_miss",
+    "executor_deviation",
+    "insufficient_evidence"
+  ],
+  "outcome_partition": {
+    "candidate_self_labeling": false,
+    "initial_condition_blinded_adjudicators": 2,
+    "disagreement_adjudicator": 1,
+    "signature_fields": ["omission_kind", "normalized_target_ids", "first_triggering_evidence_hash"],
+    "grouping_scope": "task_seed",
+    "grouping_relation": "signature_equivalence_partition",
+    "labels_complete_before_unblinding": true,
+    "calibration": {
+      "planner_miss_precision_min": 0.8,
+      "planner_miss_recall_min": 0.8,
+      "macro_f1_min": 0.75,
+      "label_kappa_min": 0.67,
+      "positive_manifestations_min": 30,
+      "expert_episodes_min": 12,
+      "multi_manifest_episodes_min": 6,
+      "same_episode_precision_min": 0.85,
+      "same_episode_recall_min": 0.85,
+      "same_episode_f1_min": 0.85,
+      "coclustering_f1_min": 0.8,
+      "exact_count_agreement_min": 0.8,
+      "count_icc_min": 0.8
+    }
+  },
+  "anti_gaming": {
+    "presentation_normalization": true,
+    "ab_order_randomized": true,
+    "position_swap_subset": true,
+    "condition_identity_removed": true,
+    "sealed_cases_never_enter_planner_references": true,
+    "disclosed_sealed_case_must_be_replaced": true
+  }
+}

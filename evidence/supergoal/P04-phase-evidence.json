@@ -1,0 +1,70 @@
+{
+  "schema_version": "p04-phase-evidence-v1",
+  "recorded_at": "2026-07-14T01:40:14Z",
+  "phase": "P04",
+  "status": "acceptance_commands_passed",
+  "mandatory_commands": {
+    "P04-CMD01": {
+      "exit": 0,
+      "result": {
+        "total": 84,
+        "development": 24,
+        "calibration": 12,
+        "sealed": 48,
+        "strata": 6,
+        "private_commitments_verified": true,
+        "non_public_content_absent_from_git_inventory": true
+      }
+    },
+    "P04-CMD02": {
+      "exit": 0,
+      "tests": 17,
+      "failures": 0
+    },
+    "P04-CMD03": {
+      "exit": 0,
+      "freeze_sha256": "52f2f65333357fbdbcfb3311a1c45917ca6cb2bfbdcb17d2b1e005fbaec72dd9",
+      "idempotent_after_public_corpus_regeneration": true
+    }
+  },
+  "supplemental_verification": {
+    "native_suite": {
+      "gates": 9,
+      "passed": 9,
+      "unittest_count": 462,
+      "skipped": 22,
+      "failures": 0
+    },
+    "public_corpus_determinism_sha256": "86e1643ba6926a88788c28501c55985ee9ea4a112d70202eda220957d49c8de4",
+    "immutable_source_fixture_commit": "debffb5b9c07d4acdfeaa708c0fbd67358e97632",
+    "immutable_source_fixture_remote_verified": true,
+    "source_fixture_ci_run": "https://github.com/evgyur/chip-supergoal/actions/runs/29297933065",
+    "source_fixture_ci_conclusion": "success"
+  },
+  "artifact_hashes": {
+    "holdout_manifest": "6ac52724ba832bb1a2bfd70e2295d54547cba823d6a69b85fc152ba0ac11fad3",
+    "policy_freeze_file": "f469299e68f7ba6584ea7794d50912cae8206c2f370278641dea598bd6ce3ac0",
+    "eval_case_schema": "f12d21987c5fae1702011d1efb9f4562c2b4dd77605830a1307d788ee7ff7e0e",
+    "quality_rubric": "bb7003e68cbed58f7a80dfd81e53d78d523fd198512d1107625c35964104c51b",
+    "plan_quality_policy": "f68370155ad262e7d04484d86fddee11a0d34bfce9cff84fb3f6fe376390619c",
+    "promotion_policy": "7e844af095633d2201d314071a3dfd056c3830a3284eaa0c393f16d3cddc4a95",
+    "private_validation_report": "7e206503969905f18a3d83160633124eea0dc63b3739a6809b0b579bf2c754a6",
+    "fairness_repair_evidence": "b354aa87649a738251fc9e90573766392df8b5892f5773b7d3d56a64a2fd1669"
+  },
+  "private_aggregate": {
+    "status": "pass",
+    "cases": 60,
+    "independent_fairness_reviewers": 2,
+    "strategy_flexible_cases": 60,
+    "issues": 0,
+    "private_content_exposed": false
+  },
+  "frozen_authority": {
+    "mutable_after_candidate_scoring": false,
+    "statistical_unit": "task",
+    "mcid_weighted_score": 6.25,
+    "primary_endpoint_rule_frozen": true,
+    "outcome_partition_frozen": true,
+    "transitive_policy_hashes_frozen": true
+  }
+}

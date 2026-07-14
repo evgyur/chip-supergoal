@@ -1,0 +1,458 @@
+{
+  "$id": "https://chip-supergoal.local/spec/eval-case.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "else": {
+        "properties": {
+          "privacy_class": {
+            "const": "sealed_synthetic"
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "split": {
+            "const": "development"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "privacy_class": {
+            "enum": [
+              "public_synthetic",
+              "public_repository"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "else": {
+        "properties": {
+          "source_class": {
+            "enum": [
+              "historical",
+              "adversarial"
+            ]
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "split": {
+            "const": "development"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "source_class": {
+            "const": "public_repo"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "controller_truth": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptable_assumptions": {
+          "items": {
+            "minLength": 5,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "decision_seams": {
+          "items": {
+            "minLength": 5,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "deterministic_checks": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "strategy_flexible": {
+                    "const": true
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "valid_strategy_ids": {
+                    "minItems": 2
+                  }
+                }
+              }
+            }
+          ],
+          "properties": {
+            "checks": {
+              "items": {
+                "minLength": 5,
+                "type": "string"
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            "strategy_flexible": {
+              "type": "boolean"
+            },
+            "valid_strategy_ids": {
+              "items": {
+                "minLength": 3,
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "checks",
+            "strategy_flexible",
+            "valid_strategy_ids"
+          ],
+          "type": "object"
+        },
+        "forbidden_actions": {
+          "items": {
+            "minLength": 5,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "metamorphic": {
+          "additionalProperties": false,
+          "properties": {
+            "acceptable_decision_equivalence_set": {
+              "items": {
+                "minLength": 3,
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "transforms": {
+              "items": {
+                "minLength": 3,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "variant_of": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "variant_of",
+            "transforms",
+            "acceptable_decision_equivalence_set"
+          ],
+          "type": "object"
+        },
+        "risks": {
+          "items": {
+            "minLength": 5,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "rubric_anchors": {
+          "additionalProperties": {
+            "minLength": 5,
+            "type": "string"
+          },
+          "minProperties": 4,
+          "type": "object"
+        },
+        "truth_set": {
+          "additionalProperties": false,
+          "properties": {
+            "must": {
+              "items": {
+                "minLength": 5,
+                "type": "string"
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            "non_goals": {
+              "items": {
+                "minLength": 5,
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "should": {
+              "items": {
+                "minLength": 5,
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "must",
+            "should",
+            "non_goals"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "truth_set",
+        "acceptable_assumptions",
+        "decision_seams",
+        "risks",
+        "forbidden_actions",
+        "deterministic_checks",
+        "rubric_anchors",
+        "metamorphic"
+      ],
+      "type": "object"
+    },
+    "difficulty": {
+      "enum": [
+        "standard",
+        "hard",
+        "expert",
+        "adversarial"
+      ]
+    },
+    "id": {
+      "pattern": "^(DEV|CAL|SEA)-[a-z0-9-]+-[0-9]{2}$",
+      "type": "string"
+    },
+    "planner_input": {
+      "additionalProperties": false,
+      "properties": {
+        "budget": {
+          "additionalProperties": false,
+          "properties": {
+            "planner_tokens": {
+              "maximum": 50000,
+              "minimum": 1000,
+              "type": "integer"
+            },
+            "time_seconds": {
+              "maximum": 7200,
+              "minimum": 30,
+              "type": "integer"
+            },
+            "tool_calls": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "planner_tokens",
+            "time_seconds",
+            "tool_calls"
+          ],
+          "type": "object"
+        },
+        "clarification_oracle": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "else": {
+                "properties": {
+                  "allowed_answer_hash": {
+                    "type": "null"
+                  },
+                  "question": {
+                    "type": "null"
+                  }
+                }
+              },
+              "if": {
+                "properties": {
+                  "required": {
+                    "const": true
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "allowed_answer_hash": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "question": {
+                    "minLength": 5,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ],
+          "properties": {
+            "allowed_answer_hash": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "question": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "required": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "required",
+            "question",
+            "allowed_answer_hash"
+          ],
+          "type": "object"
+        },
+        "context_bundle": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "authority": {
+                "enum": [
+                  "authoritative",
+                  "informative",
+                  "non_authoritative"
+                ]
+              },
+              "content": {
+                "minLength": 3,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "request",
+                  "repository_fact",
+                  "constraint",
+                  "distractor"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "content",
+              "authority"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source_snapshots": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "minLength": 10,
+                "type": "string"
+              },
+              "immutable": {
+                "const": true
+              },
+              "locator": {
+                "pattern": "^(urn:|git\\+)",
+                "type": "string"
+              },
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "locator",
+              "content",
+              "sha256",
+              "immutable"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "task": {
+          "minLength": 20,
+          "type": "string"
+        }
+      },
+      "required": [
+        "task",
+        "context_bundle",
+        "source_snapshots",
+        "clarification_oracle",
+        "budget"
+      ],
+      "type": "object"
+    },
+    "privacy_class": {
+      "enum": [
+        "public_synthetic",
+        "public_repository",
+        "sealed_synthetic"
+      ]
+    },
+    "schema_version": {
+      "const": "eval-case-v2"
+    },
+    "source_class": {
+      "enum": [
+        "historical",
+        "public_repo",
+        "adversarial"
+      ]
+    },
+    "split": {
+      "enum": [
+        "development",
+        "calibration",
+        "sealed"
+      ]
+    },
+    "stratum": {
+      "enum": [
+        "brownfield_integration",
+        "recurring_bug",
+        "architecture_migration",
+        "production_safety",
+        "cross_platform_release",
+        "agent_governance"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "split",
+    "stratum",
+    "difficulty",
+    "source_class",
+    "privacy_class",
+    "planner_input",
+    "controller_truth"
+  ],
+  "title": "SuperGoal planning evaluation case envelope",
+  "type": "object"
+}

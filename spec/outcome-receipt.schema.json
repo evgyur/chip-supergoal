@@ -1,0 +1,187 @@
+{
+  "$defs": {
+    "adjudication": {
+      "additionalProperties": false,
+      "properties": {
+        "adjudicator_id": {
+          "minLength": 3,
+          "type": "string"
+        },
+        "artifact_pointers": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "causal_rationale": {
+          "minLength": 10,
+          "type": "string"
+        },
+        "condition_blinded": {
+          "const": true
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "provisional_miss_episode_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signature": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/signature"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "adjudicator_id",
+        "condition_blinded",
+        "label",
+        "causal_rationale",
+        "artifact_pointers",
+        "signature",
+        "provisional_miss_episode_id"
+      ],
+      "type": "object"
+    },
+    "label": {
+      "enum": [
+        "plan_followed",
+        "external_change",
+        "acceptable_discovery",
+        "planner_miss",
+        "executor_deviation",
+        "insufficient_evidence"
+      ]
+    },
+    "signature": {
+      "additionalProperties": false,
+      "properties": {
+        "first_triggering_evidence_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "normalized_target_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "omission_kind": {
+          "minLength": 3,
+          "type": "string"
+        }
+      },
+      "required": [
+        "omission_kind",
+        "normalized_target_ids",
+        "first_triggering_evidence_hash"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://chip-supergoal.local/spec/outcome-receipt.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "adjudicated_label": {
+      "$ref": "#/$defs/label"
+    },
+    "adjudicated_partition": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "manifestation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "miss_episode_id": {
+            "type": "string"
+          },
+          "signature": {
+            "$ref": "#/$defs/signature"
+          }
+        },
+        "required": [
+          "miss_episode_id",
+          "manifestation_ids",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "after_plan_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "before_plan_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "condition_unblinded_at": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "initial_adjudications": {
+      "items": {
+        "$ref": "#/$defs/adjudication"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "partition_policy_version": {
+      "const": "episode-partition-v1"
+    },
+    "schema_version": {
+      "const": "outcome-receipt-v1"
+    },
+    "seed_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "task_id": {
+      "minLength": 3,
+      "type": "string"
+    },
+    "taxonomy_version": {
+      "const": "outcome-taxonomy-v1"
+    },
+    "triggering_evidence_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "seed_id",
+    "before_plan_sha256",
+    "after_plan_sha256",
+    "triggering_evidence_sha256",
+    "initial_adjudications",
+    "adjudicated_label",
+    "adjudicated_partition",
+    "taxonomy_version",
+    "partition_policy_version",
+    "condition_unblinded_at"
+  ],
+  "title": "Condition-blinded outcome classification receipt",
+  "type": "object"
+}
