@@ -1,0 +1,1 @@
+Public repository fixture: a mature package keeps a legacy compatibility adapter enabled by default. A new integration must use the documented extension seam, preserve profile-off byte behavior, add rollback, and avoid replacing the adapter wholesale.

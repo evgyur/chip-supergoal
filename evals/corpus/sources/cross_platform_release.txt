@@ -1,0 +1,1 @@
+Public repository fixture: the release contract covers Linux and native Windows. Compatibility claims require platform-specific receipts; emulation cannot substitute for the native Windows lane, and frozen baseline behavior must remain unchanged when the feature is disabled.

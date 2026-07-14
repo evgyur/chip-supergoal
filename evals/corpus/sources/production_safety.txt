@@ -1,0 +1,1 @@
+Public repository fixture: production changes require an immutable pre-change receipt, a scoped kill switch, deterministic post-change verification, and rollback proof. A staging-only success is not sufficient production evidence.

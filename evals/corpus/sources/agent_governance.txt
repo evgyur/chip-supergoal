@@ -1,0 +1,1 @@
+Public repository fixture: an agent may inspect and propose autonomously but cannot widen approval, privacy, delivery, or destructive-action boundaries. Runtime state is authoritative; prose state is only a projection, and completion markers do not create authority.

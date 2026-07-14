@@ -1,0 +1,1 @@
+Public repository fixture: migration from schema v2 to v3 must preserve old readers during a bounded transition. The repository exposes a projection layer, an atomic state transition command, and an explicit rollback checkpoint.

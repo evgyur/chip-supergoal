@@ -15,4 +15,8 @@ __pycache__/
 *.crt
 *.token
 .pytest_cache/
+evals/.private/
+evals/private/
+evals/corpus/calibration/
+evals/corpus/sealed/
 node_modules/

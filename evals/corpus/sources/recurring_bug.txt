@@ -1,0 +1,1 @@
+Public repository fixture: an intermittent state-recovery defect has two prior symptom-only patches. The durable plan must identify the authority boundary, reproduce the failure, add a falsifiable regression test, and preserve valid recovery behavior.
