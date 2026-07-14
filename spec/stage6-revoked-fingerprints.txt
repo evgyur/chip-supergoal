@@ -1,0 +1,1 @@
+# SHA256 fingerprints revoked for Stage-6 approval.

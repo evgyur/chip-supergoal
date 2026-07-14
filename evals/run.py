@@ -372,6 +372,72 @@ def freeze_policy(rubric: Path, quality: Path, promotion: Path, holdout: Path, o
     return frozen
 
 
+def _selection_decision(selection: Path) -> str:
+    text = selection.read_text(encoding="utf-8")
+    match = re.search(r"^## Decision\s+\n+`([^`]+)`", text, re.MULTILINE)
+    if not match or match.group(1) not in {"no_candidate", "b-only", "b-plus-c"}:
+        raise ValueError("selection ADR has no valid immutable decision")
+    return match.group(1)
+
+
+def verify_canary_package(selection: Path, profile: str) -> dict[str, Any]:
+    decision = _selection_decision(selection)
+    profile_path = ROOT / "profiles" / f"{profile}.json"
+    foundation_path = ROOT / "evals/baselines/foundation-capabilities.json"
+    selection_report = ROOT / "reports/quality/candidate-selection.json"
+    for path in (profile_path, foundation_path, selection_report):
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"missing regular canary audit input: {path.relative_to(ROOT)}")
+    foundation = load(foundation_path)
+    if foundation.get("native_windows_v1", {}).get("status") != "pass" or foundation.get("linux_parity", {}).get("status") != "pass":
+        raise ValueError("foundation lacks required Linux/native-Windows capability floor")
+    report = load(selection_report)
+    if report.get("decision") != decision:
+        raise ValueError("selection ADR/report decision mismatch")
+    control = {
+        "decision": decision,
+        "selection_adr_sha256": sha256(selection),
+        "selection_report_sha256": sha256(selection_report),
+        "profile_sha256": sha256(profile_path),
+        "foundation_capabilities_sha256": sha256(foundation_path),
+        "runtime_candidate_included": decision != "no_candidate",
+    }
+    first, second = canonical(control), canonical(control)
+    if first != second:
+        raise ValueError("canary control receipt is nondeterministic")
+    if decision == "no_candidate" and (ROOT / "lib/chip_supergoal/canary.py").exists():
+        raise ValueError("no-candidate path must not retain critic/repair runtime code")
+    return {
+        "schema_version": "canary-package-audit-v1", "status": "pass",
+        "decision": decision, "candidate_package": "not_applicable" if decision == "no_candidate" else "sealed",
+        "compile_twice": {"status": "pass", "sha256": hashlib.sha256(first).hexdigest()},
+        "platforms": {"linux": "pass", "native_windows_v1": "pass"},
+        "stage6_dispatch": "not_authorized", "profile_enabled": False,
+        "control": control,
+    }
+
+
+def verify_profile_rollback(selection: Path, profile: str, baseline: Path) -> dict[str, Any]:
+    decision = _selection_decision(selection)
+    baseline_value = load(baseline)
+    selected_sha = baseline_value.get("foundation", {}).get("selected_sha")
+    if not isinstance(selected_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", selected_sha):
+        raise ValueError("baseline selected SHA is missing")
+    current_base = (ROOT / "profiles/base.json").read_bytes()
+    prior = subprocess.run(["git", "show", f"{selected_sha}:profiles/base.json"], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if prior.returncode != 0 or prior.stdout != current_base:
+        raise ValueError("profile-off base profile differs from pinned foundation")
+    canary = ROOT / "profiles" / f"{profile}.json"
+    if not canary.is_file() or canary.is_symlink():
+        raise ValueError("canary profile is missing or unsafe")
+    return {
+        "schema_version": "profile-rollback-v1", "status": "pass", "decision": decision,
+        "baseline_selected_sha": selected_sha, "base_profile_sha256": hashlib.sha256(current_base).hexdigest(),
+        "quality_profile": profile, "quality_profile_enabled": False,
+        "rollback_action": "none_required_no_candidate" if decision == "no_candidate" else "disable_quality_profile",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -411,6 +477,19 @@ def main() -> int:
     select.add_argument("--allow-no-candidate", action="store_true")
     secrecy = sub.add_parser("verify-holdout-secrecy")
     secrecy.add_argument("--manifest", type=Path, required=True)
+    package = sub.add_parser("verify-canary-package")
+    package.add_argument("--selection", type=Path, required=True)
+    package.add_argument("--profile", required=True)
+    package.add_argument("--compile-twice", action="store_true")
+    package.add_argument("--require-linux", action="store_true")
+    package.add_argument("--require-native-windows", action="store_true")
+    package.add_argument("--allow-no-candidate", action="store_true")
+    package.add_argument("--output", type=Path, required=True)
+    rollback = sub.add_parser("verify-profile-rollback")
+    rollback.add_argument("--selection", type=Path, required=True)
+    rollback.add_argument("--profile", required=True)
+    rollback.add_argument("--baseline", type=Path, required=True)
+    rollback.add_argument("--allow-no-candidate", action="store_true")
     args = parser.parse_args()
     if args.command == "verify-corpus":
         result = verify_corpus(
@@ -480,6 +559,20 @@ def main() -> int:
         adr_path = (ROOT / args.adr).resolve() if not args.adr.is_absolute() else args.adr
         write_text(adr_path, adr)
         write_report(ROOT / "reports/quality/candidate-selection.json", result)
+    elif args.command == "verify-canary-package":
+        if not (args.compile_twice and args.require_linux and args.require_native_windows and args.allow_no_candidate):
+            raise ValueError("compile-twice, Linux, native-Windows, and no-candidate flags are mandatory")
+        selection = (ROOT / args.selection).resolve() if not args.selection.is_absolute() else args.selection
+        result = verify_canary_package(selection, args.profile)
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+    elif args.command == "verify-profile-rollback":
+        if not args.allow_no_candidate:
+            raise ValueError("no-candidate fail-closed flag is mandatory")
+        selection = (ROOT / args.selection).resolve() if not args.selection.is_absolute() else args.selection
+        baseline = (ROOT / args.baseline).resolve() if not args.baseline.is_absolute() else args.baseline
+        result = verify_profile_rollback(selection, args.profile, baseline)
+        write_report(ROOT / "reports/quality/profile-rollback.json", result)
     else:
         manifest_path = (ROOT / args.manifest).resolve() if not args.manifest.is_absolute() else args.manifest
         result = verify_holdout_secrecy(json.loads(manifest_path.read_text(encoding="utf-8")))

@@ -1,0 +1,26 @@
+{
+  "schema_version": "p09-phase-evidence-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P09",
+  "generated_at": "2026-07-14T07:25:00Z",
+  "status": "acceptance_and_rpd_pass",
+  "decision": "no_candidate",
+  "commands": {
+    "P09-CMD01": "exit_0_11_tests",
+    "P09-CMD02": "exit_0_no_candidate_control_sealed",
+    "P09-CMD03": "exit_0_526_tests_22_skipped_shell_native_user_stories_green",
+    "P09-CMD04": "exit_0_profile_off_rollback_pass"
+  },
+  "artifacts": {
+    "reports/quality/canary-package-audit.json": "8f131ab6bf322aba0749fd7f626d2cb84d086b06ba370b58b344b5fe81f19977",
+    "reports/quality/profile-rollback.json": "68b12b30e3b20c6a241ca5968e8566fa70b120eb43c69e098c7efc610fe67032",
+    "spec/stage6-approval.schema.json": "fb15a90efeadef74f2aef12acecdb140764b8d62712654e0542ad6ba38da8a24",
+    "lib/chip_supergoal/approval.py": "e9326c402bb01516f7c8d337c25551c3435b73d12ab8e6d5dfc73c7aded624fc"
+  },
+  "rpd_review": "evidence/supergoal/P09-rpd-review.json",
+  "authority": {
+    "stage6_dispatch": "not_authorized",
+    "quality_profile_enabled": false,
+    "runtime_candidate_included": false
+  }
+}

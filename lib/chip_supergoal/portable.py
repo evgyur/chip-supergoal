@@ -35,6 +35,7 @@ EXECUTABLE_WRAPPERS = frozenset(
 
 RUNTIME_MODULES = (
     "__init__.py",
+    "approval.py",
     "archive.py",
     "audit.py",
     "compile.py",
@@ -94,6 +95,9 @@ RUNTIME_SPEC_FILES = (
     "plan-quality-policy.json",
     "quality-gate.schema.json",
     "quality-rubric.json",
+    "stage6-allowed-signers",
+    "stage6-approval.schema.json",
+    "stage6-revoked-fingerprints.txt",
     "state-machine.json",
     "state.schema.json",
 )

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stage6-approval.schema.json",
+  "title": "Offline SSHSIG Stage-6 approval receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "receipt_id", "signer_identity", "key_fingerprint",
+    "namespace", "issued_at", "expires_at", "plan_subject_sha256",
+    "quality_report_sha256", "event_sha256", "trust_root_sha256", "nonce"
+  ],
+  "properties": {
+    "schema_version": {"const": "stage6-approval-v1"},
+    "receipt_id": {"type": "string", "pattern": "^APPROVAL-[A-Za-z0-9._-]+$"},
+    "signer_identity": {"type": "string", "minLength": 1, "maxLength": 128},
+    "key_fingerprint": {"type": "string", "pattern": "^SHA256:[A-Za-z0-9+/]+$"},
+    "namespace": {"const": "supergoal-stage6"},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "plan_subject_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "quality_report_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "event_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "trust_root_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nonce": {"type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$"}
+  }
+}
