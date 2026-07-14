@@ -9,11 +9,19 @@ import json
 import os
 import re
 import subprocess
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from evals.harness.calibration import calibrate as calibrate_judges
+from evals.harness.sandbox_hyperv import probe_hyperv
+from evals.harness.sandbox_podman import probe_podman
+
 DEFAULT_PRIVATE_ROOT = Path.home() / ".hermes/private/chip-supergoal-quality-leap/P04"
 CANONICAL_REMOTE = "https://github.com/evgyur/chip-supergoal.git"
 STRATA = (
@@ -39,6 +47,13 @@ def canonical(value: Any) -> bytes:
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def write_report(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_bytes(canonical(value))
+    os.replace(temporary, path)
 
 
 def load(path: Path) -> dict:
@@ -365,6 +380,14 @@ def main() -> int:
     freeze.add_argument("--quality-policy", type=Path, required=True)
     freeze.add_argument("--promotion-policy", type=Path, required=True)
     freeze.add_argument("--holdout", type=Path, required=True)
+    probe = sub.add_parser("probe-backends")
+    probe.add_argument("--require", action="append", default=[])
+    probe.add_argument("--output", type=Path, required=True)
+    calibration = sub.add_parser("calibrate")
+    calibration.add_argument("--cases", type=int, required=True)
+    calibration.add_argument("--judges", type=int, required=True)
+    calibration.add_argument("--outcome-adjudicators", type=int, required=True)
+    calibration.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "verify-corpus":
         result = verify_corpus(
@@ -373,11 +396,38 @@ def main() -> int:
             args.strata,
             Path(os.environ.get("SUPERGOAL_HOLDOUT_ROOT", DEFAULT_PRIVATE_ROOT)),
         )
-    else:
+    elif args.command == "freeze-policy":
         paths = []
         for value in (args.rubric, args.quality_policy, args.promotion_policy, args.holdout):
             paths.append((ROOT / value).resolve() if not value.is_absolute() else value)
         result = freeze_policy(paths[0], paths[1], paths[2], paths[3], output=ROOT / "evals/manifests/policy-freeze.json")
+    elif args.command == "probe-backends":
+        required = set(args.require)
+        if required != {"rootless-podman", "native-windows-hyperv"}:
+            raise ValueError("the exact rootless-podman and native-windows-hyperv requirements are mandatory")
+        backends = [probe_podman(), probe_hyperv()]
+        statuses = {item["status"] for item in backends}
+        result = {
+            "schema_version": "sandbox-capabilities-v1",
+            "status": "fail" if "fail" in statuses else ("pass" if statuses == {"pass"} else "import_only"),
+            "authoritative": all(item["authoritative"] for item in backends),
+            "required_backends": ["rootless-podman", "native-windows-hyperv"],
+            "backends": backends,
+            "synthetic_containment_claimed": False,
+        }
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
+    else:
+        observations_value = os.environ.get("SUPERGOAL_CALIBRATION_OBSERVATIONS")
+        result = calibrate_judges(
+            Path(os.environ.get("SUPERGOAL_HOLDOUT_ROOT", DEFAULT_PRIVATE_ROOT)),
+            cases=args.cases,
+            judges=args.judges,
+            outcome_adjudicators=args.outcome_adjudicators,
+            observations=Path(observations_value) if observations_value else None,
+        )
+        output = (ROOT / args.output).resolve() if not args.output.is_absolute() else args.output
+        write_report(output, result)
     print(json.dumps(result, sort_keys=True))
     return 0
 

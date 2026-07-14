@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/evgyur/chip-supergoal/spec/sandbox-backend.schema.json",
+  "title": "Sandbox backend capability receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "backend",
+    "platform",
+    "status",
+    "authoritative",
+    "reason",
+    "escape_classes",
+    "probes",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {"const": "sandbox-capability-v1"},
+    "backend": {"enum": ["rootless-podman", "native-windows-hyperv-gen2"]},
+    "platform": {"enum": ["linux", "windows"]},
+    "status": {"enum": ["pass", "fail", "import_only"]},
+    "authoritative": {"type": "boolean"},
+    "reason": {"type": "string", "minLength": 1},
+    "escape_classes": {
+      "type": "array",
+      "prefixItems": [
+        {"const": "host"},
+        {"const": "input"},
+        {"const": "sibling"},
+        {"const": "env"},
+        {"const": "network"},
+        {"const": "process"},
+        {"const": "resource"},
+        {"const": "output"}
+      ],
+      "items": false,
+      "minItems": 8,
+      "maxItems": 8
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["escape_class", "denied", "evidence_sha256"],
+        "properties": {
+          "escape_class": {"enum": ["host", "input", "sibling", "env", "network", "process", "resource", "output"]},
+          "denied": {"type": "boolean"},
+          "evidence_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "findings": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "generation": {"const": 2},
+    "ephemeral_reset_verified": {"type": "boolean"},
+    "receipt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "p06-blocker-evidence-v1",
+  "goal_id": "sg-20260714-chip-supergoal-quality-leap",
+  "phase_id": "P06",
+  "generated_at": "2026-07-14T03:26:00Z",
+  "status": "waiting_external",
+  "completed": {
+    "blind_paired_harness": true,
+    "judge_bias_controls": true,
+    "sandbox_backend_contracts": true,
+    "runtime_dependency_boundary": true,
+    "calibration_aggregate_verifier": true
+  },
+  "acceptance_observations": {
+    "p06_cmd01_tests": "6 passed",
+    "p06_cmd04_tests": "6 passed",
+    "additional_calibration_tests": "2 passed",
+    "sandbox_status": "import_only",
+    "judge_calibration_status": "non_authoritative"
+  },
+  "external_requirements": [
+    "immutable passing adversarial-containment attestation from a rootless Podman controller",
+    "immutable passing adversarial-containment attestation from a native Windows Hyper-V Generation-2 ephemeral VM controller"
+  ],
+  "optional_authority_upgrade": [
+    "aggregate observations from at least two independent judge families",
+    "aggregate observations from at least two independent outcome adjudicators"
+  ],
+  "artifacts": {
+    "reports/quality/sandbox-capabilities.json": "5649c52255aa24ffcb202684ddfb26075466a0f2dd1d9ee7f4811a440e1817df",
+    "reports/quality/judge-calibration.json": "0b9f7e757f79f6655e23cf416a6f0566f1f251afa19af63b1f25a838dbb72e76",
+    "spec/sandbox-backend.schema.json": "64a5ebaa17b3ad8c9ef8fa0ca858e0a917f181edb8292e29fc66a062b21a504c"
+  },
+  "privacy": {
+    "private_holdout_content_exported": false,
+    "only_aggregate_coverage_and_commitments_exported": true
+  }
+}
