@@ -53,7 +53,7 @@ Write under `$SUPERGOAL_ROOT` (normally `<repo>/.supergoal/`):
 - `RESEARCH.md` — only when research gates run.
 - `LOOP_DESIGN.md` — pre-launch loop harness: goal, context, host/reviewer/judge roles, verification gates, state, stop conditions, budget, boundaries, egress/redaction, recovery, and ASCII preview.
 - `ROADMAP.md` — decision package, phase map, measurable acceptance criteria, mandatory commands, evidence requirements.
-- `STATE.md` — current phase, baseline ref, status snapshot, events, delivery state.
+- `STATE.md` — immutable compatibility state seed; `runtime-seed/{PLAN,TODO,MEMORY,STATUS,RUN_LOG,CHECKS,REVIEW}.md` seeds the file-first mutable bundle under `out/runtime/` through `scripts/init-runtime.sh` without overwriting live state.
 - `PROTOCOL.md` — self-contained executor loop copied from `templates/PROTOCOL.md`.
 - `LAUNCH_GOAL.md` — the only artifact containing a launch line beginning exactly `SUPERGOAL_GOAL_BODY:`.
 - `phases/phase-N.md` — one strict phase spec per phase, validated by `scripts/validate-phase.sh`.

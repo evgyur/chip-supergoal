@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .model import Contract, canonical_json, load_contract
-from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_state, render_thinking
+from .render import render_launch_goal, render_loop_design, render_phase, render_roadmap, render_runtime_seed_bundle, render_state, render_thinking
 from .research import render_research_markdown, research_required, research_gate, validate_research_gate, write_research_report
 
 
@@ -26,6 +26,8 @@ RUNTIME_SENTINELS = {
     "runtime/evidence.jsonl",
     "runtime/state.lock",
 }
+SKILL_ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_RUNTIME_DIRS = ("scripts", "lib", "spec")
 
 
 class CompileSafetyError(ValueError):
@@ -37,12 +39,34 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content.replace("\r\n", "\n"), encoding="utf-8")
 
 
+def _copy_runtime_assets(out_path: Path) -> None:
+    """Make compiled packages executable without the source skill checkout."""
+    ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+    for name in PACKAGE_RUNTIME_DIRS:
+        source = SKILL_ROOT / name
+        if not source.is_dir():
+            raise CompileSafetyError(f"missing package runtime dependency: {source}")
+        shutil.copytree(source, out_path / name, ignore=ignore)
+    templates = out_path / "templates"
+    templates.mkdir()
+    shutil.copy2(SKILL_ROOT / "templates" / "PROTOCOL.md", templates / "PROTOCOL.md")
+    shutil.copytree(SKILL_ROOT / "templates" / "delivery", templates / "delivery", ignore=ignore)
+
+
 def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _iter_package_files(root: Path) -> list[Path]:
-    return sorted(p for p in root.rglob("*") if p.is_file() and p.name != "MANIFEST.json" and "out" not in p.relative_to(root).parts)
+    return sorted(
+        p
+        for p in root.rglob("*")
+        if p.is_file()
+        and p.name != "MANIFEST.json"
+        and p.suffix != ".pyc"
+        and "__pycache__" not in p.relative_to(root).parts
+        and "out" not in p.relative_to(root).parts
+    )
 
 
 def file_mode(path: Path) -> str:
@@ -115,6 +139,10 @@ def _render_package(contract: Contract, out_path: Path, *, template_protocol: st
     _write(out_path / "LOOP_DESIGN.md", render_loop_design(contract))
     _write(out_path / "ROADMAP.md", render_roadmap(contract))
     _write(out_path / "STATE.md", render_state(contract))
+    runtime_seed = out_path / "runtime-seed"
+    runtime_seed.mkdir()
+    for name, content in render_runtime_seed_bundle(contract).items():
+        _write(runtime_seed / name, content)
     _write(out_path / "LAUNCH_GOAL.md", render_launch_goal(contract))
     protocol_text = Path(template_protocol).read_text(encoding="utf-8") if template_protocol else "# PROTOCOL\n\nAUDIT_COMPLETE\nSUPERGOAL_RUN_COMPLETE\n"
     _write(out_path / "PROTOCOL.md", protocol_text)
@@ -122,6 +150,7 @@ def _render_package(contract: Contract, out_path: Path, *, template_protocol: st
         _write(phases_dir / f"phase-{i+1:02d}.md", render_phase(contract, i))
     if research_required(contract) or research_gate(contract):
         write_research_report(contract, out_path / "reports" / "research.json")
+    _copy_runtime_assets(out_path)
     manifest = build_manifest(out_path)
     _write(out_path / "MANIFEST.json", json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 

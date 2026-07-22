@@ -8,27 +8,31 @@ Repeat inside the same `/goal` run until `SUPERGOAL_RUN_COMPLETE` is printed or 
 
 Weak blockers are forbidden. A private proof action that is part of the requested verification — for example a private DM smoke/readback to Chip's own bot, local tests, read-only inspections, usage/log queries, report writes, or repo cleanup — is not an approval blocker by itself. Only the real gates listed below may stop the run.
 
-1. Read `.supergoal/STATE.md`. Find `Current phase: N`.
-   - If it says `AUDIT`, skip numbered phases and run the **Final audit** below.
-   - If it says `BLOCKED_BY_APPROVAL`, `READY_FOR_DELETE_APPROVAL`, or another explicit human/provider approval gate, first reassess whether the blocker is real under the weak-blocker rules above. If it is fake/over-broad, clear or supersede it in `STATE.md` with an event and continue. If it is real, stop the loop. Do not re-run checks or restate the same approval card on repeated continuations. Report the blocker once; on further identical continuation wrappers, return at most a one-line status. The GoalManager should mark this as blocked/paused rather than continuing until the turn budget is exhausted.
-2. Read `.supergoal/LOOP_DESIGN.md` when present. Treat it as the execution harness: host/reviewer/judge roles, verification gates, state checkpoints, stop/budget limits, boundaries, egress/redaction, recovery, and ASCII preview. If the file is missing for an older package, continue compatibly but record the gap in `SUPERGOAL_STATUS`; do not invent a parallel loop.
-3. Read `.supergoal/phases/phase-N.md`. This is your full work spec.
-4. Print `SUPERGOAL_PHASE_START` with the spec's metadata (phase number, name, task, mandatory commands, acceptance count, evidence types, dependencies).
-5. Print `SUPERGOAL_STATUS` for human readability: current phase, percent, status, current action, check summary, latest evidence, and next step. Include current phase, status, current action, latest evidence, and next step. This is not completion proof and does not replace formal markers.
-6. Do the work described in the spec. Run mandatory commands. Surface evidence into the transcript (command output last ~10 lines + exit code; file listings; key diff excerpts).
-7. Print `SUPERGOAL_PHASE_VERIFY`: each acceptance criterion `pass|fail` with evidence; engineering checks (build/typecheck/lint/tests); **cleanliness checks** — run `bash .supergoal/scripts/repo-state.sh added-lines <Baseline ref>` (the complete set of added/new lines since baseline, **including uncommitted and untracked work**) and grep it for stack-specific debug patterns — `console.log`/`console.error` for JS/TS; `print(`/`pprint(` for Python; `print(`/`dump(` for Swift; `fmt.Println`/`log.Println` for Go; session TODO/FIXME added this phase; dead imports added; files changed count via `bash .supergoal/scripts/repo-state.sh changed-files <Baseline ref> | wc -l`; notable diff one-liners. Any non-zero cleanliness count triggers the same 3-strike treatment as a failed criterion unless the phase spec explicitly declares a `Cleanliness override:` line (e.g., a debug-tooling phase legitimately ships logs). The complete-working-tree comparison is implemented by `.supergoal/scripts/repo-state.sh`. Include an updated `SUPERGOAL_STATUS` snapshot showing check state and latest evidence.
-8. **RPD phase review.** If the phase spec declares `RPD required: yes` or the phase touches a risky area, run `RPD_PHASE_REVIEW`. Fix any gap before `SUPERGOAL_PHASE_DONE`, or mark `checked-holds` with evidence.
-9. **Memory writeback check.** Anything non-obvious learned this phase? If yes, write a memory file under the detected MEM_DIR (frontmatter: `name`, `description`, `metadata.type` of `feedback`/`project`/`reference`/`user`); link it from `MEMORY.md`. Print `MEMORY_SAVED: <name>` or `MEMORY_SAVED: none`.
-10. Print `SUPERGOAL_PHASE_DONE`. Update `STATE.md`: mark phase N completed; if N < total, set `Current phase: N+1`; if N == total, set `Current phase: AUDIT`; bump `Last update` timestamp; append a one-line event.
-11. **Continue, don't courtesy-yield.** After updating `STATE.md`, immediately read the next phase or enter `AUDIT`. Do not print `SUPERGOAL_TURN_YIELD` solely because a phase ended. If a real gate/blocker is hit, print the blocker once with the exact missing approval/evidence and stop. If the run completes, print final markers below.
-12. When `Current phase: AUDIT`, run the **Final audit** below. Planning review delivery is a planner dispatch gate; if the user already launched the goal, a missing `review-md-files-delivery-receipt.json` is an `AUDIT_GAP`/warning to report, not a product-completion blocker. Final artifact delivery receipts are blocking only when final-file delivery was requested. Then print `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE` with a 5-line summary. The `/goal` condition is satisfied only after product verification, required final delivery receipts, and final markers exist.
+**File-first runtime rule:** manifested `.supergoal/STATE.md` and `.supergoal/runtime-seed/*.md` are immutable compiler seeds. Before every run, execute `bash .supergoal/scripts/init-runtime.sh .supergoal`; it atomically initializes the mutable bundle under `.supergoal/out/runtime/`, verifies an existing bundle, and never overwrites live state. Mutable coordination lives only under `.supergoal/out/runtime/`, which is excluded from manifest drift checks. Never edit manifested seeds or `MANIFEST.json`.
+
+1. Read mutable state in this order: `.supergoal/out/runtime/STATUS.md`, `TODO.md`, `PLAN.md`, relevant sections of `MEMORY.md`, then the latest entries in `RUN_LOG.md`. Use `CHECKS.md` and `REVIEW.md` as the verification and review ledgers.
+   - If `STATUS.md` says `phase: AUDIT`, skip numbered phases and run the **Final audit** below.
+   - If it says `BLOCKED_BY_APPROVAL`, `READY_FOR_DELETE_APPROVAL`, or another explicit human/provider approval gate, first reassess whether the blocker is real under the weak-blocker rules above. If it is fake/over-broad, supersede it in `STATUS.md` and append the reason to `RUN_LOG.md`. If it is real, stop the loop. Do not re-run checks or restate the same approval card on repeated continuations.
+   - Files are not automatically injected into subagents. Every delegation must include the package workdir, all seven absolute runtime paths, one claimed TODO ID, and the read/update contract.
+2. Read `.supergoal/LOOP_DESIGN.md` when present. Treat it as the execution harness: host/reviewer/judge roles, verification gates, state checkpoints, stop/budget limits, boundaries, egress/redaction, recovery, and ASCII preview. If the file is missing for an older package, continue compatibly but record the gap in `STATUS.md` and `RUN_LOG.md`; do not invent a parallel loop.
+3. Read `.supergoal/phases/phase-<zero-padded N>.md` (for example, phase 1 is `phase-01.md`). This is your full work spec. Compiled packages use two-digit phase filenames; do not look for `phase-1.md`.
+4. Claim exactly one stable phase ID in `TODO.md`: change it from `pending` to `in_progress`, set one owner, and update `STATUS.md` with the same active TODO before mutating project files. If another owner already holds it, stop as a single-writer conflict.
+5. Print `SUPERGOAL_PHASE_START` with the spec's metadata (phase number, name, task, mandatory commands, acceptance count, evidence types, dependencies).
+6. Print `SUPERGOAL_STATUS` for human readability: current phase, percent, status, current action, check summary, latest evidence, and next step. This is not completion proof and does not replace the runtime files or formal markers.
+7. Do the work described in the spec. Run mandatory commands. Surface evidence into the transcript (command output last ~10 lines + exit code; file listings; key diff excerpts).
+8. Print `SUPERGOAL_PHASE_VERIFY`: each acceptance criterion `pass|fail` with evidence; engineering checks (build/typecheck/lint/tests); **cleanliness checks** — run `bash .supergoal/scripts/repo-state.sh added-lines <Baseline ref>` (the complete set of added/new lines since baseline, **including uncommitted and untracked work**) and grep it for stack-specific debug patterns — `console.log`/`console.error` for JS/TS; `print(`/`pprint(` for Python; `print(`/`dump(` for Swift; `fmt.Println`/`log.Println` for Go; session TODO/FIXME added this phase; dead imports added; files changed count via `bash .supergoal/scripts/repo-state.sh changed-files <Baseline ref> | wc -l`; notable diff one-liners. Any non-zero cleanliness count triggers the same 3-strike treatment as a failed criterion unless the phase spec explicitly declares a `Cleanliness override:` line. Record every criterion/command result and evidence pointer in `CHECKS.md`; do not leave transcript-only proof.
+9. **RPD phase review.** If the phase spec declares `RPD required: yes` or the phase touches a risky area, run `RPD_PHASE_REVIEW`. Append findings, evidence tier, mutation/checked-holds decision, and verdict to `REVIEW.md`. Fix any gap before `SUPERGOAL_PHASE_DONE`.
+10. **Memory writeback check.** Write task-local verified facts, decisions, constraints, and mistakes to avoid into `.supergoal/out/runtime/MEMORY.md`; do not store raw transcripts, secrets, or temporary progress. If a non-obvious reusable lesson should survive this project, also write it under the detected MEM_DIR and link it from the runtime memory. Print `MEMORY_SAVED: <name>` or `MEMORY_SAVED: none`.
+11. Print `SUPERGOAL_PHASE_DONE`. Transactionally update the runtime bundle: mark phase N `done` in `TODO.md`; set the next phase or `AUDIT` in `STATUS.md`; append one evidence-bound event to `RUN_LOG.md`; ensure `CHECKS.md` and `REVIEW.md` reflect the same outcome. If any write fails, keep the phase incomplete and repair state before continuing.
+12. **Continue, don't courtesy-yield.** After runtime writeback, immediately read the next phase or enter `AUDIT`. Do not print `SUPERGOAL_TURN_YIELD` solely because a phase ended. If a real gate/blocker is hit, record it in `TODO.md`, `STATUS.md`, and `RUN_LOG.md`, then print the blocker once and stop.
+13. When `STATUS.md` says `phase: AUDIT`, run the **Final audit** below. Planning review delivery is a planner dispatch gate; if the user already launched the goal, a missing `review-md-files-delivery-receipt.json` is an `AUDIT_GAP`/warning to report, not a product-completion blocker. Final artifact delivery receipts are blocking only when final-file delivery was requested. Then print `AUDIT_COMPLETE` and `SUPERGOAL_RUN_COMPLETE` with a 5-line summary. The `/goal` condition is satisfied only after product verification, coherent terminal runtime files, required final delivery receipts, and final markers exist.
 
 ## Dev-history hardening gates
 
 These gates come from repeated Dev-chat incidents and override vague convenience:
 
-- **Continuation over status-only:** if `STATE.md` is not `DONE` or truly `BLOCKED`, continue the current phase/audit from disk. Do not answer only with a status report when work can safely continue. Do not invent approval blockers for private verification, local checks, read-only probes, usage/log inspection, or requested repo cleanup.
-- **Gateway restart/autoresume:** after restart, withheld autoresume, or repeated `/goal resume`, inspect `STATE.md`, active goal identity, and the last phase marker. Resume safely; do not create a new root unless the state identity is ambiguous or the user explicitly asks for a clean SuperGoal.
+- **Continuation over status-only:** if `.supergoal/out/runtime/STATUS.md` is not `DONE` or truly `BLOCKED`, continue the current phase/audit from disk. Do not answer only with a status report when work can safely continue. Do not invent approval blockers for private verification, local checks, read-only probes, usage/log inspection, or requested repo cleanup.
+- **Gateway restart/autoresume:** after restart, withheld autoresume, or repeated `/goal resume`, inspect `.supergoal/out/runtime/STATUS.md`, active goal identity, and the last phase marker. Resume safely; do not create a new root unless the state identity is ambiguous or the user explicitly asks for a clean SuperGoal.
 - **Retrieval-before-ask:** before asking for keys, wallet refs, prior artifacts, package paths, docs, or approvals the user says already exist, search `.supergoal/`, repo docs, local ignored overlays, session history, relevant skills, and Telegram history when available. If missing, name what was checked.
 - **Safe-lane approval:** broad “делай всё до конца” covers safe repo/docs/tests/private-skill work through requested commit/push/verification. It does not approve money/DNS/secrets/grants/destructive production/public posting.
 - **Bounded live manifest:** money, wallets, trading, DNS, secrets, grants, destructive production, and public/mass sends require one exact bounded manifest. If absent, print `BLOCKED_BY_APPROVAL` and stop.
@@ -107,7 +111,7 @@ Overengineering budget: <checked + mutations|checked-holds>
 Decision: complete | audit-fix-needed | handoff
 ```
 
-If decision is `audit-fix-needed`, write `.supergoal/phases/audit-rpd-fix-<round>.md`, execute it inline, and then rerun the audit round. If decision is `handoff`, print `AUDIT_HANDOFF`, update `STATE.md` to `BLOCKED`, and do not print `SUPERGOAL_RUN_COMPLETE`.
+If decision is `audit-fix-needed`, write `.supergoal/phases/audit-rpd-fix-<round>.md`, execute it inline, and then rerun the audit round. If decision is `handoff`, print `AUDIT_HANDOFF`, update `.supergoal/out/runtime/STATUS.md` to `BLOCKED`, and do not print `SUPERGOAL_RUN_COMPLETE`.
 
 ## Final audit (Stage 10 — runs after the last phase, before completion)
 
@@ -123,13 +127,13 @@ Per-phase VERIFY blocks are self-reports. The audit closes that loophole by re-v
    - "File X exists" / "Function Y exported" / "Config key Z set" / "No `console.log` in app code" → re-check via `ls`/`grep`/`cat`.
    - "Screenshot showed X" / "Manual smoke test passed" / non-deterministic checks → mark `trust-prior-verify`, don't re-run.
 5b. **Deliverable check** — for each phase block in `.supergoal/ROADMAP.md`, parse the `**Deliverables:**` bullets. For every bullet that names a file path or glob:
-   - Read `Baseline ref:` from `.supergoal/STATE.md`.
+   - Read `baseline_ref:` from `.supergoal/out/runtime/STATUS.md`.
    - Run `bash .supergoal/scripts/repo-state.sh deliverable <baseline-ref> "<path>"`. It compares the **complete working tree** (committed + staged + unstaged + deleted) against the baseline and detects untracked new files separately, printing `present — <evidence>` (exit 0), `missing` / `deleted` (exit 1), `invalid baseline` (exit 2), or `unchanged — existed before baseline` (exit 3). In a git repo, invalid baselines fail closed; only non-git workspaces use filesystem existence fallback. Strategy: complete-working-tree comparison helper.
    - `missing`/`deleted` (exit 1), `invalid baseline` (exit 2), or `unchanged pre-existing` (exit 3) → `AUDIT_GAP: phase <N> deliverable "<bullet>" not proven as delivered by this run`, unless the roadmap explicitly marks that deliverable as pre-existing / verification-only.
    - This is repository ground truth, not transcript self-report — it catches the "agent said done but didn't ship" case the per-phase VERIFY cannot, even when the run never committed.
 6. Print `AUDIT_VERIFY` with each phase's status, each command's exit, each criterion's pass/fail/trust-prior + evidence, and a `Deliverables:` block summarizing the step-5b check (`<deliverable>: present|missing` lines).
 
-7. Run `RPD_FINAL_REVIEW`. If it decides `audit-fix-needed`, treat it like an audit gap and write `.supergoal/phases/audit-rpd-fix-<round>.md`. If it decides `handoff`, print `AUDIT_HANDOFF`, update `STATE.md` to `BLOCKED`, and stop.
+7. Run `RPD_FINAL_REVIEW`. If it decides `audit-fix-needed`, treat it like an audit gap and write `.supergoal/phases/audit-rpd-fix-<round>.md`. If it decides `handoff`, print `AUDIT_HANDOFF`, update `.supergoal/out/runtime/STATUS.md` to `BLOCKED`, and stop.
 
 ### If gaps found
 
@@ -137,11 +141,11 @@ Per-phase VERIFY blocks are self-reports. The audit closes that loophole by re-v
 2. Write `.supergoal/phases/audit-fix-<round>.md` — a focused fix spec that targets only the failing criteria. Forbid scope creep. Use the affected phases' original VERIFY as the success gate.
 3. Execute the fix spec inline (same agent, same `/goal`, same per-criterion 3-strike protocol from regular phases).
 4. On fix success: loop back to step 1 of the audit (round + 1).
-5. On 3rd round's audit failure: print `AUDIT_HANDOFF` (full gap history, suggested next move), update `STATE.md` to `BLOCKED`, stop. Do **not** print `SUPERGOAL_RUN_COMPLETE`.
+5. On 3rd round's audit failure: print `AUDIT_HANDOFF` (full gap history, suggested next move), update `.supergoal/out/runtime/STATUS.md` to `BLOCKED`, stop. Do **not** print `SUPERGOAL_RUN_COMPLETE`.
 
 ### If zero gaps
 
-1. Update `.supergoal/STATE.md` before printing terminal markers: set `Status: COMPLETE`, set `Current phase: DONE`, and append a terminal event pointing to the final audit/receipt evidence. This disk state is the control-plane proof that prevents later stale `/goal` continuations from re-opening a completed run.
+1. Before printing terminal markers, update `.supergoal/out/runtime/STATUS.md`: set `phase: DONE`, `active_todo: none`, `goal_complete: yes`, and the final evidence pointer; mark all TODO items terminal, finish `CHECKS.md` and `REVIEW.md`, and append a terminal event to `RUN_LOG.md`. This disk state is the control-plane proof that prevents later stale `/goal` continuations from re-opening a completed run.
 2. Compute `audit coverage`: `re_verified / (re_verified + trust_prior)` as a percentage. `re_verified` = criteria with `pass` from step 5 + deliverables marked `present` from step 5b. `trust_prior` = criteria marked `trust-prior-verify`.
 3. Verify delivery receipts by owner/stage: if the SuperGoal declares `send-review-md-files.sh`, `.supergoal/out/review-md-files-delivery-receipt.json` should exist with `ok=true`, `sent=true`, and `pack_version=review_pack_v2`; if it is missing after launch, record an `AUDIT_GAP` but do not block product completion on a planner dispatch artifact. If final artifact delivery is declared, `.supergoal/out/final-artifacts-delivery-receipt.json` must exist with `ok=true` and `sent=true`; missing or false final receipt blocks completion.
 4. Print `AUDIT_COMPLETE` (rounds, phases re-verified, commands re-run clean, criteria pass / trust-prior counts, **audit coverage %**).
@@ -152,7 +156,7 @@ Per-phase VERIFY blocks are self-reports. The audit closes that loophole by re-v
 ### First failure of any acceptance criterion
 
 1. Print `FAILURE_PROBE` (phase, failed criterion, what was tried, root-cause hypothesis).
-2. Append the probe to `.supergoal/STATE.md` failure log.
+2. Append the probe to `.supergoal/out/runtime/RUN_LOG.md`, set the exact blocker/attempt in `STATUS.md`, and keep the claimed TODO item `in_progress`.
 3. **Auto-retry the same phase once.** Inject the probe as a "Previous attempt failed because: …" preamble. Do not advance.
 
 ### Second failure (auto-retry also failed)
@@ -169,13 +173,13 @@ Per-phase VERIFY blocks are self-reports. The audit closes that loophole by re-v
 ### Third failure (fix spec also failed)
 
 1. Print `FAILURE_HANDOFF`: failing criterion, full probe history (three attempts), suggested next move.
-2. Update `STATE.md`: `Status: BLOCKED`.
+2. Update `.supergoal/out/runtime/STATUS.md` with `phase: BLOCKED`, mark the claimed TODO item `blocked` with the exact reason, and append the terminal failure to `RUN_LOG.md`.
 3. Stop attempting. The user takes the wheel. The `/goal` condition will not be satisfied; surface the handoff clearly so the host evaluator and user both see it.
 
 ## Mid-run interruption
 
 If the user sends any message during the run:
-- If it is a correction/frustration signal about weak stops or fake blockers, apply it immediately, reassess the blocker, and continue from `STATE.md` unless a real safety gate remains.
+- If it is a correction/frustration signal about weak stops or fake blockers, apply it immediately, reassess the blocker, and continue from `.supergoal/out/runtime/STATUS.md` unless a real safety gate remains.
 - If it changes scope or introduces a real new risk, pause at the next safe boundary, update the phase spec/state, and continue or ask only for the smallest missing approval.
 - Do not pause merely to ask whether to resume.
 

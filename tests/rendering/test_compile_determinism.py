@@ -1,4 +1,5 @@
 import filecmp
+import json
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,63 @@ class CompileDeterminismTest(unittest.TestCase):
                         hits.append(f"{p.relative_to(out)}:{i}")
             self.assertEqual(len(hits), 1)
             self.assertTrue(hits[0].startswith("LAUNCH_GOAL.md:"))
+
+    def test_compile_emits_file_first_runtime_seed_bundle_and_handoff(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "sg"
+            self.compile_to(out)
+            seed_names = ["PLAN.md", "TODO.md", "MEMORY.md", "STATUS.md", "RUN_LOG.md", "CHECKS.md", "REVIEW.md"]
+            for name in seed_names:
+                self.assertTrue((out / "runtime-seed" / name).is_file(), name)
+
+            plan = (out / "runtime-seed/PLAN.md").read_text(encoding="utf-8")
+            todo = (out / "runtime-seed/TODO.md").read_text(encoding="utf-8")
+            memory = (out / "runtime-seed/MEMORY.md").read_text(encoding="utf-8")
+            status = (out / "runtime-seed/STATUS.md").read_text(encoding="utf-8")
+            checks = (out / "runtime-seed/CHECKS.md").read_text(encoding="utf-8")
+            review = (out / "runtime-seed/REVIEW.md").read_text(encoding="utf-8")
+            run_log = (out / "runtime-seed/RUN_LOG.md").read_text(encoding="utf-8")
+
+            self.assertIn("sg-20260625-brownfield-feature", plan)
+            self.assertIn("P01 | pending", todo)
+            self.assertIn("## Verified facts", memory)
+            self.assertIn("phase: READY_TO_DISPATCH", status)
+            self.assertIn("P01-C01", checks)
+            self.assertIn("RPD_PLAN_REVIEW", review)
+            self.assertIn("EVT-000001", run_log)
+
+            protocol = (out / "PROTOCOL.md").read_text(encoding="utf-8")
+            launch = (out / "LAUNCH_GOAL.md").read_text(encoding="utf-8")
+            for text in [protocol, launch]:
+                self.assertIn("runtime-seed", text)
+                self.assertIn("out/runtime", text)
+                for name in ["PLAN.md", "TODO.md", "MEMORY.md", "STATUS.md", "RUN_LOG.md"]:
+                    self.assertIn(name, text)
+
+            manifest = json.loads((out / "MANIFEST.json").read_text(encoding="utf-8"))
+            manifested = {record["path"] for record in manifest["artifacts"]}
+            for name in seed_names:
+                self.assertIn(f"runtime-seed/{name}", manifested)
+
+    def test_runtime_initializer_is_idempotent_and_never_overwrites_live_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "sg"
+            self.compile_to(out)
+            init = out / "scripts/init-runtime.sh"
+            self.assertTrue(init.is_file())
+            first = subprocess.run(["bash", str(init), str(out)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+            runtime = out / "out/runtime"
+            self.assertTrue(runtime.is_dir())
+            for name in ["PLAN.md", "TODO.md", "MEMORY.md", "STATUS.md", "RUN_LOG.md", "CHECKS.md", "REVIEW.md"]:
+                self.assertTrue((runtime / name).is_file(), name)
+
+            status = runtime / "STATUS.md"
+            status.write_text(status.read_text(encoding="utf-8") + "- live_probe: keep\n", encoding="utf-8")
+            second = subprocess.run(["bash", str(init), str(out)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+            self.assertIn("already initialized", second.stdout)
+            self.assertIn("live_probe: keep", status.read_text(encoding="utf-8"))
 
     def test_recompile_is_byte_stable_including_launch_and_manifest(self):
         with tempfile.TemporaryDirectory() as td:

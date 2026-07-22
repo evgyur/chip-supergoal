@@ -73,8 +73,9 @@ def render_loop_design(contract: Contract) -> str:
         "strict package validation and RPD/Senior mutation gates",
     ])
     checkpoints = loop.get("state_checkpoints", [
-        str(loop.get("state") or "STATE.md plus phase reports"),
-        "write phase evidence and event ledger before advancing",
+        str(loop.get("state") or "runtime-seed/*.md initializes the mutable out/runtime/ PLAN/TODO/MEMORY/STATUS/RUN_LOG/CHECKS/REVIEW bundle"),
+        "read STATUS → TODO → PLAN → relevant MEMORY → latest RUN_LOG at every start; claim one stable TODO ID before mutation",
+        "write checks, review, memory, status, TODO state, and append-only run evidence before advancing",
         "continue through numbered phases until final audit or a real blocker",
     ])
     boundaries = loop.get("boundaries", [
@@ -215,15 +216,81 @@ Delivery state: {delivery_state}
 """
 
 
+def render_runtime_seed_bundle(contract: Contract) -> dict[str, str]:
+    """Render immutable seeds for the mutable file-first execution loop."""
+    phase_plan = [f"- {p.id} | pending | {p.name} | depends_on: {', '.join(p.depends_on) or 'none'}" for p in contract.phases]
+    todo_items = [f"- [ ] {p.id} | pending | owner: unassigned | {p.task}" for p in contract.phases]
+    source_facts = [f"- {s.id}: {s.authority}/{s.freshness} — {s.locator}" for s in contract.source_set]
+    decision_items = [f"- {d.get('id', 'decision')}: {d.get('summary') or d.get('decision') or d}" for d in contract.decisions]
+    constraints = [
+        f"- Workspace root: `{contract.goal.workspace_root}`",
+        f"- Profile: `{contract.profile}`",
+        "- `CONTRACT.json`, `ROADMAP.md`, `PROTOCOL.md`, and `runtime-seed/` are immutable package artifacts.",
+        "- Mutable coordination state lives only under `out/runtime/`.",
+        "- Raw secrets and private chat dumps must never be written here.",
+    ]
+    first_phase = contract.phases[0].id if contract.phases else "AUDIT"
+    baseline = contract.compatibility.get("baseline_ref") or "unresolved; establish in first phase"
+
+    check_lines: list[str] = ["# Checks", "", "Generated verification matrix. Update results in the mutable copy under `out/runtime/`."]
+    for phase in contract.phases:
+        check_lines += ["", f"## {phase.id} — {phase.name}", "", "### Acceptance criteria"]
+        check_lines += [f"- [ ] {criterion.id} | pending | {criterion.statement}" for criterion in phase.criteria]
+        check_lines += ["", "### Mandatory commands"]
+        check_lines += [f"- [ ] {command.id} | pending | `{command.command}`" for command in phase.commands]
+
+    review = contract.compatibility.get("rpd_plan_review", {})
+    review_lines = ["# Review", "", "## RPD_PLAN_REVIEW"]
+    if review:
+        for key in ["pattern_hunter", "gonzo", "devils_advocate", "integrator", "senior_gate", "overengineering_budget", "mutations_applied", "verdict"]:
+            if review.get(key):
+                review_lines.append(f"- {key}: {review[key]}")
+    else:
+        review_lines.append("- status: pending")
+    review_lines += ["", "## Phase reviews", "", "- none", "", "## Final review", "", "- status: pending"]
+
+    return {
+        "PLAN.md": "\n".join([
+            f"# Plan — {contract.goal.title}", "", f"- goal_id: {contract.goal.id}",
+            f"- objective: {contract.goal.objective}", f"- done_condition: {contract.goal.done_condition}",
+            "- canonical_contract: ../../CONTRACT.json", "- canonical_roadmap: ../../ROADMAP.md", "", "## Phase order", *phase_plan,
+            "", "## Acceptance gates", "", "- Every phase criterion and mandatory command is green with evidence.",
+            "- Final audit re-reads ROADMAP.md and emits AUDIT_COMPLETE before SUPERGOAL_RUN_COMPLETE.",
+        ]) + "\n",
+        "TODO.md": "\n".join(["# TODO", "", "One owner per item. Claim before work; mark done or blocked before returning.", "", "## Queue", *todo_items]) + "\n",
+        "MEMORY.md": "\n".join([
+            "# Memory", "", "Task-local durable coordination memory. Store concise verified facts and decisions, not transcripts.",
+            "", "## Verified facts", *(source_facts or ["- none yet"]), "", "## Decisions", *(decision_items or ["- none yet"]),
+            "", "## Constraints", *constraints, "", "## Mistakes to avoid", "- Do not trust chat summaries or prior self-reports as current proof.",
+            "- Do not advance a phase without updating TODO, STATUS, CHECKS, and RUN_LOG coherently.",
+        ]) + "\n",
+        "STATUS.md": "\n".join([
+            "# Status", "", f"- goal_id: {contract.goal.id}", "- phase: READY_TO_DISPATCH", f"- active_todo: {first_phase}",
+            "- owner: unassigned", f"- baseline_ref: {baseline}", "- last_verified: package compiled; implementation not started",
+            "- blocker: none", f"- next_action: claim {first_phase} and run its mandatory commands", "- goal_complete: no", "- updated_at: compile-time seed",
+        ]) + "\n",
+        "RUN_LOG.md": "\n".join([
+            "# Run log", "", "Append-only execution ledger.", "", "## EVT-000001 — compiled", f"- goal_id: {contract.goal.id}",
+            f"- contract_revision: {contract.contract_revision}", "- actor: chip-supergoal compiler", "- outcome: READY_TO_DISPATCH", f"- next: claim {first_phase}",
+        ]) + "\n",
+        "CHECKS.md": "\n".join(check_lines) + "\n",
+        "REVIEW.md": "\n".join(review_lines) + "\n",
+    }
+
+
 def render_launch_goal(contract: Contract) -> str:
     marker = "SUPERGOAL" + "_GOAL_BODY:"
     package_root = "this generated SuperGoal package root (the directory containing LAUNCH_GOAL.md)"
     body = (
         f"{marker} From the project root `{contract.goal.workspace_root}`, execute {package_root}. "
-        "Read `PROTOCOL.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `STATE.md`, and `phases/phase-*.md` from that package root. "
+        "Read `PROTOCOL.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, immutable compatibility seed `STATE.md`, and `phases/phase-*.md` from that package root. "
+        "Initialize mutable file-first state with `bash <package-root>/scripts/init-runtime.sh <package-root>`; it copies `runtime-seed/*.md` to `out/runtime/` only when absent and never overwrites live state. "
+        "At every start read `out/runtime/STATUS.md`, `TODO.md`, `PLAN.md`, relevant `MEMORY.md`, and latest `RUN_LOG.md`; also use `CHECKS.md` and `REVIEW.md` as the verification/review ledgers. "
+        "Claim exactly one TODO ID before work and update the runtime files coherently before returning. "
         f"Goal ID `{contract.goal.id}`. "
-        "Start from STATE.md current phase, continue through numbered phases, run the final audit, and finish only after "
+        "Start from `out/runtime/STATUS.md` current phase, continue through numbered phases, run the final audit, and finish only after "
         "AUDIT_COMPLETE and SUPERGOAL_RUN_COMPLETE appear in the same final response with Goal complete: yes. "
+        "Never edit manifested `STATE.md`, `runtime-seed/`, or `MANIFEST.json`. "
         "Preserve the planner/compiler boundary: do not create a production runner or nested /goal; standard Hermes /goal remains the executor."
     )
     return f"# LAUNCH_GOAL — {contract.goal.title}\n\n{body}\n"
