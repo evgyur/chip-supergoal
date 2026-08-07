@@ -9,7 +9,7 @@ cd "$ROOT"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }
 
-for f in scripts/*.sh; do bash -n "$f"; done
+for f in scripts/*.sh templates/delivery/*.sh; do bash -n "$f"; done
 pass "shell syntax"
 
 for required in \
@@ -17,6 +17,14 @@ for required in \
   scripts/validate-phase.sh \
   scripts/validate-loop-design.sh \
   scripts/repo-state.sh \
+  scripts/execution-lease.py \
+  scripts/runtime-init.py \
+  scripts/verify-candidate-fileset.py \
+  scripts/run-independent-review.py \
+  scripts/verify-independent-review-receipt.py \
+  scripts/planner-stop-loss.py \
+  scripts/test-planner-stop-loss.py \
+  references/planner-runaway-stop-loss.md \
   templates/PROTOCOL.md \
   templates/ROADMAP.md \
   templates/RESEARCH.md \
@@ -36,6 +44,9 @@ for required in \
   references/rpd-to-supergoal-handoff.md \
   references/ignored-supergoal-package-hygiene.md \
   templates/delivery/send-review-md-files.sh \
+  templates/delivery/verify-startup-delivery-readback.py \
+  templates/delivery/send-file-via-hermes-cli.sh \
+  templates/delivery/package-complete-supergoal.sh \
   templates/delivery/package-final-artifacts.sh \
   templates/delivery/send-final-artifacts.sh \
   templates/delivery/review-md-files-delivery-receipt.schema.json \
@@ -212,6 +223,13 @@ if violations:
 PY
 pass "private-boundary scan"
 
+python3 scripts/test-execution-lease.py
+pass "run-wide execution lease"
+python3 scripts/test-runtime-init.py
+pass "no-follow runtime initialization"
+python3 scripts/test-planner-stop-loss.py
+pass "planner runaway stop-loss"
+
 python3 -m unittest discover -s tests
 pass "phase-01 regression fixtures (expected failures documented)"
 
@@ -221,8 +239,7 @@ root = Path('.')
 active_files = [p for p in list(root.glob('SKILL.md')) + list((root/'references').glob('*.md')) + list((root/'templates').rglob('*.md')) + list((root/'scripts').glob('*.py'))]
 active_files = [p for p in active_files if 'legacy-monolith' not in p.name and p.as_posix() not in {'scripts/test.sh', 'scripts/probe-reference-taxonomy.py'}]
 banned = [
-    'exactly three native',
-    'three native `.md` files',
+    'startup_pack_v3',
     'one numbered phase per turn',
     'stop with SUPERGOAL_TURN_YIELD',
     'do not chain phases',
@@ -236,7 +253,7 @@ for p in active_files:
             hits.append(f'{p}:{phrase}')
 assert not hits, hits
 artifact = Path('references/artifact-boundaries.md').read_text(errors='ignore')
-for required in ['review_pack_v2', 'LOOP_DESIGN.md', 'pack_version: "review_pack_v2"', 'Planning delivery failure blocks `READY_TO_DISPATCH`']:
+for required in ['startup_pack_v4', '["THINKING.md", "ROADMAP.md", "LAUNCH_GOAL.md"]', 'pack_version: "startup_pack_v4"', 'Planning delivery failure blocks `READY_TO_DISPATCH`']:
     assert required in artifact, required
 print('PASS: artifact boundary and stale-phrase contract')
 PY
@@ -253,11 +270,40 @@ assert len(data['description']) <= 1024
 assert len(text.encode()) < 40000, len(text.encode())
 required = [
   'Principal+ contract', 'Generated artifacts', 'Reference dispatch',
-  'RPD / Senior Gate', 'Loop Design Gate', 'Output Contract'
+  'RPD / Senior Gate', 'Loop Design Gate', 'Output Contract',
+  'bind the outcome, never the path', 'never justify a sibling or repeated `/goal`'
 ]
 missing = [x for x in required if x not in text]
 assert not missing, missing
 print('PASS: root architecture contract')
+PY
+
+python3 - <<'PY'
+from pathlib import Path
+root = Path('SKILL.md').read_text()
+sender = Path('templates/delivery/send-review-md-files.sh').read_text()
+adapter = Path('templates/delivery/send-file-via-hermes-cli.sh').read_text()
+packager = Path('templates/delivery/package-complete-supergoal.sh').read_text()
+reference = Path('references/telegram-supergoal-artifact-delivery-correction.md').read_text()
+for required in ('exactly three files', 'startup_pack_v4', '`THINKING.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`'):
+    assert required in root, required
+for required in ('FILES=(', '"$ROOT/THINKING.md"', '"$ROOT/ROADMAP.md"', '"$ROOT/LAUNCH_GOAL.md"', 'startup_pack_v4', 'file_message_ids', 'startup inventory must contain exactly three files', 'send-file-via-hermes-cli.sh', 'startup-delivery-attempts/$RUN_ID', 'SUPERGOAL_DELIVERY_RUN_ID', 'review-md-files-delivery-receipt-$RUN_ID.json', 'UNKNOWN_DELIVERY', "'state': 'prepared'", "r['state'] = 'accepted'"):
+    assert required in sender, required
+assert 'for attempt in 1 2 3 4' not in sender
+assert 'retrying after backoff' not in sender
+assert 'LOOP_DESIGN.md' not in sender
+assert 'PHASE_FILES' not in sender
+assert 'COMPLETE_PACKAGE' not in sender
+for required in ('send --list telegram --json', 'MEDIA:%s', 'explicit telegram:chat_id[:thread_id] target required'):
+    assert required in adapter, required
+for required in ('Never manually call `hermes send --file` / `-f`', 'has_media=true', 'SUPERGOAL_DELIVERY_RUN_ID=resend-<UTC timestamp>'):
+    assert required in root, required
+for required in ('Never call `hermes send --file` / `-f` manually', 'media_type=MessageMediaDocument'):
+    assert required in reference, required
+for required in ('MANIFEST.json.artifacts + present MANIFEST.json.mutable_paths + MANIFEST.json', 'modes_preserved', 'extracted_strict_validation', 'secret_scan'):
+    assert required in packager, required
+assert 'Every new Chip-facing dispatch uses `startup_pack_v4`' in reference
+print('PASS: exact three-file delivery contract')
 PY
 
 python3 - <<'PY'
@@ -300,9 +346,10 @@ PY
 python3 - <<'PY'
 from pathlib import Path
 protocol = Path('templates/PROTOCOL.md').read_text(errors='ignore')
-assert '.supergoal/scripts/repo-state.sh' in protocol
-assert '.supergoal/LOOP_DESIGN.md' in protocol
-assert '.supergoal/repo-state.sh' not in protocol
+assert '$PACKAGE_ROOT/scripts/repo-state.sh' in protocol
+assert '$PACKAGE_ROOT/LOOP_DESIGN.md' in protocol
+assert '.supergoal/' not in protocol
+assert 'TARGET_WORKTREE' in protocol
 for forbidden in ('references/', 'SKILL.md'):
     assert forbidden not in protocol, f'generated protocol references missing external package path: {forbidden}'
 print('PASS: generated protocol is self-contained')

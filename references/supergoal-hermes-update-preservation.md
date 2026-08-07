@@ -34,7 +34,7 @@ For SuperGoal launch-pipeline fixes, preserve this split instead of re-inlining 
 - Telegram clarify button choice 1 / Start now must start the official `GoalManager` goal for the clarify owner session, not the clicker’s separate group session.
 - If the button starts `/goal` while the planning turn is still blocked on clarify, skip exactly one post-turn judge pass and enqueue the first continuation at that post-turn boundary so the pre-goal planning answer is not counted as the first goal turn.
 - Queued slash-command fallback is intentionally not used for SuperGoal button starts; gateway safety code discards queued slash commands by design.
-- Telegram UX defaults to `review_pack_v2`: `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus non-empty `RESEARCH.md`; `LAUNCH_GOAL.md` is the canonical human launch document and default `SUPERGOAL_GOAL_BODY:` carrier.
+- Telegram UX uses `startup_pack_v4`: exactly `THINKING.md`, `ROADMAP.md`, then `LAUNCH_GOAL.md` last; `LAUNCH_GOAL.md` remains the sole `SUPERGOAL_GOAL_BODY:` carrier.
 
 ## Commands that prove the preservation pattern
 

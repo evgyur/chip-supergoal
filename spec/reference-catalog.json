@@ -36,6 +36,24 @@
     },
     {
       "domain": [
+        "agent",
+        "capability",
+        "parity"
+      ],
+      "id": "REF-AGENT-CAPABILITY-PARITY-PLANNING",
+      "last_reviewed": "2026-07-12",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/agent-capability-parity-planning.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "agent-capability-parity-planning"
+      ]
+    },
+    {
+      "domain": [
         "architect"
       ],
       "id": "REF-ARCHITECT-PLUS-LITE",
@@ -185,6 +203,24 @@
     },
     {
       "domain": [
+        "compiler",
+        "conformance",
+        "and"
+      ],
+      "id": "REF-COMPILER-CONFORMANCE-AND-SEMANTIC-CLOSURE",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/compiler-conformance-and-semantic-closure.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "compiler-conformance-and-semantic-closure"
+      ]
+    },
+    {
+      "domain": [
         "standing-goal",
         "workdir"
       ],
@@ -199,6 +235,24 @@
       "triggers": [
         "completed-standing-goal",
         "workdir-hygiene"
+      ]
+    },
+    {
+      "domain": [
+        "concurrent",
+        "continuation",
+        "single"
+      ],
+      "id": "REF-CONCURRENT-CONTINUATION-SINGLE-WRITER",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/concurrent-continuation-single-writer.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "concurrent-continuation-single-writer"
       ]
     },
     {
@@ -253,6 +307,42 @@
     },
     {
       "domain": [
+        "cross",
+        "phase",
+        "production"
+      ],
+      "id": "REF-CROSS-PHASE-PRODUCTION-EVIDENCE-ORDERING",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/cross-phase-production-evidence-ordering.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "cross-phase-production-evidence-ordering"
+      ]
+    },
+    {
+      "domain": [
+        "deliverable",
+        "producer",
+        "closure"
+      ],
+      "id": "REF-DELIVERABLE-PRODUCER-CLOSURE",
+      "last_reviewed": "2026-07-24",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/deliverable-producer-closure.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "deliverable-producer-closure"
+      ]
+    },
+    {
+      "domain": [
         "dev"
       ],
       "id": "REF-DEV-HISTORY-HARDENING",
@@ -287,6 +377,27 @@
     },
     {
       "domain": [
+        "execution",
+        "contract",
+        "live-path",
+        "revision"
+      ],
+      "id": "REF-EXECUTABLE-CONTRACT-INTERFACE-AND-LIVE-PATH-REVISION",
+      "last_reviewed": "2026-07-22",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/executable-contract-interface-and-live-path-revision.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "executable-contract-interface",
+        "live-path-revision",
+        "command-abi"
+      ]
+    },
+    {
+      "domain": [
         "review",
         "verification",
         "execution"
@@ -308,6 +419,45 @@
     },
     {
       "domain": [
+        "execution",
+        "preflight",
+        "live-shape",
+        "process-classification"
+      ],
+      "id": "REF-EXECUTABLE-PREFLIGHT-LIVE-SHAPE-AND-PROCESS-CLASSIFICATION",
+      "last_reviewed": "2026-07-22",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/executable-preflight-live-shape-and-process-classification.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "executable-preflight-live-shape",
+        "process-classification",
+        "baseline-red-preflight"
+      ]
+    },
+    {
+      "domain": [
+        "execution",
+        "preflight",
+        "evaluator"
+      ],
+      "id": "REF-EXECUTABLE-RUNTIME-PREFLIGHT-AND-EVALUATOR-INTEGRITY",
+      "last_reviewed": "2026-07-12",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/executable-runtime-preflight-and-evaluator-integrity.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "executable-runtime-preflight-and-evaluator-integrity"
+      ]
+    },
+    {
+      "domain": [
         "execution"
       ],
       "id": "REF-EXECUTION-STATE-MACHINE",
@@ -325,6 +475,71 @@
       "supersedes": [],
       "triggers": [
         "execution-state-machine"
+      ]
+    },
+    {
+      "id": "REF-EXTERNAL-COMMAND-DEPENDENCY-PROBES",
+      "path": "references/external-command-dependency-probes.md",
+      "status": "active",
+      "profiles": [
+        "universal"
+      ],
+      "incident_only": false
+    },
+    {
+      "domain": [
+        "failure",
+        "durability",
+        "migration"
+      ],
+      "id": "REF-FAILURE-AWARE-GATES-AND-DURABLE-RPC-REVIEW",
+      "last_reviewed": "2026-07-12",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/failure-aware-gates-and-durable-rpc-review.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "failure-aware-gates",
+        "durable-rpc-review"
+      ]
+    },
+    {
+      "domain": [
+        "fast",
+        "followon",
+        "supergoal"
+      ],
+      "id": "REF-FAST-FOLLOWON-SUPERGOAL",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/fast-followon-supergoal.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "fast-followon-supergoal"
+      ]
+    },
+    {
+      "domain": [
+        "runtime",
+        "state"
+      ],
+      "id": "REF-FILE-FIRST-RUNTIME-STATE",
+      "last_reviewed": "2026-07-24",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/file-first-runtime-state.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "file-first-runtime-state",
+        "runtime-seed",
+        "out/runtime"
       ]
     },
     {
@@ -525,6 +740,26 @@
     },
     {
       "domain": [
+        "production",
+        "live-cutover",
+        "semantic-review"
+      ],
+      "id": "REF-HIGH-RISK-LIVE-CUTOVER-SEMANTIC-REVIEW",
+      "last_reviewed": "2026-07-22",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/high-risk-live-cutover-semantic-review.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "high-risk-live-cutover",
+        "production-semantic-review",
+        "live-authority-cutover"
+      ]
+    },
+    {
+      "domain": [
         "human20"
       ],
       "id": "REF-HUMAN20-SEO-AEO-GEO-PLANNING",
@@ -605,6 +840,25 @@
     },
     {
       "domain": [
+        "production",
+        "live-drift",
+        "rollout"
+      ],
+      "id": "REF-LIVE-DRIFT-ROLLOUT-OVERLAYS",
+      "last_reviewed": "2026-07-12",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/live-drift-rollout-overlays.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "live-drift-rollout",
+        "rollout-overlays"
+      ]
+    },
+    {
+      "domain": [
         "loop"
       ],
       "id": "REF-LOOP-DESIGN-GATE",
@@ -617,6 +871,25 @@
       "supersedes": [],
       "triggers": [
         "loop-design-gate"
+      ]
+    },
+    {
+      "domain": [
+        "manifest",
+        "portable",
+        "archive"
+      ],
+      "id": "REF-MANIFEST-COMPLETE-PORTABLE-ARCHIVE",
+      "last_reviewed": "2026-07-24",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/manifest-complete-portable-archive.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "manifest-complete-portable-archive",
+        "mutable-paths"
       ]
     },
     {
@@ -685,6 +958,23 @@
     },
     {
       "domain": [
+        "multi-repo",
+        "production"
+      ],
+      "id": "REF-MULTI-REPO-PRODUCTION-SUPERGOALS",
+      "last_reviewed": "2026-07-12",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/multi-repo-production-supergoals.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "multi-repo-production-supergoals"
+      ]
+    },
+    {
+      "domain": [
         "package",
         "preflight",
         "worktree"
@@ -721,6 +1011,25 @@
     },
     {
       "domain": [
+        "offline",
+        "agent",
+        "evaluation"
+      ],
+      "id": "REF-OFFLINE-AGENT-EVAL-INTEGRITY",
+      "last_reviewed": "2026-07-24",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/offline-agent-eval-integrity.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "offline-agent-eval-integrity",
+        "no-crutches-eval"
+      ]
+    },
+    {
+      "domain": [
         "old"
       ],
       "id": "REF-OLD-SERVER-DECOMMISSION-DRAIN",
@@ -733,6 +1042,24 @@
       "supersedes": [],
       "triggers": [
         "old-server-decommission-drain"
+      ]
+    },
+    {
+      "domain": [
+        "partial",
+        "execution",
+        "state"
+      ],
+      "id": "REF-PARTIAL-EXECUTION-STATE-DIVERGENCE",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/partial-execution-state-divergence.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "partial-execution-state-divergence"
       ]
     },
     {
@@ -785,6 +1112,24 @@
     },
     {
       "domain": [
+        "phase",
+        "gate",
+        "executability"
+      ],
+      "id": "REF-PHASE-GATE-EXECUTABILITY",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/phase-gate-executability.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "phase-gate-executability"
+      ]
+    },
+    {
+      "domain": [
         "phase"
       ],
       "id": "REF-PHASE-MARKER-BOOKKEEPING",
@@ -817,6 +1162,47 @@
         "planner-state-hygiene",
         "pre-execution-state",
         "supergoal-planning"
+      ]
+    },
+    {
+      "domain": [
+        "planner",
+        "preflight",
+        "commands"
+      ],
+      "id": "REF-PLANNER-PREFLIGHT-VS-POSTPHASE-COMMANDS",
+      "last_reviewed": "2026-07-24",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/planner-preflight-vs-postphase-commands.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "planner-preflight",
+        "future-command",
+        "post-phase-acceptance"
+      ]
+    },
+    {
+      "domain": [
+        "planner",
+        "reliability",
+        "review"
+      ],
+      "id": "REF-PLANNER-RUNAWAY-STOP-LOSS",
+      "last_reviewed": "2026-08-07",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/planner-runaway-stop-loss.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "planner-runaway",
+        "review-recursion",
+        "meta-fix-scope-creep",
+        "tool-budget-overrun"
       ]
     },
     {
@@ -885,6 +1271,42 @@
     },
     {
       "domain": [
+        "private",
+        "corpus",
+        "controller"
+      ],
+      "id": "REF-PRIVATE-CORPUS-CONTROLLER-HARDENING",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/private-corpus-controller-hardening.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "private-corpus-controller-hardening"
+      ]
+    },
+    {
+      "domain": [
+        "private",
+        "revision",
+        "corpus"
+      ],
+      "id": "REF-PRIVATE-REVISION-CORPUS-EXECUTION-LESSONS",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/private-revision-corpus-execution-lessons.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "private-revision-corpus-execution-lessons"
+      ]
+    },
+    {
+      "domain": [
         "process"
       ],
       "id": "REF-PROCESS-INTEGRITY-PRODUCTION-RUNS",
@@ -897,6 +1319,24 @@
       "supersedes": [],
       "triggers": [
         "process-integrity-production-runs"
+      ]
+    },
+    {
+      "domain": [
+        "production",
+        "canary",
+        "observer"
+      ],
+      "id": "REF-PRODUCTION-CANARY-OBSERVER-AND-ARTIFACT-INTEGRITY",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/production-canary-observer-and-artifact-integrity.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "production-canary-observer-and-artifact-integrity"
       ]
     },
     {
@@ -929,6 +1369,42 @@
       "supersedes": [],
       "triggers": [
         "production-safety"
+      ]
+    },
+    {
+      "domain": [
+        "quality",
+        "canary",
+        "and"
+      ],
+      "id": "REF-QUALITY-CANARY-AND-NORMALIZED-ATTESTATION",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/quality-canary-and-normalized-attestation.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "quality-canary-and-normalized-attestation"
+      ]
+    },
+    {
+      "domain": [
+        "release",
+        "candidate",
+        "zero"
+      ],
+      "id": "REF-RELEASE-CANDIDATE-ZERO-SKIP-AND-INTEGRITY",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/release-candidate-zero-skip-and-integrity.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "release-candidate-zero-skip-and-integrity"
       ]
     },
     {
@@ -1013,6 +1489,25 @@
     },
     {
       "domain": [
+        "deadline",
+        "billing",
+        "provider"
+      ],
+      "id": "REF-REQUEST-WIDE-DEADLINE-AND-AMBIGUOUS-BILLING",
+      "last_reviewed": "2026-07-24",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/request-wide-deadline-and-ambiguous-billing.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "request-wide-deadline",
+        "ambiguous-billing"
+      ]
+    },
+    {
+      "domain": [
         "research"
       ],
       "id": "REF-RESEARCH-AND-ARCHITECTURE-GATES",
@@ -1073,6 +1568,24 @@
       "supersedes": [],
       "triggers": [
         "research-to-skill-library-supergoal"
+      ]
+    },
+    {
+      "domain": [
+        "review",
+        "gated",
+        "rollout"
+      ],
+      "id": "REF-REVIEW-GATED-ROLLOUT-CLOSURE",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/review-gated-rollout-closure.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "review-gated-rollout-closure"
       ]
     },
     {
@@ -1143,6 +1656,81 @@
     },
     {
       "domain": [
+        "scope",
+        "revision",
+        "delivery"
+      ],
+      "id": "REF-SCOPE-EXPANSION-AFTER-REVIEW-PACKAGE",
+      "last_reviewed": "2026-07-24",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/scope-expansion-after-review-package.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "scope-expansion",
+        "contract-revision",
+        "stale-review-package"
+      ]
+    },
+    {
+      "domain": [
+        "execution",
+        "baseline-red",
+        "recovery"
+      ],
+      "id": "REF-SCOPED-CANDIDATE-RED-SUITE-RECOVERY",
+      "last_reviewed": "2026-07-12",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/scoped-candidate-red-suite-recovery.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "scoped-candidate-red-suite-recovery"
+      ]
+    },
+    {
+      "domain": [
+        "sealed",
+        "eval",
+        "corpus"
+      ],
+      "id": "REF-SEALED-EVAL-CORPUS-AND-POLICY-FREEZE",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/sealed-eval-corpus-and-policy-freeze.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "sealed-eval-corpus-and-policy-freeze"
+      ]
+    },
+    {
+      "domain": [
+        "handoff",
+        "porting",
+        "git"
+      ],
+      "id": "REF-SELECTIVE-HANDOFF-PORT-SAFETY",
+      "last_reviewed": "2026-07-12",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/selective-handoff-port-safety.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "selective-handoff",
+        "three-way-port"
+      ]
+    },
+    {
+      "domain": [
         "skill"
       ],
       "id": "REF-SKILL-FEATURE-AUDIT-USER-STORIES",
@@ -1203,6 +1791,26 @@
       "supersedes": [],
       "triggers": [
         "source-lock-recovery"
+      ]
+    },
+    {
+      "domain": [
+        "project-flow",
+        "staged-execution",
+        "supergoal"
+      ],
+      "id": "REF-STAGED-PROJECT-FLOW-RUNS-IN-ONE-GOAL",
+      "last_reviewed": "2026-07-14",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/staged-project-flow-runs-in-one-goal.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "staged-project-flow-runs-in-one-goal",
+        "one-supergoal-multiple-project-flow-runs",
+        "foundation-before-dependent-flow"
       ]
     },
     {
@@ -1283,6 +1891,42 @@
       "supersedes": [],
       "triggers": [
         "standing-goal-final-audit-completion"
+      ]
+    },
+    {
+      "domain": [
+        "standing",
+        "goal",
+        "runtime"
+      ],
+      "id": "REF-STANDING-GOAL-RUNTIME-EVIDENCE-AND-CI-BASELINES",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/standing-goal-runtime-evidence-and-ci-baselines.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "standing-goal-runtime-evidence-and-ci-baselines"
+      ]
+    },
+    {
+      "domain": [
+        "strict",
+        "v3",
+        "private"
+      ],
+      "id": "REF-STRICT-V3-PRIVATE-EXECUTION-HARDENING",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/strict-v3-private-execution-hardening.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "strict-v3-private-execution-hardening"
       ]
     },
     {
@@ -1643,6 +2287,24 @@
     },
     {
       "domain": [
+        "transactional",
+        "outbox",
+        "and"
+      ],
+      "id": "REF-TRANSACTIONAL-OUTBOX-AND-TRADING-CONTROL-HARDENING",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/transactional-outbox-and-trading-control-hardening.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "transactional-outbox-and-trading-control-hardening"
+      ]
+    },
+    {
+      "domain": [
         "upstream"
       ],
       "id": "REF-UPSTREAM-GOAL-COMPATIBILITY",
@@ -1688,6 +2350,24 @@
       "triggers": [
         "migrate-v2",
         "v2-state-fallback"
+      ]
+    },
+    {
+      "domain": [
+        "volatile",
+        "live",
+        "state"
+      ],
+      "id": "REF-VOLATILE-LIVE-STATE-AND-MIGRATION-MANIFESTS",
+      "last_reviewed": "2026-07-20",
+      "load_default": false,
+      "owns_invariants": [],
+      "path": "references/volatile-live-state-and-migration-manifests.md",
+      "status": "specialist",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "volatile-live-state-and-migration-manifests"
       ]
     }
   ]

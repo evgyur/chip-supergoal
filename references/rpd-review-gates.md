@@ -96,6 +96,23 @@ Any new layer, abstraction, fallback, data flow, agent/subagent, compatibility s
 
 If the budget is missing, RPD must either delete/shrink the mechanism or mutate the plan/spec to justify and verify it.
 
+## Mandatory post-draft Senior challenge
+
+Run this immediately after the first complete `ROADMAP.md` + phase-spec draft and before treating the package as launchable:
+
+> Критически оцени все свои решения. Это план на 100 из 100 или его можно усилить? Мне не нужен план внедрения ради внедрения. Senior-план должен допускать: «мы проверили и не внедряем».
+
+This is a decision gate, not motivational copy.
+
+Required behavior:
+
+- Score the current draft from `0` to `100` and name the exact deductions. The score is a pressure-test summary, not evidence and not a target to inflate.
+- A `100/100` score is allowed only when no material gap, unsupported assumption, unnecessary layer, or simpler sufficient alternative remains after evidence review.
+- Compare the proposed implementation against both `minimal-change` and `do-nothing / do-not-implement` alternatives.
+- Choose exactly one verdict: `implement`, `strengthen-and-rereview`, or `do-not-implement`.
+- `strengthen-and-rereview` must mutate the artifacts and rerun this gate within the planner stop-loss.
+- `do-not-implement` is a valid successful planning outcome when expected value, evidence, reversibility, timing, or complexity does not justify implementation. Preserve the checked evidence and rationale in `THINKING.md` and `ROADMAP.md`; do not emit `READY_TO_DISPATCH`, manufacture implementation phases, or launch `/goal` unless Chip changes the desired outcome.
+
 ## Subagent context receipt
 
 If SuperGoal planning/review spawns subagents, each child must receive and return:
@@ -125,11 +142,17 @@ It must check:
 7. Is the canonical source of truth identified for project state, docs, runtime/config, and generated SuperGoal artifacts?
 8. Did new layers/fallbacks/agents/shims pass the overengineering budget?
 9. Does this plan require Senior Gate, and if yes, were severity + evidence ledger recorded?
+10. After critically re-evaluating every decision, what exact deductions keep the current draft below `100/100`?
+11. Does `minimal-change` or `do-nothing / do-not-implement` satisfy the objective better than the proposed implementation?
+12. Is the evidence-backed verdict `implement`, `strengthen-and-rereview`, or `do-not-implement`?
 
 Output marker:
 
 ```text
 RPD_PLAN_REVIEW
+Senior challenge: Критически оцени все свои решения. Это план на 100 из 100 или его можно усилить? Мне не нужен план внедрения ради внедрения. Senior-план должен допускать: «мы проверили и не внедряем».
+Plan score: <0-100>/100 — <exact deductions; 100 only with no material gap>
+Implementation necessity: <proposed implementation vs minimal-change vs do-not-implement>
 Pattern Hunter: <finding + evidence tier + mutation|checked-holds>
 Gonzo: <assumption + true|false|unverified + evidence tier + mutation|checked-holds>
 Devil's Advocate: <failure mode + evidence tier + mitigation mutation|checked-holds>
@@ -137,7 +160,7 @@ Integrator: <touchpoints + canonical truth + split-brain risk + mutation|checked
 Senior Gate: <required|skipped with reason; P0/P1/P2/P3 findings or checked-holds>
 Overengineering budget: <new layers/fallbacks/agents/shims checked + mutations|checked-holds>
 Mutations applied: <list or none — checked-holds>
-Verdict: ready-for-review | revised-and-ready | blocked-needs-user-input
+Verdict: implement | strengthen-and-rereview | do-not-implement | blocked-needs-user-input
 ```
 
 ## RPD_PHASE_REVIEW

@@ -48,7 +48,7 @@ CHECKS = {
 'SG-002': lambda: contains('SKILL.md','**Plan-only + honest-state boundary**','must not execute numbered implementation phases'),
 'SG-003': lambda: only_launch_template_has_body(),
 'SG-004': lambda: contains('SKILL.md','One standard `/goal`','LAUNCH_GOAL.md') and ref_has('references/upstream-goal-compatibility.md','/goal'),
-'SG-005': lambda: all(contains('SKILL.md', x) for x in ['THINKING.md','LOOP_DESIGN.md','ROADMAP.md','STATE.md','PROTOCOL.md','LAUNCH_GOAL.md','phases/phase-N.md','scripts/repo-state.sh']),
+'SG-005': lambda: text('SKILL.md').splitlines()[2].startswith('description: "Use for SuperGoal planning. Native-send exactly 3 files') and all(contains('SKILL.md', x) for x in ['THINKING.md','LOOP_DESIGN.md','ROADMAP.md','STATE.md','PROTOCOL.md','CONTRACT.json','MANIFEST.json','LAUNCH_GOAL.md','phases/phase-NN.md','scripts/repo-state.sh']) and exists('templates/delivery/send-file-via-hermes-cli.sh') and contains('templates/delivery/send-review-md-files.sh','startup_pack_v4','startup inventory must contain exactly three files','file_message_ids','THINKING.md ROADMAP.md LAUNCH_GOAL.md') and not contains('templates/delivery/send-review-md-files.sh','PHASE_FILES') and not contains('templates/delivery/send-review-md-files.sh','COMPLETE_PACKAGE') and ref_has('references/artifact-boundaries.md','startup_pack_v4','["THINKING.md", "ROADMAP.md", "LAUNCH_GOAL.md"]'),
 'SG-006': lambda: validate_phase_script_has(['SUPERGOAL_PHASE_START','Work','Acceptance criteria','RPD required']) ,
 'SG-007': lambda: contains('SKILL.md','RPD_PLAN_REVIEW') and ref_has('references/rpd-review-gates.md','checked-holds'),
 'SG-008': lambda: contains('SKILL.md','Risky work gets Senior Gate','RPD required: yes|no') and ref_has('references/production-safety.md','approval'),
@@ -99,6 +99,7 @@ CHECKS = {
 'SG-053': lambda: exists('references/supergoal-continuation-and-package-path-drift.md') and exists('references/context-anchor-and-wrong-goal-recovery.md'),
 'SG-054': lambda: all(exists(p) for p in ['references/goalmanager-completion-loop-incidents.md','references/standing-goal-final-audit-completion.md','references/rollout-final-audit-lessons.md']),
 'SG-055': lambda: exists('README.md') and any_contains('README.md','SuperGoal','chip-supergoal'),
+'SG-056': lambda: contains('SKILL.md','Mandatory post-draft Senior challenge','do-not-implement','do not emit `READY_TO_DISPATCH`') and ref_has('references/rpd-review-gates.md','Критически оцени все свои решения','Plan score: <0-100>/100','Implementation necessity:','strengthen-and-rereview','do-not-implement') and ref_has('references/core-planning-contract.md','Immediately after the first complete plan draft','stop without manufacturing a `/goal` launch'),
 }
 parser = argparse.ArgumentParser(description='Validate chip-supergoal user-story coverage.')
 parser.add_argument('--update-csv', action='store_true', help='write updated status/evidence columns back to docs/chip-supergoal-user-stories.csv')

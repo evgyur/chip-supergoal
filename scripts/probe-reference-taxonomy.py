@@ -44,16 +44,17 @@ for rel in [
     require(rel in skill or Path(rel).name in skill, f'root does not surface {rel}')
 
 for phrase in [
-    'review_pack_v2',
+    'startup_pack_v4',
     'Superseded incident clusters',
     'Banned active-policy phrases',
-    'Artifact boundaries / review pack v2',
+    'Artifact boundaries / startup pack v4',
 ]:
     require(phrase in dispatch, f'dispatch-map missing {phrase}')
 
 for phrase in [
-    'THINKING.md', 'LOOP_DESIGN.md', 'ROADMAP.md', 'LAUNCH_GOAL.md',
-    'pack_version: "review_pack_v2"',
+    'THINKING.md', 'ROADMAP.md', 'LAUNCH_GOAL.md',
+    'pack_version: "startup_pack_v4"',
+    'exactly three real Telegram `message_ids`',
     'Planning delivery failure blocks `READY_TO_DISPATCH`',
 ]:
     require(phrase in artifact, f'artifact-boundaries missing {phrase}')
@@ -70,8 +71,7 @@ active = [
     Path('templates/PROTOCOL.md'),
 ]
 banned = [
-    'exactly three native',
-    'three native `.md` files',
+    'startup_pack_v3',
     'one numbered phase per turn',
     'stop with SUPERGOAL_TURN_YIELD',
     'do not chain phases',

@@ -119,6 +119,19 @@ A new runner such as `run-loop.py`, a standalone `/looper`, or another orchestra
 
 Default answer: no new runner; design the loop, then launch the existing `/goal` executor.
 
+For deterministic probes and bounded operations, prefer **one tested operator/verifier CLI with subcommands** over a pile of phase-specific helper scripts. It may validate, diff, read back, or apply one reviewed operation; it must never claim TODOs, advance phases, retry autonomously, or become an alternate runner. Record its necessity, rejected simpler alternative, and removal condition in the architecture.
+
+## Approval authenticity and staged activation
+
+For skill/config/gateway work, separate build evidence from live effects:
+
+1. Build and test the skill under the project workspace first.
+2. Freeze a file manifest and gateway patch manifest.
+3. Keep the active skill directory and gateway unchanged until the live-effect approval boundary.
+4. At that boundary, install through the canonical skill-management path, apply only the reviewed config diff, restart/reload, and prove live behavior by readback.
+
+A phase must not authorize itself by writing `approved: true` or accepting a plain `--approved APP-ID` string. Approval authority must pre-exist as a trusted external locator, such as a fresh immutable Telegram message from the authorized actor, and bind actor, target, nonce, expiry, exact manifest hashes, one-shot/replay scope, allowed effects, stop conditions, and rollback owner. Cache files are receipts, not authority. Add negative probes for fabricated, stale, wrong-actor, wrong-target, wrong-hash, and replayed receipts.
+
 ## Stage placement
 
 Insert as Stage 3.5:

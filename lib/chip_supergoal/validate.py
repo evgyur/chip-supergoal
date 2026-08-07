@@ -260,10 +260,23 @@ def validate_package(root: str | Path) -> list[Diagnostic]:
         actual = p.read_bytes()
         if actual != expected_bytes:
             diagnostics.append(_diag("SGV-PACKAGE-GENERATED-DRIFT", "INV-VALIDATOR-001", str(r), f"/{rel}", f"{rel} no longer matches canonical CONTRACT.json rendering", "Regenerate the package; do not hand-edit generated views."))
+        if rel.startswith("phases/phase-") and rel.endswith(".md"):
+            diagnostics.extend(validate_phase_markdown(p))
+    loop_path = r / "LOOP_DESIGN.md"
+    if loop_path.is_file():
+        diagnostics.extend(validate_loop_design(loop_path, instantiated=True))
 
     records, manifest_diags = _manifest_records(r)
     diagnostics.extend(manifest_diags)
-    actual_files = sorted(p.relative_to(r).as_posix() for p in r.rglob("*") if p.is_file() and p.name != "MANIFEST.json" and "out" not in p.relative_to(r).parts)
+    actual_files = sorted(
+        p.relative_to(r).as_posix()
+        for p in r.rglob("*")
+        if p.is_file()
+        and p.name != "MANIFEST.json"
+        and p.suffix != ".pyc"
+        and "__pycache__" not in p.relative_to(r).parts
+        and "out" not in p.relative_to(r).parts
+    )
     if records:
         record_files = sorted(records)
         if actual_files != record_files:

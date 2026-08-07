@@ -36,6 +36,47 @@ class ReleaseEngineeringTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             for rel in ["CONTRACT.json", "THINKING.md", "RESEARCH.md", "reports/research.json", "LOOP_DESIGN.md", "ROADMAP.md", "STATE.md", "PROTOCOL.md", "LAUNCH_GOAL.md", "MANIFEST.json", "phases/phase-01.md"]:
                 self.assertEqual((a / rel).read_bytes(), (b / rel).read_bytes(), rel)
+            launch = (a / "LAUNCH_GOAL.md").read_text()
+            self.assertIn("Reply `/goal` to this file/message", launch)
+            self.assertEqual(launch.count("SUPERGOAL_GOAL_BODY:"), 1)
+
+    def test_compiled_package_excludes_source_distribution_tests(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "package"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/sgctl.py",
+                    "compile",
+                    "examples/brownfield-feature/CONTRACT.json",
+                    "--out",
+                    str(out),
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse((out / "scripts/test.sh").exists())
+            self.assertFalse((out / "scripts/test-user-stories.py").exists())
+            self.assertFalse((out / "scripts/probe-dev-history-contracts.py").exists())
+            self.assertFalse((out / "scripts/probe-reference-taxonomy.py").exists())
+            self.assertFalse((out / "scripts/probe-upstream-goal-compat.py").exists())
+            self.assertTrue((out / "scripts/sgctl.py").is_file())
+
+    def test_compiled_protocol_is_package_root_and_effect_aware(self):
+        protocol = (ROOT / "templates/PROTOCOL.md").read_text()
+        self.assertNotIn(".supergoal/", protocol)
+        self.assertIn("PACKAGE_ROOT", protocol)
+        self.assertIn(
+            "Never re-run approval-consuming, metered, ambiguous-effect, or production commands",
+            protocol,
+        )
+        self.assertIn("CONTRACT.json.architecture.repo_baselines", protocol)
+        self.assertIn("every repository entry must provide its own absolute `root` and exact `baseline_sha`", protocol)
+        self.assertIn("Ambiguous, missing, non-Git, or invalid ownership fails with exit 2", protocol)
+        self.assertIn("post-effect failure is terminal", protocol)
 
     def test_no_tracked_test_dirtiness_gate_is_documented(self):
         test_sh = (ROOT / "scripts/test.sh").read_text()

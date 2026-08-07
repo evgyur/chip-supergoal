@@ -1,46 +1,15 @@
-# Telegram review-file delivery gate for SuperGoal packages
+# Telegram startup-file delivery gate for SuperGoal packages
 
-When Chip asks for SuperGoal/ТЗ files, the planning-stage package must be delivered as canonical `review_pack_v2` native Telegram attachments before asking him to start or dispatch:
+Before asking Chip to start any SuperGoal, deliver canonical `startup_pack_v4` into the exact current Telegram thread.
 
-1. `THINKING.md`
-2. `LOOP_DESIGN.md`
-3. `ROADMAP.md`
-4. `LAUNCH_GOAL.md`
-5. `RESEARCH.md` only when it exists and is non-empty
+## Gate
 
-Do not rely on “I’ll send later”, archive-only delivery, or pasted text. If the delivery is missing, Chip will reasonably say “не вижу файлов”.
+1. Strict-validate the package on disk.
+2. Send `THINKING.md` first.
+3. Send `ROADMAP.md` second.
+4. Send `LAUNCH_GOAL.md` last with a caption telling Chip to reply `/goal` to it.
+5. Require the `startup_pack_v4` receipt with exactly three ordered files, hashes, message IDs, exact file→message-ID mapping, and matching `launch_message_id`.
 
-## Required implementation pattern
+Paths, bare `MEDIA:` lines, blank documents, guessed IDs, missing canonical files, or any extra attachment fail closed with `SUPERGOAL_REVIEW_FILES_BLOCKED`.
 
-For generated SuperGoals, add a small scripted gate such as:
-
-- `.supergoal/scripts/send-review-md-files.sh`
-- `.supergoal/out/review-md-files-delivery-receipt.json`
-
-The receipt must record:
-
-```json
-{
-  "ok": true,
-  "sent": true,
-  "target": "telegram:...",
-  "files": [
-    {"path": ".../THINKING.md", "sha256": "..."},
-    {"path": ".../ROADMAP.md", "sha256": "..."},
-    {"path": ".../LAUNCH_GOAL.md", "sha256": "..."}
-  ]
-}
-```
-
-If the script fails, do not ask for start/dispatch. Print `SUPERGOAL_REVIEW_FILES_BLOCKED` with target and local paths.
-
-## Final artifacts
-
-For final SuperGoal completion, use a separate final artifact gate and marker:
-
-- `.supergoal/scripts/package-final-artifacts.*`
-- `.supergoal/scripts/send-final-artifacts.*`
-- `.supergoal/out/final-artifacts-delivery-receipt.json`
-- `SUPERGOAL_FILES_SENT` before `AUDIT_COMPLETE` / `SUPERGOAL_RUN_COMPLETE`.
-
-The review-file gate and final-artifact gate are different moments. Review files go with the ТЗ; final artifacts go at completion.
+When Chip reports files missing, force-resend the whole current startup pack before explaining.

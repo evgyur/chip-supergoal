@@ -19,6 +19,18 @@ Treat `/goal` as the scheduler and keep working until one terminal condition is 
    - real safety/approval blocker;
    - unrecoverable verification failure after the recovery protocol.
 
+## Async review and turn-budget discipline
+
+A pending reviewer is a gate, not useful executor work. Do not burn GoalManager turns by polling its transcript, rereading unchanged runtime files, repeating status replies, or launching speculative next-phase scouts.
+
+- Prefer synchronous/in-process RPD when it can finish inside the active executor turn.
+- If asynchronous review is unavoidable, persist exactly one parked state with `review_id`, exact subject hash, terminal callback contract, and deadline; yield once.
+- Duplicate standing-goal wrappers while the same review is pending must not consume an execution turn: do no tools, do not poll, do not repeat reports, and suppress the reply when the gateway supports `NO_REPLY`.
+- Resume only on the terminal callback or one deadline diagnostic. Partial transcripts are not verdicts.
+- Never mutate the reviewed subject or begin a dependent phase while the gate is open. Never start a second speculative reviewer merely to look busy.
+- A package should budget at most one waiting turn per external gate. If its loop design requires repeated chat continuations just to wait, the package is defective and must be retired in favor of a fresh sibling.
+- Combine adjacent safe phases and reviews when their evidence can be closed in one executor turn; phase count is not progress.
+
 ## False blockers
 
 Do not stop for these when they are part of Chip's requested private verification:

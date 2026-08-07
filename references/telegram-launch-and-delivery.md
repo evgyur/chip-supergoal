@@ -1,36 +1,47 @@
 # Telegram launch and delivery
 
-Use when the SuperGoal package or final artifacts must be sent through Telegram, or when launch happens by replying `/goal` to a Markdown file/message.
+Use when a SuperGoal package must be launched through Telegram.
 
-## Launch surfaces
+## Launch surface
 
-Canonical order:
+`LAUNCH_GOAL.md` is the sole launch surface with a real `SUPERGOAL_GOAL_BODY:` line. It is the third and final startup document, with caption:
 
-1. `LAUNCH_GOAL.md` native document with `SUPERGOAL_GOAL_BODY:`.
-2. Clean Telegram launch card with button/reply affordance.
-3. Explicit `/goal start <objective>` fallback outside code fences if rich launch fails or the receiving bot expects a start subcommand.
-4. Plain-text `/goal "..."` fallback only when that surface is known to accept it.
+```text
+[SuperGoal START · reply /goal to this file] LAUNCH_GOAL.md
+```
 
-If a user replies with only `/goal` and the gateway says “No goal for this session”, treat it as a launch UX miss: re-emit the same objective in `/goal start ...` form instead of assuming the package is running.
+Do not use `ROADMAP.md` or `THINKING.md` as hidden launch surfaces. Do not send prose after the launch document.
 
-Do not use `ROADMAP.md`, `THINKING.md`, or `PROTOCOL.md` as hidden launch surfaces.
+## Current-thread target verification
 
-## Review delivery gate
+1. Resolve the intended chat/topic from active conversation metadata and seal it in `CONTRACT.json.delivery.telegram_thread` as `telegram:<chat_id>:<thread_id>`.
+2. Run `hermes send --list telegram --json` and match the exact chat ID plus thread ID. Never fall back to a home channel for a topic request.
+3. If ambiguous, block rather than guess.
+4. Run `templates/delivery/send-review-md-files.sh`. It reads the sealed contract target and rejects any `SUPERGOAL_DELIVERY_TARGET` override that differs.
+5. Upload exactly three native documents: `THINKING.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`.
+6. Transport acceptance writes only `out/review-md-files-transport-receipt.json`; it is not completion evidence.
+7. Fetch back all three exact message IDs in the sealed topic through a canonical Telegram read path, verify sender, order, filenames, media type, chat/thread, attachment sizes, and downloaded SHA-256 bytes, then write `chip-supergoal.telegram-readback.v1` JSON.
+8. Run `templates/delivery/verify-startup-delivery-readback.py` against the contract, transport receipt, and readback JSON. Only its `readback_verified=true` final receipt closes delivery.
+9. Links, paths, prose claims, bare `MEDIA:` lines, extra attachments, fewer than three attachments, or transport acceptance without destination readback are not delivery evidence.
 
-When Chip asks for SuperGoal/ТЗ files, send the canonical `review_pack_v2` native `.md` files by default:
+## Startup delivery gate
 
-- `THINKING.md`
-- `LOOP_DESIGN.md`
-- `ROADMAP.md`
-- `LAUNCH_GOAL.md`
-- `RESEARCH.md` only when it exists and is non-empty
+The canonical `startup_pack_v4` inventory lives in `references/artifact-boundaries.md`. The receipt path remains `.supergoal/out/review-md-files-delivery-receipt.json` and must contain:
 
-`references/artifact-boundaries.md` is the source of truth for review-pack ownership, stage, receipt, and planning-vs-final delivery boundaries. The planner must script delivery when available and write `.supergoal/out/review-md-files-delivery-receipt.json` with `ok=true`, `sent=true`, and `pack_version="review_pack_v2"`. If sending fails, print `SUPERGOAL_REVIEW_FILES_BLOCKED` with the reason and do not pretend the files were delivered.
+- `kind="startup-files"`, `pack_version="startup_pack_v4"`, and `readback_verified=true`;
+- target exactly equal to the sealed `CONTRACT.json.delivery.telegram_thread`;
+- exact ordered files `["THINKING.md", "ROADMAP.md", "LAUNCH_GOAL.md"]`;
+- exactly three hashes, three message IDs, and the matching three-entry file→message-ID map;
+- `launch_message_id` equal to the third message ID;
+- non-empty sender identity;
+- three ordered readback items proving exact message IDs, filenames, document media, chat/thread IDs, positive attachment sizes, and downloaded attachment hashes.
 
-## Final artifact gate
+Any other inventory blocks `READY_TO_DISPATCH`.
 
-If final files are requested, generated `/goal` must package and send final artifacts, verify receipt, then print `SUPERGOAL_FILES_SENT` before `SUPERGOAL_RUN_COMPLETE`.
+## Idempotency and correction
 
-## Idempotency
+Use target + the exact three-file hash set for idempotency. Do not resend automatically unless Chip reports missing files or `SUPERGOAL_FORCE_RESEND=1` is set. An earlier pack-version receipt never suppresses a v4 send.
 
-Use target + file/archive hash for idempotency. Do not resend automatically unless the user explicitly asks or `SUPERGOAL_FORCE_RESEND=1` is set for a deliberate retry.
+## Final artifacts
+
+Executor final artifacts are separate from planner startup delivery. Send them only when Chip explicitly asks for final artifacts; they do not change the three-file planner default.

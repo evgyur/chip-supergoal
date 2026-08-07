@@ -1,34 +1,41 @@
 # Telegram SuperGoal artifact delivery correction
 
-Session lesson: Chip corrected a false-positive chat-boundary guard during a Pear SuperGoal planning run.
+Use whenever a Chip-facing SuperGoal is dispatched or Chip reports missing, excessive, unlabeled, or path-only files.
 
-## Durable rule
+## Canonical correction
 
-Do not infer that a Telegram thread is Sigurd // TG / `chiptg` just because the message is a reply in a group-style transcript or mentions Telegram. If Chip says this is the current SuperGoal/Dev/engineering chat, or explicitly says to attach artifacts here, treat that as the target clarification and deliver artifacts in the current chat.
+Every new Chip-facing dispatch uses `startup_pack_v4` from `references/artifact-boundaries.md`.
 
-## Correct delivery sequence
+## Required sequence
 
-1. Generate and validate SuperGoal artifacts on disk.
-2. In allowed engineering/SuperGoal chats, attach the three human-facing files natively:
-   - `THINKING.md`
-   - `ROADMAP.md`
-   - `LAUNCH_GOAL.md`
-3. If Chip asks for all artifacts, also attach a zip bundle containing the full `.supergoal/` tree, excluding secrets/cache/runtime junk.
-4. Do not substitute a zip for the three human-facing files. The skill expects files-first review plus launch-card UX.
-5. `LAUNCH_GOAL.md` remains the only document Chip should reply `/goal` to.
+1. Generate and strictly validate the complete package on disk.
+2. Resolve the exact current Telegram chat/topic with `hermes send --list telegram --json`.
+3. Run `templates/delivery/send-review-md-files.sh` through a real native-document transport.
+4. Send exactly `THINKING.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, in that order.
+5. Caption the final file `[SuperGoal START · reply /goal to this file] LAUNCH_GOAL.md`.
+6. Parse each real Telegram `message_id`, store the exact three-entry file→message-ID map, and fetch all three messages back from the same topic.
+7. Only then emit `READY_TO_DISPATCH`. Send no prose after `LAUNCH_GOAL.md`.
 
-## Guardrail
+## If delivery is wrong
 
-The Sigurd // TG / `chiptg` block is narrow: it applies only when the chat is actually the post-production Telegram preview surface. It must not be used as a generic excuse to withhold SuperGoal artifacts from the current engineering chat.
+Without an explicit resend request, resend exactly the current three-file pack only after canonical readback proves the prior effect absent. If Chip explicitly asks to resend, run the canonical sender with a fresh unique `SUPERGOAL_DELIVERY_RUN_ID=resend-<UTC timestamp>` so the resend has its own durable attempts and receipt. Never call `hermes send --file` / `-f` manually: this runtime can acknowledge it while producing text-only messages. The packaged `send-file-via-hermes-cli.sh` adapter is mandatory. `SUPERGOAL_FORCE_RESEND=1` may bypass an old aggregate receipt, but it must never bypass a `prepared` or `unknown_delivery` attempt. Ambiguous transport means `UNKNOWN_DELIVERY`: recover the real message ID read-only or block; never auto-resend. Fetch back every returned ID and require `has_media=true` plus `media_type=MessageMediaDocument`; a successful CLI response with `has_media=false` is delivery failure.
 
-## Anti-pattern caught
+A complaint such as «где файлы», «слишком много файлов» or «пришли нормально» is an active delivery failure:
 
-Wrong:
-- Generate artifacts locally.
-- Refuse to attach them because of a guessed `chiptg` guard.
-- Later send only a zip.
+1. Send no explanation before transport.
+2. Resolve the current topic exactly.
+3. Run the real three-file sender in the same turn.
+4. Verify all three message IDs and keep `LAUNCH_GOAL.md` last.
+5. If transport or verification is unavailable, emit `SUPERGOAL_REVIEW_FILES_BLOCKED` with the concrete blocker.
 
-Right:
-- Attach `THINKING.md`, `ROADMAP.md`, `LAUNCH_GOAL.md` directly.
-- Attach full zip additionally when requested.
-- Acknowledge misclassification briefly and continue the SuperGoal flow.
+## Hard failures
+
+All of these are `SUPERGOAL_REVIEW_FILES_BLOCKED`:
+
+- anything other than exactly three default attachments;
+- missing `THINKING.md`, `ROADMAP.md`, or `LAUNCH_GOAL.md`;
+- extra archive, phase, JSON, research, state, protocol, or loop attachments;
+- wrong order or `LAUNCH_GOAL.md` not last;
+- paths, links, bare `MEDIA:` lines, blank/unlabeled documents;
+- guessed or absent message IDs;
+- a receipt whose version is not `startup_pack_v4`.

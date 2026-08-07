@@ -1,37 +1,13 @@
-# SuperGoal review artifact delivery — explicit engineering chat correction
+# SuperGoal startup artifact delivery
 
-Use when preparing or correcting a `/chip-supergoal` review pack in Telegram.
+Compatibility reference for older callers. The active policy is `startup_pack_v4` in `references/artifact-boundaries.md` and `references/telegram-supergoal-artifact-delivery-correction.md`.
 
-## Lesson
-Do not over-apply the Sigurd/chiptg guard. The guard blocks SuperGoal artifacts only in the exact post-production Telegram chat reserved for `tg`/ChipCR previews. If the current chat is an engineering/SuperGoal working thread, Chip DM, Dev topic, or Chip explicitly says “attach in this chat”, attach the artifacts there.
+## Required behavior
 
-A false positive is worse than a cautious local-only handoff: Chip expects files in the visible thread.
+- Deliver into the exact current Chip DM/engineering/SuperGoal thread; do not over-apply the `chiptg` preview guard.
+- Send exactly `THINKING.md`, `ROADMAP.md`, and `LAUNCH_GOAL.md` separately.
+- Send `LAUNCH_GOAL.md` last with a `/goal` reply caption.
+- Require an exact three-entry file→message-ID receipt.
+- A summary, file paths, bare `MEDIA:` lines, extra attachments, or a missing canonical file is blocked.
 
-## Required delivery shape
-1. Send the three human-facing files as native attachments:
-   - `THINKING.md`
-   - `ROADMAP.md`
-   - `LAUNCH_GOAL.md`
-2. `LAUNCH_GOAL.md` is the only file Chip should reply `/goal` to.
-3. If Chip asks for “all artifacts”, also send a zip bundle of `.supergoal/`, excluding secrets/caches/runtime junk.
-4. Do not replace the native `review_pack_v2` files with only a zip unless Chip asked specifically for a single archive.
-5. Keep `STATE.md`, `PROTOCOL.md`, `phases/`, reports, `context.md`, `repo-map.md`, and `tools.md` internal by default, but include them in the full bundle when Chip explicitly asks for all artifacts.
-
-## Correction pattern
-If you mistakenly withheld files:
-- acknowledge the workflow miss in one line;
-- attach the three files immediately;
-- if relevant, attach the full zip bundle too;
-- do not re-explain the whole plan.
-
-## Exact pitfall
-Bad:
-> “This might be chiptg, keeping artifacts local.”
-
-Good:
-> “This is an engineering/SuperGoal thread; attaching the review pack here.”
-
-Then include:
-`MEDIA:/.../.supergoal/THINKING.md`
-`MEDIA:/.../.supergoal/ROADMAP.md`
-`MEDIA:/.../.supergoal/LAUNCH_GOAL.md`
+If Chip reports missing files, force-resend the complete current startup pack first. Do not answer with another explanation while the files remain absent.

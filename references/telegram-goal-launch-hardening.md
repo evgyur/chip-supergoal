@@ -4,9 +4,9 @@ Use this when a SuperGoal is launched from Telegram through a native `.md` file 
 
 ## Contract
 
-- Human-facing pack is normally `review_pack_v2`: `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus non-empty `RESEARCH.md`.
+- Human-facing delivery uses `startup_pack_v4`: exactly `THINKING.md`, `ROADMAP.md`, then `LAUNCH_GOAL.md` last.
 - Only `LAUNCH_GOAL.md` may contain `SUPERGOAL_GOAL_BODY:`.
-- `THINKING.md`, `ROADMAP.md`, `STATE.md`, `PROTOCOL.md`, and phase files are review/internal artifacts and must not be reply targets.
+- Other startup files are delivered for review/execution context but must never become reply launch targets.
 - Bare reply `/goal` to `LAUNCH_GOAL.md` must keep `event.text == "/goal"`; hydrated document text belongs in `event.reply_to_text`, not in command args.
 - If args/text contain `SUPERGOAL_GOAL_BODY:`, canonicalize with the extractor before `GoalManager.set()`.
 

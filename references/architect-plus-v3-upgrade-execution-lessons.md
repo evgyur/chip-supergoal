@@ -37,6 +37,9 @@ Use this reference when executing or repairing a SuperGoal that upgrades `chip-s
 11. **Research fallback remains evidence-backed.**
     If the preferred provider times out, record `provider_unavailable_reason`, fetch authoritative official docs directly, and keep the research gate satisfied only when findings mutate the plan. Capture the fallback sequence, never a durable claim that the provider is broken.
 
+12. **Compare the installed and pinned target compiler before self-upgrade dispatch.**
+    The installed `chip-supergoal` runtime may lag the target repository's pinned compiler. If the installed renderer drops declared fields (for example all but the first RPD focus) or lacks the target runtime-state authority, compile with the pinned target compiler into an external package root and validate with the copied package-local runtime. A package-local renderer fix must regenerate affected views and rebuild `MANIFEST.json`; never hand-edit sealed Markdown or modify the target implementation branch during planning.
+
 ## Minimum final evidence shape
 
 - `python3 -m unittest discover -s tests`

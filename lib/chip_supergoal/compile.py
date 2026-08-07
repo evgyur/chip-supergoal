@@ -41,7 +41,18 @@ def _write(path: Path, content: str) -> None:
 
 def _copy_runtime_assets(out_path: Path) -> None:
     """Make compiled packages executable without the source skill checkout."""
-    ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+    ignore = shutil.ignore_patterns(
+        "__pycache__",
+        "*.pyc",
+        ".DS_Store",
+        "test.sh",
+        "test-execution-lease.py",
+        "test-runtime-init.py",
+        "test-user-stories.py",
+        "probe-dev-history-contracts.py",
+        "probe-reference-taxonomy.py",
+        "probe-upstream-goal-compat.py",
+    )
     for name in PACKAGE_RUNTIME_DIRS:
         source = SKILL_ROOT / name
         if not source.is_dir():

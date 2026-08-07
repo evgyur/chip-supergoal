@@ -1,7 +1,11 @@
 import filecmp
+import hashlib
 import json
+import os
+import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,6 +31,15 @@ class CompileDeterminismTest(unittest.TestCase):
             self.assertEqual(len(hits), 1)
             self.assertTrue(hits[0].startswith("LAUNCH_GOAL.md:"))
 
+            roadmap = (out / "ROADMAP.md").read_text(encoding="utf-8")
+            phase = (out / "phases/phase-01.md").read_text(encoding="utf-8")
+            launch = (out / "LAUNCH_GOAL.md").read_text(encoding="utf-8")
+            for text in [roadmap, phase]:
+                self.assertIn("Deliverables", text)
+                self.assertIn("P01-D01", text)
+                self.assertIn("fixture.txt", text)
+            self.assertIn("CONTRACT.json", launch)
+
     def test_compile_emits_file_first_runtime_seed_bundle_and_handoff(self):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "sg"
@@ -44,9 +57,13 @@ class CompileDeterminismTest(unittest.TestCase):
             run_log = (out / "runtime-seed/RUN_LOG.md").read_text(encoding="utf-8")
 
             self.assertIn("sg-20260625-brownfield-feature", plan)
+            self.assertIn("P01", plan)
             self.assertIn("P01 | pending", todo)
-            self.assertIn("## Verified facts", memory)
+            for heading in ["## Verified facts", "## Decisions", "## Constraints", "## Mistakes to avoid"]:
+                self.assertIn(heading, memory)
+            self.assertIn("active_todo: P01", status)
             self.assertIn("phase: READY_TO_DISPATCH", status)
+            self.assertIn("python3 -m unittest", checks)
             self.assertIn("P01-C01", checks)
             self.assertIn("RPD_PLAN_REVIEW", review)
             self.assertIn("EVT-000001", run_log)
@@ -91,6 +108,49 @@ class CompileDeterminismTest(unittest.TestCase):
             comparable = ["CONTRACT.json", "THINKING.md", "RESEARCH.md", "reports/research.json", "LOOP_DESIGN.md", "ROADMAP.md", "STATE.md", "PROTOCOL.md", "LAUNCH_GOAL.md", "MANIFEST.json", "phases/phase-01.md"]
             for rel in comparable:
                 self.assertTrue(filecmp.cmp(out1 / rel, out2 / rel, shallow=False), rel)
+
+    def test_complete_package_contains_every_manifest_file_and_preserves_modes(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "sg"
+            self.compile_to(out)
+            command = ["bash", str(out / "templates/delivery/package-complete-supergoal.sh")]
+            env = dict(os.environ, SUPERGOAL_ROOT=str(out))
+            first = subprocess.run(command, cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+            lines = [line for line in first.stdout.splitlines() if line.strip()]
+            self.assertEqual(len(lines), 3, lines)
+            archive = Path(lines[0])
+            receipt = json.loads(Path(lines[2]).read_text(encoding="utf-8"))
+            self.assertTrue(receipt["ok"])
+            self.assertEqual(receipt["fileset"], "MANIFEST.json.artifacts + present MANIFEST.json.mutable_paths + MANIFEST.json")
+            self.assertEqual(receipt["extracted_strict_validation"], "passed")
+            self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), receipt["sha256"])
+
+            manifest = json.loads((out / "MANIFEST.json").read_text(encoding="utf-8"))
+            expected = {record["path"] for record in manifest["artifacts"]} | {"MANIFEST.json"}
+            for rel in manifest.get("mutable_paths", []):
+                if (out / rel).exists():
+                    expected.add(rel)
+            extracted = Path(td) / "extracted"
+            with tarfile.open(archive, "r:gz") as tar:
+                self.assertEqual(set(tar.getnames()), expected)
+                self.assertEqual(len(tar.getnames()), len(expected))
+                tar.extractall(extracted, filter="data")
+            for record in manifest["artifacts"]:
+                mode = stat.S_IMODE((extracted / record["path"]).stat().st_mode)
+                self.assertEqual(f"{mode:04o}", record["mode"], record["path"])
+            strict = subprocess.run(
+                [sys.executable, str(extracted / "scripts/sgctl.py"), "validate-package", str(extracted), "--strict", "--format", "json"],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(strict.returncode, 0, strict.stdout + strict.stderr)
+
+            second = subprocess.run(command, cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+            self.assertEqual(lines[1], [line for line in second.stdout.splitlines() if line.strip()][1])
+
 
 class CompileSafetyTest(unittest.TestCase):
     def run_compile(self, out: Path):

@@ -20,7 +20,7 @@ A Dev-history review over 2026-06-12..2026-06-19 found recurring failure classes
 | goal stopped | “Почему goal стоит?”, “до конца”, status-only answer after a phase | read `STATE.md`; if not `DONE`/`BLOCKED`, continue current phase/audit | `/goal resume` after restart continues from phase |
 | manual execution drift | “Снова вручную без goal делаешь?” | planner stops at launch; executor continues only from generated `PROTOCOL.md` | no phase work from planner session |
 | repeated complete loop | repeated wrapper on already completed root | do not re-run; show completion evidence or require new clean SuperGoal | stale completed wrapper probe |
-| missing review files | “Где три файла мд”, “не вижу файлов” | send `review_pack_v2` (`THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus non-empty `RESEARCH.md`) as native files and write receipt before `READY_TO_DISPATCH` | receipt + review_pack_v2 files |
+| missing or excessive startup files | “Где файлы SuperGoal”, “слишком много файлов” | send `startup_pack_v4`: exactly `THINKING.md`, `ROADMAP.md`, then `LAUNCH_GOAL.md` last; require exact three-entry file→message-ID receipt before `READY_TO_DISPATCH` | startup_pack_v4 inventory + receipt |
 | approval spam | broad “делай всё до конца” on safe work | treat as safe-lane approval through repo/docs/tests/push; do not ask again | safe repo task proceeds through push |
 | live side effect | money/DNS/secrets/grants/destructive prod/public post | require one bounded manifest; `/goal` continuation alone is not approval | money task blocks with manifest |
 | existing data missed | “у тебя они уже есть” | search local ignored overlays, repo docs, session history, project skills, and Telegram history before asking | retrieval-before-ask probe |
@@ -30,7 +30,7 @@ A Dev-history review over 2026-06-12..2026-06-19 found recurring failure classes
 
 When generating or updating a SuperGoal package:
 
-1. Copy delivery templates from `templates/delivery/` when Telegram/native file delivery is required. The default review pack is `review_pack_v2`: `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus non-empty `RESEARCH.md`. See `references/artifact-boundaries.md`.
+1. Copy delivery templates from `templates/delivery/`. Every Chip-facing dispatch uses three-file `startup_pack_v4` from `references/artifact-boundaries.md`.
 2. Write `LAUNCH_GOAL.md` as the only launch body; `ROADMAP.md` must not contain an actual `SUPERGOAL_GOAL_BODY:` line.
 3. In `STATE.md`, include delivery state and baseline ref.
 4. In `PROTOCOL.md`, keep continuation, approval, retrieval, and repo-delivery rules close to the executor loop, not only in historical references.

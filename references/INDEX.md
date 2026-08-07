@@ -4,12 +4,15 @@
 
 - `dispatch-map.md` — active reference taxonomy, canonical dispatch table, superseded incident clusters, and banned stale-policy phrases.
 - `upstream-goal-compatibility.md` — standard Hermes `/goal` compiler boundary, judge-proof turn endings, blockers, and budget rules.
+- `staged-project-flow-runs-in-one-goal.md` — one GoalManager `/goal` supervising separate evidence-gated Project Flow runs without prematurely materializing the downstream DecisionPackage/state.
 - `core-planning-contract.md` — Stage 0-7 planner workflow.
-- `artifact-boundaries.md` — canonical review_pack_v2 and artifact owner/stage/delivery/receipt boundaries.
+- `artifact-boundaries.md` — canonical three-file `startup_pack_v4` and artifact owner/stage/delivery/receipt boundaries.
 - `artifact-schemas.md` — schemas for generated files and receipts.
 - `execution-state-machine.md` — `/goal` executor state machine and recovery precedence.
 - `research-and-architecture-gates.md` — current-facts, build-vs-buy, Architect+ lite.
 - `loop-design-gate.md` — Loop Design Gate for `LOOP_DESIGN.md`: pre-launch harness design with host/reviewer/judge, verification gates, state, stop/budget/boundaries, egress/redaction, and ASCII preview.
+- `request-wide-deadline-and-ambiguous-billing.md` — one deadline/spend envelope across multi-stage model chains, cancellation, ambiguous billing, safe retry policy, circuit breaking, and late reconciliation.
+- `offline-agent-eval-integrity.md` — tool-call identity/order, independent raw long-context simulation, and no-crutches offline source-trace integrity without false live-provider claims.
 - `phase-design.md` and `planning-depth.md` — phase slicing and planning bar.
 - `rpd-review-gates.md` — embedded RPD/Senior Gate.
 - `telegram-launch-and-delivery.md` — launch file/card and Telegram receipts.

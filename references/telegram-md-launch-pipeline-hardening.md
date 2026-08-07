@@ -6,9 +6,9 @@ Use this reference when building or repairing SuperGoal launch through Telegram 
 
 ## Contract
 
-- Human-facing launch pack defaults to `review_pack_v2`: `THINKING.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`, plus non-empty `RESEARCH.md`.
+- Human-facing delivery uses `startup_pack_v4`: exactly `THINKING.md`, `ROADMAP.md`, then `LAUNCH_GOAL.md` last.
 - Only `LAUNCH_GOAL.md` may contain `SUPERGOAL_GOAL_BODY:`.
-- `THINKING.md`, `ROADMAP.md`, `STATE.md`, `PROTOCOL.md`, `phases/*`, and reports are review/state artifacts, not launch targets.
+- All other files are review/state inputs, not launch targets.
 - Chip replies `/goal` only to `LAUNCH_GOAL.md` unless an explicit button launch path is implemented and verified.
 - Posting a file or printing `SUPERGOAL_GOAL_BODY:` is not enough to start execution. Autodispatch requires an explicit internal sentinel such as `SUPERGOAL_AUTODISPATCH: true`.
 

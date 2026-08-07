@@ -1,32 +1,69 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["ok", "sent", "kind", "pack_version", "target", "files", "hashes", "message_ids", "sent_at"],
+  "required": [
+    "schema", "ok", "sent", "readback_verified", "kind", "pack_version", "target",
+    "files", "hashes", "message_ids", "file_message_ids", "launch_file", "launch_message_id",
+    "sent_at", "sender", "readback_items", "contract_sha256", "transport_receipt_sha256",
+    "readback_receipt_sha256", "verified_at"
+  ],
   "properties": {
+    "schema": {"const": "chip-supergoal.startup-delivery.v2"},
     "ok": {"const": true},
     "sent": {"const": true},
-    "kind": {"const": "review-md-files"},
-    "pack_version": {"const": "review_pack_v2"},
-    "target": {"type": "string", "minLength": 1},
-    "files": {
-      "type": "array",
-      "minItems": 4,
-      "uniqueItems": true,
-      "items": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+\\.md$"},
-      "allOf": [
-        {"contains": {"const": "THINKING.md"}},
-        {"contains": {"const": "LOOP_DESIGN.md"}},
-        {"contains": {"const": "ROADMAP.md"}},
-        {"contains": {"const": "LAUNCH_GOAL.md"}}
-      ]
-    },
+    "readback_verified": {"const": true},
+    "kind": {"const": "startup-files"},
+    "pack_version": {"const": "startup_pack_v4"},
+    "target": {"type": "string", "pattern": "^telegram:[^:]+:[^:]+$"},
+    "files": {"const": ["THINKING.md", "ROADMAP.md", "LAUNCH_GOAL.md"]},
     "hashes": {
       "type": "object",
-      "minProperties": 4,
-      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      "additionalProperties": false,
+      "required": ["THINKING.md", "ROADMAP.md", "LAUNCH_GOAL.md"],
+      "properties": {
+        "THINKING.md": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "ROADMAP.md": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "LAUNCH_GOAL.md": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
     },
-    "message_ids": {"type": "array", "minItems": 4, "items": {"type": "string", "minLength": 1}},
+    "message_ids": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "string", "minLength": 1}},
+    "file_message_ids": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["THINKING.md", "ROADMAP.md", "LAUNCH_GOAL.md"],
+      "properties": {
+        "THINKING.md": {"type": "string", "minLength": 1},
+        "ROADMAP.md": {"type": "string", "minLength": 1},
+        "LAUNCH_GOAL.md": {"type": "string", "minLength": 1}
+      }
+    },
+    "launch_file": {"const": "LAUNCH_GOAL.md"},
+    "launch_message_id": {"type": "string", "minLength": 1},
     "sent_at": {"type": "string", "minLength": 1},
-    "extensions": {"type": "object"}
+    "sender": {"type": "object", "minProperties": 1},
+    "readback_items": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["order", "message_id", "filename", "sha256", "bytes", "has_media", "media_type", "chat_id", "thread_id", "readback_verified"],
+        "properties": {
+          "order": {"type": "integer", "minimum": 0, "maximum": 2},
+          "message_id": {"type": ["string", "integer"]},
+          "filename": {"enum": ["THINKING.md", "ROADMAP.md", "LAUNCH_GOAL.md"]},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "bytes": {"type": "integer", "minimum": 1},
+          "has_media": {"const": true},
+          "media_type": {"type": "string", "pattern": "[Dd]ocument"},
+          "chat_id": {"type": ["string", "integer"]},
+          "thread_id": {"type": ["string", "integer"]},
+          "readback_verified": {"const": true}
+        }
+      }
+    },
+    "contract_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "transport_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "readback_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "verified_at": {"type": "string", "minLength": 1}
   }
 }

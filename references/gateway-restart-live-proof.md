@@ -58,9 +58,20 @@ health: true
 
 For Telegram SuperGoal, a log line or bot send response is not enough. The live proof is visible topic session state: `group:<chat_id>:<thread_id>` has a GoalManager state and the goal lives on the compression tip.
 
+## Active-turn drain and post-restart repair
+
+A detached unit can still spend its stop timeout waiting for the active Telegram turn to finish. `deactivating` during that drain is not evidence that the patch failed, and canceling the systemd job does not reverse a gateway process that already entered graceful shutdown.
+
+- Finish the current response quickly after scheduling the detached unit; do not keep the turn alive with unrelated audit work while the service waits to drain.
+- Let the detached unit own the full `restart -> wait for active -> verify new MainPID -> product probe` sequence. Do not issue a second inline restart.
+- If a restart job was canceled after graceful shutdown began, queue a detached `systemctl start` recovery before ending the turn; otherwise the gateway can finish draining and remain down.
+- Product proof belongs after the new PID is active. For Telegram markup/button repairs, reapply or fetch the markup after restart and store a receipt with bot identity, message id, and button count.
+- Telegram `editMessageReplyMarkup` returns HTTP 400 `message is not modified` when the desired markup is already present. Treat only that exact description as idempotent success; keep every other 400 fail-closed and cover this branch with a regression test.
+
 ## Pitfalls
 
 - Do not use `hermes gateway run --replace` from inside the live gateway turn.
 - Do not call the restart proof valid if the PID did not change.
+- Do not claim a user-visible control works from unit tests alone; require a post-restart product receipt or fetch-back.
 - Do not expose bot tokens or `.env` values in the proof.
 - Do not confuse sibling user gateway processes owned by other users with the active `hermes` service process.

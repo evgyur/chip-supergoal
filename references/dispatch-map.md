@@ -7,8 +7,9 @@ This is the active reference taxonomy for `chip-supergoal`. Root `SKILL.md` shou
 | Trigger / concern | Load first | Optional follow-ups |
 |---|---|---|
 | Core planner stages, plan-only boundary, human gates | `core-planning-contract.md` | `planning-depth.md`, `phase-design.md` |
-| Artifact boundaries / review pack v2: generated file ownership, review_pack_v2, receipts, planning-vs-final delivery | `artifact-boundaries.md` | `artifact-schemas.md`, `telegram-launch-and-delivery.md` |
+| Artifact boundaries / startup pack v4: generated file ownership, exact three-file `startup_pack_v4`, receipts, planning-vs-final delivery | `artifact-boundaries.md` | `artifact-schemas.md`, `telegram-launch-and-delivery.md` |
 | Launch body, standard `/goal` compatibility, structured completion | `upstream-goal-compatibility.md` | `upstream-goal-reconciliation.md`, `supergoal-goal-code-review-hardening.md` |
+| One `/goal` supervising staged Project Flow runs separated by a foundation/admission barrier | `staged-project-flow-runs-in-one-goal.md` | `execution-state-machine.md`, `executable-contract-review.md`, `project-flow` |
 | Execution loop, state transitions, final audit, recovery precedence | `execution-state-machine.md` | `goalmanager-recovery.md`, `repeated-complete-continuations.md` |
 | Loop harness design before roadmap compilation | `loop-design-gate.md` | `rpd-review-gates.md` |
 | RPD/Senior review gates and xhigh handoffs | `rpd-review-gates.md` | `rpd-to-supergoal-handoff.md` |

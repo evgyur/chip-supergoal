@@ -126,18 +126,54 @@ At each transition ask:
 - Can a repeated continuation rerun a mutation?
 - Can completion markers appear while STATE is still in a numbered phase?
 
+### Outcome-liveness check
+
+Simulate every contract-declared terminal outcome, not only the happy path. A package that declares `promote | no-go`, `adopt | reject`, or another valid negative decision must keep each outcome reachable through numbered phases and final audit.
+
+A common deadlock is making the promotion-success predicate a blocking criterion in phase N while phase N+1 owns the no-go decision. If `veto` or `inconclusive` is valid evidence, the producing phase should validate the immutable typed result and complete; the decision phase should map that result to mandatory no-go. Reserve a hard blocker for invalid, missing, forged, leaked, or policy-mutated evidence—not for a valid negative result.
+
+### Verifier-input provenance check
+
+For every mandatory verifier, enumerate each input path and prove it is one of:
+
+- present at the pinned baseline;
+- an explicit deliverable of an earlier phase;
+- produced by a declared setup/materialization command earlier in the same phase.
+
+Work-item prose such as “prove rollback” does not materialize an input. If a verifier consumes canary/promoted fixtures, manifests, receipts, or reconstructed worktrees, declare their creation command, deliverable path, hash/tree proof, and behavior on every terminal lane, including no-go. An undeclared fixture path is an executable-contract defect even when the final report path is declared.
+
 ## 8. Minimum independent-review probes
 
 In addition to phase and loop validators:
 
 - assert exactly one launch-body line;
 - compare phase count across ROADMAP, STATE, LOOP_DESIGN, and phase headers;
+- enumerate every package root carrying the same goal ID; two strict-valid roots with independent state stores are split-brain even when each validates alone;
+- compare the resolved launch root with any `architecture.package_root`/workspace locator and reject stale absolute package roots, especially when the stale root still exists;
 - inspect package-manager roots;
+- prove the protocol actually changes from package-root preflight cwd to the declared implementation cwd before repo-relative phase commands; prose saying “active implementation root” is insufficient;
 - inspect deploy/apply script argument contracts;
-- enumerate mutation commands and ensure audit excludes them;
-- verify active root/baseline after every worktree transition;
+- enumerate every mandatory-command input path and trace it to baseline, an earlier deliverable, or a same-phase materializer;
+- enumerate mutation commands and ensure audit excludes them; any command with `--output` or an in-repo receipt path is not read-only;
+- verify active root/baseline after every worktree or foundation-selection transition, and require runtime state to bind both root and exact SHA rather than relying on conversation or a derived report;
+- simulate every declared terminal outcome and prove negative/no-go lanes can still reach audit;
 - test one tracked deliverable and one ignored package-evidence deliverable through the declared verifier;
+- inspect the final audit implementation, not just protocol prose: it must iterate every declared deliverable and validate path, kind, change expectation, active baseline, and file/tree hash. Criterion-only evidence coverage does not prove deliverables;
+- construct a non-mutating synthetic approval record and pass it through the packaged validator. Reject runtimes that accept approval IDs plus an arbitrary hash without verifying actual receipt bytes/path/signature/actor/action/SHA/single-use scope; unknown approval scopes must fail closed, never default to global;
+- cross-check live-canary task dispatches against Stage-6 scope: approval to start the meta-package does not authorize child-package dispatches or live activation unless an exact bounded manifest says so;
 - cross-check review-receipt wording against generic audit-gap handling;
+- compare `final_artifacts_requested`, delivery `items`, archive requirements, and the audit code’s actual final-delivery predicate. A false final-delivery flag must compile to no final receipt/archive gate;
+- inspect clean-Git criteria for a declared commit step and self-dirtying verifier outputs. A `--require-clean-git --output <tracked-path>` command cannot prove post-command cleanliness unless the receipt is outside the repo or a later explicit commit is part of the contract;
 - confirm the final numbered phase does not require post-phase audit markers.
+
+## 9. Approval-evidence authenticity
+
+Approval declarations are policy requirements, not proof that approval occurred. Independently verify all three layers:
+
+1. **Declaration scope** — scope is typed (`global`, exact phase/risk/action), bounded, and unknown values fail closed. Keep human-readable prose in `description`, not in a field used by scope matching.
+2. **Receipt authenticity** — evidence binds verified receipt bytes at a trusted path or immutable external locator, content hash, actor/signer, exact action/target/SHA, expiry, rollback, and one-shot/repeatability semantics. A caller-supplied digest without verified bytes is not evidence.
+3. **Enforcement timing** — launch approval gates pre-run transitions; action-specific approval gates the exact mutation immediately before execution; final audit only confirms validated receipts and must not create or broaden authority retroactively.
+
+A useful pure probe is to submit a synthetic approval evidence object with all declared IDs and an all-zero digest to the package validator without writing state. Acceptance is a material authority-bypass finding.
 
 Report only material findings with severity, file/section, failure scenario, direct evidence, and a concrete cross-file fix.

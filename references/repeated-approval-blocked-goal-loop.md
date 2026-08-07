@@ -1,24 +1,26 @@
-# Repeated approval-blocked `/goal` continuations
+# Repeated blocked `/goal` continuations
 
-Session-derived pitfall from a Pear/Privy/Hyperliquid SuperGoal.
+Use for approval gates **and** contract-declared external blockers such as missing immutable attestations, credentials, controller access, or required receipts.
 
 ## Symptom
 
-A SuperGoal phase reaches `BLOCKED_BY_APPROVAL`, but the visible `/goal` loop keeps posting the same approval card because the goal condition mentions `SUPERGOAL_RUN_COMPLETE` and the judge keeps returning CONTINUE.
+A SuperGoal phase reaches a terminal blocked state, but the visible `/goal` loop keeps posting the same blocker card because the goal condition mentions `SUPERGOAL_RUN_COMPLETE` and the judge keeps returning CONTINUE. A common stale reason is “missing terminal marker” even though runtime authority correctly forbids that marker while blocked.
 
 This is not more phase work. It is a GoalManager/control-plane bug or stale goal state.
 
 ## Correct behavior
 
-When a SuperGoal response/state clearly says approval is missing — either the exact `BLOCKED_BY_APPROVAL` marker or a human blocker card like `blocked: нужен explicit approval`, `blocked by approval gate`, or `Blocked: yes` + `Need user input: explicit approval`:
+When package runtime authority is terminally blocked — by approval **or** by a contract-declared external requirement:
 
 - treat it as terminal blocked state for the `/goal` loop;
-- do not repeat the same approval card on every continuation;
+- do not repeat the same blocker card on every continuation;
 - do not burn the turn budget trying to reach `SUPERGOAL_RUN_COMPLETE`;
-- mark the visible/compression-tip goal state as `blocked` or pause it with a blocker reason;
-- clear queued synthetic goal continuations after terminal `done/blocked` decisions;
-- drop stale internal goal-continuation events before agent execution when the session goal is no longer active;
-- keep the SuperGoal `.supergoal/STATE.md` at blocked/current phase until explicit approval or credentials arrive.
+- never print completion markers merely to satisfy a stale judge reason such as “missing standalone terminal marker”;
+- mark the exact visible/compression-tip goal state as `blocked` with `last_verdict: done`;
+- clear waiting fields and queued synthetic continuations after terminal `done/blocked` decisions;
+- keep authoritative package runtime state at the blocked phase until the missing input arrives.
+
+For an external-evidence blocker, ask once for the smallest concrete input (for example immutable receipt paths or controller access). Do not relabel it `BLOCKED_BY_APPROVAL`, and do not imply that user approval can satisfy a verifier that requires real evidence.
 
 Chip's preference is strict here: internal GoalManager continuations must never appear as user-authored chat spam. If the loop repeats, stop explaining the gate and fix the control plane.
 
@@ -46,6 +48,12 @@ If Chip asks “why did you stop?” or “what is needed?”:
 - if the blocker is credentials, say where to provision them and explicitly say not to paste secrets into Telegram;
 - do not defend the protocol at length.
 
+## Resolve the current visible goal row
+
+Goal text alone is not enough: the same SuperGoal may have an older active row in a DM and a newer continuation row in a group topic. Join `state_meta` goal keys to `sessions.id`, then match the current Telegram `session_key` (`agent:main:telegram:<chat-type>:<chat-id>[:<thread-id>]`). Use the exact current-topic goal key; do not mutate every row containing a similar goal fragment.
+
+For a live SQLite database, create the rollback copy with `sqlite3.Connection.backup()` rather than a blind file copy, so WAL-backed state is captured consistently. Update inside `BEGIN IMMEDIATE`, require the old status to be `active` or already `blocked`, clear all waiting fields, and re-query by both exact goal key and current `session_key`.
+
 ## Minimal local repair recipe
 
 When the repeated continuation is caused by stale GoalManager state rather than missing phase work, repair the control-plane row directly and verify the newest tip row, not only the older/compressed parent row.
@@ -64,17 +72,17 @@ Safe shape:
        print(r['rowid'], r['key'], v.get('status'), v.get('last_verdict'), (v.get('goal') or '')[:120])
    PY
    ```
-3. Match by the exact SuperGoal package path or a unique goal fragment, not by recency alone.
-4. For each active matching row, set:
+3. Match the current visible `sessions.session_key` first, then confirm the goal/package fragment. Do not select by recency or goal text alone.
+4. For the exact active current-tip row, set:
    - `status = "blocked"`
    - `last_verdict = "done"`
-   - `last_reason = "supergoal stopped with BLOCKED_BY_APPROVAL: <concrete blocker>"`
-   - `paused_reason = "BLOCKED_BY_APPROVAL: <short human-readable blocker>"`
-   - clear waiting fields if present.
-5. Re-query the newest rows and confirm every matching tip row is `status=blocked` and `last_verdict=done`.
-6. Reply once with `SUPERGOAL_TURN_YIELD — BLOCKED_BY_APPROVAL`, `Goal complete: no`, and the exact missing approval/input. Do not keep repeating the same approval card after the DB state is blocked.
+   - `last_reason = "supergoal stopped at contract blocker <criterion/code>: <concrete blocker>"`
+   - `paused_reason = "<criterion/code> blocked: <short missing input>"`
+   - clear every waiting field (`waiting_on_pid`, `waiting_on_session`, reason/timestamps).
+5. Re-query by both exact goal key and exact current `session_key`; confirm `status=blocked`, `last_verdict=done`, and all waiting fields cleared.
+6. Reply once with the appropriate blocked yield marker, `Goal complete: no`, and the exact missing input. Use `BLOCKED_BY_APPROVAL` only for a real approval gate; use a generic blocked yield for external evidence. Do not keep repeating the card after the DB state is blocked.
 
-This is a control-plane repair, not progress on the SuperGoal itself. Do not change the `.supergoal/STATE.md` from blocked/safe-lane state unless the user gives the missing approval or credential.
+This is a control-plane repair, not progress on the SuperGoal itself. Do not change authoritative package runtime state unless the missing approval/evidence arrives. If the package is already correctly blocked, preserve its revision and blocker verbatim.
 
 ## Restart proof
 

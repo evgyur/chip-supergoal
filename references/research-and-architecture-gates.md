@@ -34,6 +34,17 @@ Strict validation blocks required research unless:
 
 Compile emits both `RESEARCH.md` and `reports/research.json`; `validate-package` treats both as generated artifacts and detects drift.
 
+### Grounding integrity for routed research
+
+Requesting `model=sonar` is not proof that Perplexity research actually ran. Inspect the returned route/model, structured citations, and source URLs before setting `provider: perplex`:
+
+- if the gateway routes to a generic/non-search model, says it lacks live search, or returns unsupported prose without grounded citations, do **not** mint a fake `perplex` source merely to satisfy validation;
+- record the Perplex attempt as unavailable/ungrounded, switch the contract provider to `official-docs`, `context7`, `web`, or `manual`, and include `provider_unavailable_reason`;
+- directly extract the authoritative URLs and let those sources—not the search prose—drive planning implications;
+- when search prose and the official page disagree, the official endpoint contract wins and the discrepancy becomes a phase/test mutation.
+
+A research gate that passes schema by mislabeling an ungrounded gateway fallback is red, even if the final recommendation happens to be correct.
+
 ## Existing-solutions gate
 
 Search libraries, SaaS, OSS repos, package registries, or reference implementations when build-vs-buy matters. Decide one of:

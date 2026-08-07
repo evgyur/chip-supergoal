@@ -22,7 +22,7 @@ def render_thinking(contract: Contract) -> str:
             "reversible production activation with one bounded approval",
         ]
     source_lines = [f"{s.id}: {s.authority} — {s.locator}" for s in contract.source_set]
-    decision_lines = [str(x.get("summary") or x.get("id") or x) for x in contract.decisions]
+    decision_lines = [str(x.get("summary") or x.get("decision") or x.get("id") or x) for x in contract.decisions]
     return f"""# THINKING — {contract.goal.title}
 
 ## Goal
@@ -167,7 +167,7 @@ def render_roadmap(contract: Contract) -> str:
     ]
     if contract.decisions:
         lines += ["", "## Architecture decisions"]
-        lines += [f"- {x.get('id', 'decision')}: {x.get('summary', x)}" for x in contract.decisions]
+        lines += [f"- {x.get('id', 'decision')}: {x.get('summary') or x.get('decision') or x.get('id', 'decision')}" for x in contract.decisions]
     lines += ["", "## Assumptions"]
     lines += [f"- {x}" for x in assumptions] or ["- Runtime claims are hypotheses until reverified by phase commands."]
     lines += ["", "## Risk top 3"]
@@ -181,7 +181,9 @@ def render_roadmap(contract: Contract) -> str:
         lines.append(f"- {p.id}: {p.name} — depends on {deps}")
     lines += ["", "## Phases"]
     for p in contract.phases:
-        lines += ["", f"### {p.id} — {p.name}", f"Task: {p.task}", "Acceptance criteria:"]
+        lines += ["", f"### {p.id} — {p.name}", f"Task: {p.task}", "Deliverables:"]
+        lines += [f"- {d.id}: `{d.path}` — {d.change_expectation}; verify: {d.verification}" for d in p.deliverables] or ["- none"]
+        lines += ["Acceptance criteria:"]
         lines += [f"- {c.id}: {c.statement}" for c in p.criteria]
         lines += ["Mandatory commands:"]
         lines += [f"- {c.id}: `{c.command}`" for c in p.commands]
@@ -283,7 +285,7 @@ def render_launch_goal(contract: Contract) -> str:
     package_root = "this generated SuperGoal package root (the directory containing LAUNCH_GOAL.md)"
     body = (
         f"{marker} From the project root `{contract.goal.workspace_root}`, execute {package_root}. "
-        "Read `PROTOCOL.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, immutable compatibility seed `STATE.md`, and `phases/phase-*.md` from that package root. "
+        "Read `CONTRACT.json`, `PROTOCOL.md`, `LOOP_DESIGN.md`, `ROADMAP.md`, immutable compatibility seed `STATE.md`, and `phases/phase-*.md` from that package root. "
         "Initialize mutable file-first state with `bash <package-root>/scripts/init-runtime.sh <package-root>`; it copies `runtime-seed/*.md` to `out/runtime/` only when absent and never overwrites live state. "
         "At every start read `out/runtime/STATUS.md`, `TODO.md`, `PLAN.md`, relevant `MEMORY.md`, and latest `RUN_LOG.md`; also use `CHECKS.md` and `REVIEW.md` as the verification/review ledgers. "
         "Claim exactly one TODO ID before work and update the runtime files coherently before returning. "
@@ -293,7 +295,11 @@ def render_launch_goal(contract: Contract) -> str:
         "Never edit manifested `STATE.md`, `runtime-seed/`, or `MANIFEST.json`. "
         "Preserve the planner/compiler boundary: do not create a production runner or nested /goal; standard Hermes /goal remains the executor."
     )
-    return f"# LAUNCH_GOAL — {contract.goal.title}\n\n{body}\n"
+    return (
+        f"# LAUNCH_GOAL — {contract.goal.title}\n\n"
+        "Reply `/goal` to this file/message to start this exact generated SuperGoal.\n\n"
+        f"{body}\n"
+    )
 
 
 def render_phase(contract: Contract, phase_index: int) -> str:
@@ -304,6 +310,8 @@ def render_phase(contract: Contract, phase_index: int) -> str:
     focus = p.rpd.focus[0] if p.rpd.focus else "none"
     lines = [f"# {p.id} — {p.name}", "", "SUPERGOAL_PHASE_START", f"Phase: {p.ordinal} of {len(contract.phases)} — {p.name}", f"Task: {p.task}", f"Mandatory commands: {commands}", f"Acceptance criteria: {len(p.criteria)}", f"Evidence required: {evidence}", f"Depends on phases: {deps}", f"RPD required: {'yes' if p.rpd.required else 'no'}", f"RPD focus: {focus}", "", "## Work"]
     lines += [f"- {w.get('text', w)}" for w in p.work_items] or ["- Execute the phase task."]
+    lines += ["", "## Deliverables"]
+    lines += [f"- {d.id}: `{d.path}` — {d.change_expectation}; verify: {d.verification}" for d in p.deliverables] or ["- none"]
     lines += ["", "## Acceptance criteria"]
     lines += [f"- {c.statement}" for c in p.criteria]
     lines += ["", "## Mandatory commands"]

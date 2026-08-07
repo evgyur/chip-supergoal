@@ -10,9 +10,12 @@ Generated from `spec/reference-catalog.json`.
 - Trigger `cross-file-consistency, review-hardening` → load `references/cross-file-consistency-review-hardening.md`
 - Trigger `dispatch-map` → load `references/dispatch-map.md`
 - Trigger `execution-state-machine` → load `references/execution-state-machine.md`
+- Trigger `file-first-runtime-state, runtime-seed, out/runtime` → load `references/file-first-runtime-state.md`
 - Trigger `follow-on-supergoal, after-completion` → load `references/follow-on-supergoal-after-completion.md`
 - Trigger `loop-design-gate` → load `references/loop-design-gate.md`
+- Trigger `manifest-complete-portable-archive, mutable-paths` → load `references/manifest-complete-portable-archive.md`
 - Trigger `planner-state-hygiene, pre-execution-state, supergoal-planning` → load `references/planner-executor-state-hygiene.md`
+- Trigger `planner-runaway, review-recursion, meta-fix-scope-creep, tool-budget-overrun` → load `references/planner-runaway-stop-loss.md`
 - Trigger `production-safety` → load `references/production-safety.md`
 - Trigger `rpd-review-gates` → load `references/rpd-review-gates.md`
 - Trigger `skill-maintenance` → load `references/skill-maintenance.md`

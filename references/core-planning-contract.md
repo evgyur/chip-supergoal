@@ -87,9 +87,13 @@ Validate every phase with `scripts/validate-phase.sh`.
 
 ## Stage 6 — embedded plan review
 
-Run `RPD_PLAN_REVIEW` from `references/rpd-review-gates.md`. Every material finding must mutate an artifact or be recorded `checked-holds` with evidence tier.
+Immediately after the first complete plan draft, run the mandatory post-draft Senior challenge from `references/rpd-review-gates.md`:
 
-Then show a compact review summary and wait for explicit go/no-go.
+> Критически оцени все свои решения. Это план на 100 из 100 или его можно усилить? Мне не нужен план внедрения ради внедрения. Senior-план должен допускать: «мы проверили и не внедряем».
+
+Then run the full `RPD_PLAN_REVIEW`. Record the justified score, exact deductions, implementation-vs-minimal-change-vs-no-implementation comparison, and one verdict: `implement`, `strengthen-and-rereview`, or `do-not-implement`. Every material finding must mutate an artifact or be recorded `checked-holds` with evidence tier.
+
+For `strengthen-and-rereview`, mutate and rerun within the planner stop-loss. For `do-not-implement`, preserve the decision evidence in `THINKING.md` and `ROADMAP.md`, do not emit `READY_TO_DISPATCH`, and stop without manufacturing a `/goal` launch. Otherwise show a compact review summary and wait for explicit go/no-go.
 
 ## Stage 6.5 — preflight
 
