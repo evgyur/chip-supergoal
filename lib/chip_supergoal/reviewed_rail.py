@@ -529,10 +529,20 @@ def _remote_head(root: Path, remote: str, branch: str) -> str:
     return proc.stdout.split()[0]
 
 
-def _push_exact(root: Path, remote: str, branch: str, sha: str) -> None:
+def _push_exact(
+    root: Path,
+    remote: str,
+    branch: str,
+    sha: str,
+    *,
+    expected_remote_sha: str,
+) -> None:
+    if expected_remote_sha and not re.fullmatch(r"[0-9a-f]{40}", expected_remote_sha):
+        raise ApprovalDenied("expected remote lease is malformed")
+    lease = f"--force-with-lease=refs/heads/{branch}:{expected_remote_sha}"
     proc = subprocess.run(
-        ["git", "push", remote, f"{sha}:refs/heads/{branch}"], cwd=root, text=True,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        ["git", "push", lease, remote, f"{sha}:refs/heads/{branch}"], cwd=root, text=True,
+        capture_output=True, check=False,
         env={key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
     )
     if proc.returncode != 0:
@@ -601,7 +611,8 @@ def build_rollout_packet(candidate_path: Path, server_doctor_root: Path) -> dict
     ]
     helper_specs["private_update"]["argv"] = [
         "--mode", "apply", "--systemd-run", "--live-root", "/opt/hermes-agent",
-        "--server-doctor-root", str(server_doctor_root), "--restart", "opt-units", "--json",
+        "--server-doctor-root", str(server_doctor_root), "--restart", "opt-units",
+        "--restart-unit", "hermes-gateway.service", "--json",
     ]
     live_root = Path("/opt/hermes-agent")
     live_status = _git(live_root, "status", "--porcelain=v1", "--untracked-files=all").splitlines()
@@ -755,7 +766,13 @@ def apply_reviewed_rollout(candidate_path: Path, packet_path: Path, approval_pat
     else:
         if server_remote != packet["server_doctor"].get("remote_main_at_packet"):
             raise ApprovalDenied("server-doctor remote drifted after approval")
-        _push_exact(server_root, "origin", "main", server_head)
+        _push_exact(
+            server_root,
+            "origin",
+            "main",
+            server_head,
+            expected_remote_sha=str(packet["server_doctor"].get("remote_main_at_packet") or ""),
+        )
         server_publication = "published_after_approval"
     hermes = candidate["hermes"]
     rail = PinnedHelperRail.from_files(packet_path, approval_path)
@@ -765,7 +782,13 @@ def apply_reviewed_rollout(candidate_path: Path, packet_path: Path, approval_pat
     hermes_root = Path(hermes["root"])
     if _remote_head(hermes_root, "private", "main") != packet.get("hermes_private_main_at_packet"):
         raise ApprovalDenied("private remote drifted after approval")
-    _push_exact(hermes_root, "private", "main", hermes["sha"])
+    _push_exact(
+        hermes_root,
+        "private",
+        "main",
+        hermes["sha"],
+        expected_remote_sha=str(packet.get("hermes_private_main_at_packet") or ""),
+    )
     update = rail.run_step("private_update")
     if update.returncode != 0:
         raise ApprovalDenied("authoritative private update helper failed")

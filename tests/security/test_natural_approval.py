@@ -6,18 +6,35 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from chip_supergoal.reviewed_rail import (
     ApprovalDenied,
     ApprovalStore,
     ArchitectureBlocker,
     PinnedHelperRail,
+    _push_exact,
     main,
     verify_installed_generation,
 )
 
 
 class NaturalApprovalSecurityTests(unittest.TestCase):
+
+    def test_exact_push_uses_atomic_remote_lease_and_readback(self):
+        old = "1" * 40
+        new = "2" * 40
+        with patch("chip_supergoal.reviewed_rail.subprocess.run") as run, patch(
+            "chip_supergoal.reviewed_rail._remote_head", return_value=new
+        ):
+            run.return_value = SimpleNamespace(returncode=0)
+            _push_exact(Path("/repo"), "private", "main", new, expected_remote_sha=old)
+
+        argv = run.call_args.args[0]
+        self.assertIn(f"--force-with-lease=refs/heads/main:{old}", argv)
+        self.assertEqual(argv[-2:], ["private", f"{new}:refs/heads/main"])
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name) / "approval-ledger"
