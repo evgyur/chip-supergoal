@@ -689,7 +689,7 @@ def consume_approval_bundle(
     output: Path,
     *,
     origin: str,
-    owner_id: str | None = None,
+    owner_id: str,
 ) -> dict[str, Any]:
     candidate = _load_regular_json(candidate_path)
     packet = _load_regular_json(packet_path)
@@ -722,7 +722,9 @@ def consume_approval_bundle(
             raise ArchitectureBlocker("approval origin is not canonical") from exc
         if platform != "telegram" or card.get("chat_id") != chat_id or card.get("thread_id") != thread_id:
             raise ApprovalDenied("approval origin mismatch")
-        if owner_id is not None and str(card.get("actor_id")) != str(owner_id):
+        if not re.fullmatch(r"[1-9][0-9]*", str(owner_id)):
+            raise ArchitectureBlocker("approval owner id is not canonical")
+        if str(card.get("actor_id")) != str(owner_id):
             raise ApprovalDenied("approval owner mismatch")
         ledger = output.parent / "approval-ledger"
         store = ApprovalStore(ledger)
@@ -793,8 +795,8 @@ def _parser() -> argparse.ArgumentParser:
     packet.add_argument("--output", required=True)
     for flag in ("require-clean", "require-installed-generation-hash", "backup", "one-rollout-restart", "emergency-rollback-restart-max-one"):
         packet.add_argument("--" + flag, action="store_true")
-    packet.add_argument("--registry-guard")
-    packet.add_argument("--private-update")
+    packet.add_argument("--registry-guard", required=True)
+    packet.add_argument("--private-update", required=True)
     approve = sub.add_parser("approve")
     approve.add_argument("--candidate", required=True)
     approve.add_argument("--packet", required=True)

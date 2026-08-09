@@ -413,6 +413,8 @@ class InstalledGenerationTests(unittest.TestCase):
             result = main([
                 "packet", "--candidate", str(Path(td) / "candidate.json"),
                 "--server-doctor", str(Path(td) / "server-doctor"),
+                "--registry-guard", "scripts/hermes-private-patch-registry-guard.py",
+                "--private-update", "scripts/hermes-private-update.py",
                 "--live", "/opt/hermes-agent",
                 "--output", str(output),
             ])
