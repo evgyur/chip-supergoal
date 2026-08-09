@@ -10,11 +10,17 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from chip_supergoal.reviewed_rail import (
+    AUDIT_DISABLED_ERROR,
+    ROLLOUT_DISABLED_ERROR,
     ApprovalDenied,
     ApprovalStore,
     ArchitectureBlocker,
     PinnedHelperRail,
+    _parser,
     _push_exact,
+    apply_reviewed_rollout,
+    audit_reviewed_rollout,
+    consume_approval_bundle,
     main,
     verify_installed_generation,
 )
@@ -149,6 +155,62 @@ class NaturalApprovalSecurityTests(unittest.TestCase):
                 del event[field]
                 with self.assertRaises(ArchitectureBlocker):
                     self.store.consume(event, now=1012)
+
+    def test_bundle_owner_must_match_authorized_actor(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            candidate_path = root / "candidate.json"
+            packet_path = root / "packet.json"
+            bundle_path = root / "bundle.json"
+            output = root / "approval.json"
+            candidate = {
+                "goal_id": self.context["goal_id"],
+                "package_id": self.context["package_id"],
+                "manifest_sha256": self.context["manifest_sha256"],
+                "hermes": {
+                    "sha": self.context["candidate_sha"],
+                    "tree": self.context["tree_sha"],
+                },
+                "chip_supergoal": {
+                    "sha": self.context["reviewed_generation"],
+                    "installed_generation_sha256": self.context["installed_generation_sha256"],
+                },
+            }
+            candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+            candidate_path.chmod(0o600)
+            packet = {
+                "candidate_sha256": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+                "live_blocked_by_unrelated_overlay": False,
+            }
+            packet_path.write_text(json.dumps(packet), encoding="utf-8")
+            packet_path.chmod(0o600)
+            context = dict(self.context)
+            context["packet_sha256"] = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+            context["actor_id"] = "999"
+            card = {**context, "nonce": "owner-mismatch", "issued_at": 1000, "expires_at": 1060}
+            event = {
+                **context,
+                "nonce": "owner-mismatch",
+                "reply_message_id": "30002",
+                "reply_to_message_id": context["request_message_id"],
+                "observed_at": 1010,
+                "text": "да",
+            }
+            bundle_path.write_text(json.dumps({"card": card, "event": event}), encoding="utf-8")
+            bundle_path.chmod(0o600)
+            with patch.dict("os.environ", {"CHIP_SUPERGOAL_APPROVAL_EVENT_JSON": str(bundle_path)}), patch(
+                "chip_supergoal.reviewed_rail.verify_installed_generation",
+                return_value=self.context["installed_generation_sha256"],
+            ):
+                with self.assertRaisesRegex(ApprovalDenied, "owner mismatch"):
+                    consume_approval_bundle(
+                        candidate_path,
+                        packet_path,
+                        output,
+                        origin="telegram:-1003971448755:28479",
+                        owner_id="617744661",
+                    )
+            self.assertFalse(output.exists())
 
     def test_ambiguous_pending_cards_fail_closed(self):
         self.issue(nonce="ambiguous-0001")
@@ -351,10 +413,78 @@ class InstalledGenerationTests(unittest.TestCase):
             result = main([
                 "packet", "--candidate", str(Path(td) / "candidate.json"),
                 "--server-doctor", str(Path(td) / "server-doctor"),
+                "--live", "/opt/hermes-agent",
                 "--output", str(output),
             ])
             self.assertEqual(result, 2)
             self.assertFalse(output.exists())
+
+    def test_generated_phase_three_command_abi_parses(self) -> None:
+        parser = _parser()
+        commands = [
+            [
+                "packet", "--candidate", "c", "--require-installed-generation-hash",
+                "--server-doctor", "/server-doctor", "--registry-guard",
+                "scripts/hermes-private-patch-registry-guard.py", "--private-update",
+                "scripts/hermes-private-update.py", "--live", "/opt/hermes-agent",
+                "--output", "packet.json",
+            ],
+            [
+                "approve", "--candidate", "c", "--packet", "p",
+                "--require-installed-generation-hash", "--origin", "telegram:-1:2",
+                "--owner-id", "617744661", "--direct-reply-only",
+                "--consume-atomically", "--reject-replay", "--output", "approval.json",
+            ],
+            [
+                "apply", "--candidate", "c", "--packet", "p", "--approval", "a",
+                "--require-installed-generation-hash", "--server-doctor", "/server-doctor",
+                "--publish-server-doctor-first", "--registry-guard", "scripts/hermes-private-patch-registry-guard.py",
+                "--publish-private-after-guard", "--private-update", "scripts/hermes-private-update.py",
+                "--live", "/opt/hermes-agent", "--backup", "--rollout-restart-one",
+                "--emergency-rollback-restart-max-one", "--registry-receipt", "registry.json",
+                "--output", "promotion.json",
+            ],
+            [
+                "audit", "--candidate", "c", "--packet", "p", "--approval", "a",
+                "--promotion", "promotion.json", "--require-installed-generation-hash",
+                "--require-gateway-health", "--require-telegram", "--require-approval-replay-denial",
+                "--require-native-goal-checkpoint", "--require-supergoal-checkpoint", "--rollback-on-red",
+                "--emergency-rollback-restart-max-one", "--audit", "audit.json",
+            ],
+        ]
+        for argv in commands:
+            with self.subTest(command=argv[0]):
+                self.assertEqual(parser.parse_args(argv).command, argv[0])
+
+    def test_approve_cli_forwards_owner_id_separately_from_origin(self) -> None:
+        with patch("chip_supergoal.reviewed_rail.consume_approval_bundle") as consume:
+            consume.return_value = {"schema": "receipt"}
+            result = main([
+                "approve", "--candidate", "c", "--packet", "p",
+                "--require-installed-generation-hash", "--origin", "telegram:-1:2",
+                "--owner-id", "617744661", "--direct-reply-only",
+                "--consume-atomically", "--reject-replay", "--output", "approval.json",
+            ])
+        self.assertEqual(result, 0)
+        self.assertEqual(consume.call_args.kwargs["origin"], "telegram:-1:2")
+        self.assertEqual(consume.call_args.kwargs["owner_id"], "617744661")
+
+    def test_rollout_and_audit_fail_closed_without_side_effects(self) -> None:
+        with patch("chip_supergoal.reviewed_rail._verify_approval_binding") as verify, patch(
+            "chip_supergoal.reviewed_rail.subprocess.run"
+        ) as run:
+            verify.return_value = ({}, {}, {})
+            with self.assertRaisesRegex(ArchitectureBlocker, ROLLOUT_DISABLED_ERROR):
+                apply_reviewed_rollout(Path("candidate"), Path("packet"), Path("approval"), Path("promotion"))
+            with self.assertRaisesRegex(ArchitectureBlocker, AUDIT_DISABLED_ERROR):
+                audit_reviewed_rollout(
+                    Path("candidate"),
+                    Path("packet"),
+                    Path("approval"),
+                    Path("audit"),
+                    promotion_path=Path("promotion"),
+                )
+        run.assert_not_called()
 
 
 if __name__ == "__main__":

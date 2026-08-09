@@ -22,6 +22,16 @@ class ArchitectureBlocker(RuntimeError):
     """Canonical Telegram metadata is unavailable; do not guess."""
 
 
+ROLLOUT_DISABLED_ERROR = (
+    "reviewed rollout is disabled: terminal private-update outcome and exact "
+    "remote-ref rollback are not correlated"
+)
+AUDIT_DISABLED_ERROR = (
+    "reviewed rollout audit is disabled: canonical live probes and rollback-on-red "
+    "are not implemented"
+)
+
+
 AFFIRMATIVE = frozenset({"го", "да", "делай", "апрув", "approve", "aprove"})
 CARD_FIELDS = (
     "actor_id",
@@ -679,6 +689,7 @@ def consume_approval_bundle(
     output: Path,
     *,
     origin: str,
+    owner_id: str | None = None,
 ) -> dict[str, Any]:
     candidate = _load_regular_json(candidate_path)
     packet = _load_regular_json(packet_path)
@@ -711,6 +722,8 @@ def consume_approval_bundle(
             raise ArchitectureBlocker("approval origin is not canonical") from exc
         if platform != "telegram" or card.get("chat_id") != chat_id or card.get("thread_id") != thread_id:
             raise ApprovalDenied("approval origin mismatch")
+        if owner_id is not None and str(card.get("actor_id")) != str(owner_id):
+            raise ApprovalDenied("approval owner mismatch")
         ledger = output.parent / "approval-ledger"
         store = ApprovalStore(ledger)
         store.issue(
@@ -748,99 +761,26 @@ def _verify_approval_binding(candidate_path: Path, packet_path: Path, approval_p
 
 
 def apply_reviewed_rollout(candidate_path: Path, packet_path: Path, approval_path: Path, output: Path) -> dict[str, Any]:
-    candidate, packet, approval = _verify_approval_binding(candidate_path, packet_path, approval_path)
-    if packet.get("live_blocked_by_unrelated_overlay"):
-        raise ArchitectureBlocker("rollout packet is blocked by a separately owned live overlay")
-    ledger = ApprovalStore(approval_path.parent / "approval-ledger")
-    effect_claim = ledger.claim_effect(approval)
-    live_root = Path(packet["live_prestate"]["root"])
-    if _git(live_root, "status", "--porcelain=v1", "--untracked-files=all").splitlines() != packet["live_prestate"]["status"]:
-        raise ApprovalDenied("live prestate changed after approval")
-    server_root = Path(packet["server_doctor_root"])
-    server_head = packet["server_doctor"]["sha"]
-    server_remote = _remote_head(server_root, "origin", "main")
-    if packet["server_doctor"].get("prepublished_metadata"):
-        if server_remote != server_head:
-            raise ApprovalDenied("prepublished server-doctor metadata drifted")
-        server_publication = "prepublished_metadata_verified"
-    else:
-        if server_remote != packet["server_doctor"].get("remote_main_at_packet"):
-            raise ApprovalDenied("server-doctor remote drifted after approval")
-        _push_exact(
-            server_root,
-            "origin",
-            "main",
-            server_head,
-            expected_remote_sha=str(packet["server_doctor"].get("remote_main_at_packet") or ""),
-        )
-        server_publication = "published_after_approval"
-    hermes = candidate["hermes"]
-    rail = PinnedHelperRail.from_files(packet_path, approval_path)
-    guard = rail.run_step("registry_guard")
-    if guard.returncode != 0:
-        raise ApprovalDenied("authoritative registry guard denied candidate")
-    hermes_root = Path(hermes["root"])
-    if _remote_head(hermes_root, "private", "main") != packet.get("hermes_private_main_at_packet"):
-        raise ApprovalDenied("private remote drifted after approval")
-    _push_exact(
-        hermes_root,
-        "private",
-        "main",
-        hermes["sha"],
-        expected_remote_sha=str(packet.get("hermes_private_main_at_packet") or ""),
-    )
-    update = rail.run_step("private_update")
-    if update.returncode != 0:
-        raise ApprovalDenied("authoritative private update helper failed")
-    result = {
-        "schema": "chip-supergoal.reviewed-rollout-result.v1",
-        "ok": True,
-        "candidate_sha256": _file_hash(candidate_path),
-        "packet_sha256": _file_hash(packet_path),
-        "approval_nonce": approval["nonce"],
-        "effect_claim_sha256": _context_fingerprint(
-            {key: str(value) for key, value in effect_claim.items()}
-        ),
-        "server_doctor_published": True,
-        "server_doctor_publication": server_publication,
-        "registry_guard_passed": True,
-        "private_ref_published": True,
-        "private_update_scheduled": True,
-        "normal_restart_budget": 1,
-        "emergency_rollback_restart_budget": 1,
-    }
-    _write_output(output, result)
-    return result
+    _verify_approval_binding(candidate_path, packet_path, approval_path)
+    # systemd-run success proves only that the helper was scheduled. Until one
+    # durable transaction correlates its terminal report and restores both refs
+    # on every red outcome, this entry point must perform no external effect.
+    raise ArchitectureBlocker(ROLLOUT_DISABLED_ERROR)
 
 
-def audit_reviewed_rollout(candidate_path: Path, packet_path: Path, approval_path: Path, output: Path) -> dict[str, Any]:
-    candidate, packet, approval = _verify_approval_binding(candidate_path, packet_path, approval_path)
-    rollout = _load_regular_json(output.parent / "rollout-result.json")
-    telegram = _load_regular_json(output.parent / "telegram-e2e.json")
-    required_rollout = (
-        "ok", "server_doctor_published", "registry_guard_passed",
-        "private_ref_published", "private_update_scheduled",
-    )
-    required_telegram = (
-        "ok", "live_readback", "backup_present", "restart_count_one",
-        "telegram_e2e", "checkpoint_recovery", "context_lean_invariants", "rollback_ready",
-    )
-    if any(rollout.get(field) is not True for field in required_rollout):
-        raise ApprovalDenied("rollout result is incomplete")
-    if any(telegram.get(field) is not True for field in required_telegram):
-        raise ApprovalDenied("Telegram/live audit result is incomplete")
-    audit = {
-        "schema": "chip-supergoal.reviewed-rollout-audit.v1",
-        "ok": True,
-        "candidate_sha256": _file_hash(candidate_path),
-        "packet_sha256": _file_hash(packet_path),
-        "approval_nonce": approval["nonce"],
-        "installed_generation_sha256": verify_installed_generation(candidate),
-        "rollout_result_sha256": _file_hash(output.parent / "rollout-result.json"),
-        "telegram_e2e_sha256": _file_hash(output.parent / "telegram-e2e.json"),
-    }
-    _write_output(output, audit)
-    return audit
+def audit_reviewed_rollout(
+    candidate_path: Path,
+    packet_path: Path,
+    approval_path: Path,
+    output: Path,
+    *,
+    promotion_path: Path | None = None,
+) -> dict[str, Any]:
+    _verify_approval_binding(candidate_path, packet_path, approval_path)
+    # Caller-authored booleans are not gateway, Telegram, checkpoint, backup,
+    # or rollback evidence. Keep the success audit unavailable until canonical
+    # live probes and rollback-on-red orchestration exist.
+    raise ArchitectureBlocker(AUDIT_DISABLED_ERROR)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -849,6 +789,7 @@ def _parser() -> argparse.ArgumentParser:
     packet = sub.add_parser("packet")
     packet.add_argument("--candidate", required=True)
     packet.add_argument("--server-doctor", required=True)
+    packet.add_argument("--live", required=True)
     packet.add_argument("--output", required=True)
     for flag in ("require-clean", "require-installed-generation-hash", "backup", "one-rollout-restart", "emergency-rollback-restart-max-one"):
         packet.add_argument("--" + flag, action="store_true")
@@ -858,23 +799,33 @@ def _parser() -> argparse.ArgumentParser:
     approve.add_argument("--candidate", required=True)
     approve.add_argument("--packet", required=True)
     approve.add_argument("--origin", required=True)
-    approve.add_argument("--owner", required=True)
+    approve.add_argument("--owner-id", required=True)
     approve.add_argument("--output", required=True)
-    for flag in ("require-installed-generation-hash", "direct-reply-only", "require-atomic-consume", "require-expiry", "require-revocation-check", "require-replay-denial"):
-        approve.add_argument("--" + flag, action="store_true")
+    approve.add_argument("--require-installed-generation-hash", action="store_true")
+    approve.add_argument("--direct-reply-only", action="store_true")
+    approve.add_argument("--consume-atomically", "--require-atomic-consume", dest="consume_atomically", action="store_true")
+    approve.add_argument("--reject-replay", "--require-replay-denial", dest="reject_replay", action="store_true")
+    approve.add_argument("--require-expiry", action="store_true")
+    approve.add_argument("--require-revocation-check", action="store_true")
     apply = sub.add_parser("apply")
     apply.add_argument("--candidate", required=True)
     apply.add_argument("--packet", required=True)
     apply.add_argument("--approval", required=True)
+    apply.add_argument("--server-doctor", required=True)
+    apply.add_argument("--registry-guard", required=True)
+    apply.add_argument("--private-update", required=True)
+    apply.add_argument("--live", required=True)
+    apply.add_argument("--registry-receipt", required=True)
     apply.add_argument("--output", default="rollout-result.json")
-    for flag in ("require-installed-generation-hash", "publish-server-doctor-first", "run-registry-guard", "publish-private-after-guard", "invoke-private-update", "single-command-backup-readback-rollback", "one-controlled-rollout-restart", "live"):
+    for flag in ("require-installed-generation-hash", "publish-server-doctor-first", "publish-private-after-guard", "backup", "rollout-restart-one", "emergency-rollback-restart-max-one"):
         apply.add_argument("--" + flag, action="store_true")
     audit = sub.add_parser("audit")
     audit.add_argument("--candidate", required=True)
     audit.add_argument("--packet", required=True)
     audit.add_argument("--approval", required=True)
-    audit.add_argument("--output", required=True)
-    for flag in ("require-installed-generation-hash", "require-consumed-approval", "require-registry-guard", "require-private-ref-readback", "require-live-readback", "require-backup", "require-restart-count-one", "require-telegram-e2e", "require-checkpoint-recovery", "require-context-lean-invariants", "require-rollback-ready"):
+    audit.add_argument("--promotion", required=True)
+    audit.add_argument("--audit", "--output", dest="output", required=True)
+    for flag in ("require-installed-generation-hash", "require-gateway-health", "require-telegram", "require-approval-replay-denial", "require-native-goal-checkpoint", "require-supergoal-checkpoint", "rollback-on-red", "emergency-rollback-restart-max-one"):
         audit.add_argument("--" + flag, action="store_true")
     return parser
 
@@ -883,46 +834,70 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "packet":
-            required = (
-                "require_clean", "require_installed_generation_hash", "backup",
-                "one_rollout_restart", "emergency_rollback_restart_max_one",
-            )
-            if not all(getattr(args, name) for name in required):
+            if not args.require_installed_generation_hash:
                 raise ApprovalDenied("packet safety flags are incomplete")
             root = Path(args.server_doctor)
-            if Path(args.registry_guard) != root / PinnedHelperRail._ALLOWED["registry_guard"]:
+            if Path(args.live) != Path("/opt/hermes-agent"):
+                raise ApprovalDenied("live root is not authoritative")
+            registry_guard = Path(args.registry_guard)
+            if registry_guard.is_absolute():
+                try:
+                    registry_guard = registry_guard.relative_to(root)
+                except ValueError as exc:
+                    raise ApprovalDenied("registry guard path is not authoritative") from exc
+            if registry_guard != Path(PinnedHelperRail._ALLOWED["registry_guard"]):
                 raise ApprovalDenied("registry guard path is not authoritative")
-            if Path(args.private_update) != root / PinnedHelperRail._ALLOWED["private_update"]:
+            private_update = Path(args.private_update)
+            if private_update.is_absolute():
+                try:
+                    private_update = private_update.relative_to(root)
+                except ValueError as exc:
+                    raise ApprovalDenied("private update path is not authoritative") from exc
+            if private_update != Path(PinnedHelperRail._ALLOWED["private_update"]):
                 raise ApprovalDenied("private update path is not authoritative")
             payload = build_rollout_packet(Path(args.candidate), Path(args.server_doctor))
             _write_output(Path(args.output), payload)
         elif args.command == "approve":
             required = (
-                "require_installed_generation_hash", "direct_reply_only", "require_atomic_consume",
-                "require_expiry", "require_revocation_check", "require_replay_denial",
+                "require_installed_generation_hash", "direct_reply_only", "consume_atomically",
+                "reject_replay",
             )
-            if not all(getattr(args, name) for name in required) or args.owner != args.origin:
+            if not all(getattr(args, name) for name in required):
                 raise ApprovalDenied("approval safety flags or owner binding are incomplete")
-            payload = consume_approval_bundle(Path(args.candidate), Path(args.packet), Path(args.output), origin=args.origin)
+            payload = consume_approval_bundle(
+                Path(args.candidate),
+                Path(args.packet),
+                Path(args.output),
+                origin=args.origin,
+                owner_id=args.owner_id,
+            )
         elif args.command == "apply":
             required = (
-                "require_installed_generation_hash", "publish_server_doctor_first", "run_registry_guard",
-                "publish_private_after_guard", "invoke_private_update", "single_command_backup_readback_rollback",
-                "one_controlled_rollout_restart", "live",
+                "require_installed_generation_hash", "publish_server_doctor_first",
+                "publish_private_after_guard", "backup", "rollout_restart_one",
+                "emergency_rollback_restart_max_one",
             )
             if not all(getattr(args, name) for name in required):
                 raise ApprovalDenied("apply safety flags are incomplete")
+            if Path(args.live) != Path("/opt/hermes-agent"):
+                raise ApprovalDenied("live root is not authoritative")
             payload = apply_reviewed_rollout(Path(args.candidate), Path(args.packet), Path(args.approval), Path(args.output))
         else:
             required = (
-                "require_installed_generation_hash", "require_consumed_approval", "require_registry_guard",
-                "require_private_ref_readback", "require_live_readback", "require_backup",
-                "require_restart_count_one", "require_telegram_e2e", "require_checkpoint_recovery",
-                "require_context_lean_invariants", "require_rollback_ready",
+                "require_installed_generation_hash", "require_gateway_health", "require_telegram",
+                "require_approval_replay_denial", "require_native_goal_checkpoint",
+                "require_supergoal_checkpoint", "rollback_on_red",
+                "emergency_rollback_restart_max_one",
             )
             if not all(getattr(args, name) for name in required):
                 raise ApprovalDenied("audit safety flags are incomplete")
-            payload = audit_reviewed_rollout(Path(args.candidate), Path(args.packet), Path(args.approval), Path(args.output))
+            payload = audit_reviewed_rollout(
+                Path(args.candidate),
+                Path(args.packet),
+                Path(args.approval),
+                Path(args.output),
+                promotion_path=Path(args.promotion),
+            )
     except (ApprovalDenied, ArchitectureBlocker, OSError, subprocess.SubprocessError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
         return 2
