@@ -18,7 +18,7 @@ This is the precedence table for the generated `/goal` executor.
 3. Print `SUPERGOAL_PHASE_START` and `SUPERGOAL_STATUS`.
 4. Do phase work and mandatory verification.
 5. Print `SUPERGOAL_PHASE_VERIFY` with criterion-to-evidence mapping.
-6. Run `RPD_PHASE_REVIEW` when required.
+6. Run `RPD_PHASE_REVIEW` when required. If `Execution route: shawl`, invoke canonical Shawl only: Luna scouts read/review, then Sol reproduces findings, remains the single writer/integrator, reruns gates, and treats every code-affecting fix as a new candidate identity.
 7. Save durable non-obvious lessons or print `MEMORY_SAVED: none`.
 8. Print `SUPERGOAL_PHASE_DONE`.
 9. Update `STATE.md` to next phase or `AUDIT`.

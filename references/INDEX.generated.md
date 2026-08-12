@@ -53,6 +53,7 @@ Generated from `spec/reference-catalog.json`.
 - `references/live-activation-continuation-hardening.md` — specialist — no invariant owner
 - `references/live-drift-rollout-overlays.md` — specialist — no invariant owner
 - `references/loop-design-gate.md` — canonical — no invariant owner
+- `references/outcome-definition-and-shawl-luna.md` — canonical — no invariant owner
 - `references/manifest-complete-portable-archive.md` — canonical — no invariant owner
 - `references/manual-provider-resource-adoption.md` — specialist — no invariant owner
 - `references/markdown-report-shell-quoting.md` — specialist — no invariant owner
@@ -73,6 +74,7 @@ Generated from `spec/reference-catalog.json`.
 - `references/planner-preflight-vs-postphase-commands.md` — specialist — no invariant owner
 - `references/planner-runaway-stop-loss.md` — canonical — no invariant owner
 - `references/planning-depth.md` — specialist — no invariant owner
+- `references/ponytail-scope-gate.md` — canonical — no invariant owner
 - `references/polymarket-live-activation-goal-correction.md` — private_profile_only — no invariant owner
 - `references/polymarket-privy-live-activation-goals.md` — private_profile_only — no invariant owner
 - `references/post-deploy-repair-audit.md` — specialist — no invariant owner

@@ -31,6 +31,7 @@ class SeededGraphFuzzerTest(unittest.TestCase):
             p["commands"][0]["id"] = f"{pid}-CMD01"; p["deliverables"][0]["id"] = f"{pid}-D01"
             phases.append(p)
         data["phases"] = phases
+        data["loop"]["execution_profile"]["phase_routes"] = {phase["id"]: "shawl" for phase in phases}
         return data
 
     def test_seeded_valid_dags_pass_and_mutations_fail(self):

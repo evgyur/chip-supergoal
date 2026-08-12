@@ -85,7 +85,22 @@ def migrate_v2_package(src: str | Path, out: str | Path) -> dict[str, Any]:
         "schema_version": "3.0", "protocol_version": "3.0", "contract_revision": 1, "profile": "chip-private",
         "goal": {"id": goal_id, "title": title_text, "objective": "Migrated v2 package preserves original phase semantics for v3 validation.", "request_digest": _sha(roadmap), "workspace_root": ".", "owner": "chip", "non_goals": ["invent missing v2 semantics"], "done_condition": "migrated contract validates"},
         "source_set": [{"id": "SRC-001", "kind": "v2_package", "locator": str(src), "authority": "provided_context", "freshness": "captured_at_migration", "sensitivity": "internal"}],
-        "decisions": [], "architecture": {}, "loop": {}, "risks": [], "approvals": [], "phases": phases, "delivery": {}, "compatibility": {"legacy_fallback": ["v2-read-only"]},
+        "decisions": [], "architecture": {}, "loop": {
+            "outcome_definition": {
+                "outcome": "The migrated package preserves the original v2 phase semantics and validates as v3.",
+                "evidence": ["strict v3 contract validation passes", "every migrated phase retains its source criterion and command"],
+                "threshold": "Zero unresolved migration diagnostics and all blocking criteria remain represented.",
+                "in_scope": ["v2 phase metadata", "v3 contract and backup artifacts"],
+                "out_of_scope": ["inventing missing v2 semantics", "executing production effects during migration"],
+                "stop_and_ask": "Stop if a v2 phase lacks a recoverable task, criterion, or mandatory command.",
+            },
+            "execution_profile": {
+                "owner": "Sol", "planner_effort": "high", "integrator_effort": "max",
+                "engineering_mode": "shawl", "worker_model": "gpt-5.6-luna", "worker_mode": "scout",
+                "max_parallel_scouts": 3, "max_review_rounds": 3,
+                "phase_routes": {phase["id"]: "shawl" if phase["rpd"]["required"] else "direct" for phase in phases},
+            },
+        }, "risks": [], "approvals": [], "phases": phases, "delivery": {}, "compatibility": {"legacy_fallback": ["v2-read-only"]},
     }
     contract_from_dict(contract)
     out.mkdir(parents=True, exist_ok=True)

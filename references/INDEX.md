@@ -11,6 +11,7 @@
 - `execution-state-machine.md` — `/goal` executor state machine and recovery precedence.
 - `research-and-architecture-gates.md` — current-facts, build-vs-buy, Architect+ lite.
 - `loop-design-gate.md` — Loop Design Gate for `LOOP_DESIGN.md`: pre-launch harness design with host/reviewer/judge, verification gates, state, stop/budget/boundaries, egress/redaction, and ASCII preview.
+- `outcome-definition-and-shawl-luna.md` — measurable outcome gate plus opt-in canonical Shawl/Luna phase routing, Sol ownership, bounded review/fix rounds, and fresh exact-candidate review.
 - `request-wide-deadline-and-ambiguous-billing.md` — one deadline/spend envelope across multi-stage model chains, cancellation, ambiguous billing, safe retry policy, circuit breaking, and late reconciliation.
 - `offline-agent-eval-integrity.md` — tool-call identity/order, independent raw long-context simulation, and no-crutches offline source-trace integrity without false live-provider claims.
 - `phase-design.md` and `planning-depth.md` — phase slicing and planning bar.

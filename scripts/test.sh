@@ -35,6 +35,7 @@ for required in \
   references/artifact-boundaries.md \
   references/artifact-schemas.md \
   references/loop-design-gate.md \
+  references/outcome-definition-and-shawl-luna.md \
   references/execution-state-machine.md \
   references/INDEX.md \
   references/dispatch-map.md \
@@ -64,6 +65,14 @@ cat >"$loop_instantiated" <<'EOF'
 
 ## Goal
 Ship a falsifiable refactor while preserving the current chip-supergoal contract and tests.
+
+## Outcome definition
+- Outcome: ship one validated refactor without changing the public execution contract.
+- Evidence: bash scripts/test.sh exits 0 and the compiled package validates.
+- Threshold: zero failing blocking checks and zero unresolved P0/P1 findings.
+- In scope: chip-supergoal planner, compiler, validators, and tests.
+- Out of scope: unrelated production or gateway effects.
+- Stop and ask: stop on a real approval boundary or missing canonical source.
 
 ## Context sources
 - User objective: refactor chip-supergoal through Shaw xhigh review.
@@ -130,6 +139,14 @@ cat >"$loop_weak" <<'EOF'
 
 ## Goal
 Do the work.
+
+## Outcome definition
+- Outcome: work exists.
+- Evidence: looks acceptable.
+- Threshold: enough.
+- In scope: repo.
+- Out of scope: other things.
+- Stop and ask: when unsure.
 
 ## Context sources
 - Repo.

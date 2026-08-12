@@ -41,6 +41,48 @@ class ContractModelTest(unittest.TestCase):
         contract = contract_from_dict(data)
         self.assertIn("P01 depends on missing phase P99", semantic_errors(contract, load_risk_policy(ROOT / "spec/risk-policy.json")))
 
+    def test_missing_outcome_definition_is_rejected(self):
+        data = self.fixture()
+        del data["loop"]["outcome_definition"]
+        errors = semantic_errors(contract_from_dict(data), load_risk_policy(ROOT / "spec/risk-policy.json"))
+        self.assertIn("loop.outcome_definition must be an object", errors)
+
+    def test_luna_is_bounded_and_never_owns_the_loop(self):
+        data = self.fixture()
+        data["loop"]["execution_profile"]["owner"] = "Luna"
+        data["loop"]["execution_profile"]["max_parallel_scouts"] = 4
+        errors = semantic_errors(contract_from_dict(data), load_risk_policy(ROOT / "spec/risk-policy.json"))
+        self.assertIn("loop.execution_profile.owner must equal 'Sol'", errors)
+        self.assertIn("loop.execution_profile.max_parallel_scouts must be an integer from 1 to 3", errors)
+
+    def test_risky_phase_must_route_through_shawl(self):
+        data = self.fixture()
+        data["loop"]["execution_profile"]["phase_routes"]["P01"] = "direct"
+        errors = semantic_errors(contract_from_dict(data), load_risk_policy(ROOT / "spec/risk-policy.json"))
+        self.assertIn("P01 is risky/RPD-required and must route through shawl", errors)
+
+    def test_execution_profile_rejects_wrong_model_mode_and_bounds(self):
+        data = self.fixture()
+        profile = data["loop"]["execution_profile"]
+        profile["worker_model"] = "gpt-other"
+        profile["worker_mode"] = "write"
+        profile["max_review_rounds"] = 0
+        profile["phase_routes"] = {}
+        errors = semantic_errors(contract_from_dict(data), load_risk_policy(ROOT / "spec/risk-policy.json"))
+        self.assertIn("loop.execution_profile.worker_model must equal 'gpt-5.6-luna'", errors)
+        self.assertIn("loop.execution_profile.worker_mode must equal 'scout'", errors)
+        self.assertIn("loop.execution_profile.max_review_rounds must be an integer from 1 to 3", errors)
+        self.assertIn("loop.execution_profile.phase_routes must cover every phase exactly", errors)
+
+    def test_outcome_definition_rejects_extra_and_empty_fields(self):
+        data = self.fixture()
+        outcome = data["loop"]["outcome_definition"]
+        outcome["extra"] = "not allowed"
+        outcome["evidence"] = []
+        errors = semantic_errors(contract_from_dict(data), load_risk_policy(ROOT / "spec/risk-policy.json"))
+        self.assertIn("loop.outcome_definition has unknown fields: extra", errors)
+        self.assertIn("loop.outcome_definition.evidence must be a non-empty string array", errors)
+
     def test_dependency_cycle_is_rejected(self):
         data = self.fixture()
         second = deepcopy(data["phases"][0])

@@ -4,7 +4,7 @@ description: "Use for SuperGoal planning. Native-send exactly 3 files with verif
 argument-hint: <describe what must be built, fixed, shipped, or planned>
 ---
 # chip-supergoal
-`chip-supergoal` is a **planner/compiler**, not the executor. Chip's canonical framing is: **this skill formulates executable tasks for `/goal`**. It turns a non-trivial request into a disk-backed `.supergoal/` package and one launchable standard Hermes `/goal` handoff. The later upstream GoalManager session executes from the generated files, verifies every phase, runs final audit, and prints `SUPERGOAL_RUN_COMPLETE` only after `AUDIT_COMPLETE`. Preserve that boundary: do not imply that this skill executes the work or that Codex is required; `/goal` owns execution and may choose its tools.
+`chip-supergoal` is a planner/compiler. It turns a non-trivial request into a disk-backed `.supergoal/` package and one standard Hermes `/goal` handoff; GoalManager executes and verifies it.
 ## Chip override: bind the outcome, never the path
 Bind only outcome, hard boundaries, and acceptance. SHA, releases, steps, models, and tools stay internal unless Chip asks for an exact candidate. Their changes never justify a sibling or repeated `/goal`; replace the goal only when its outcome or boundaries change.
 ## Principal+ contract
@@ -16,6 +16,7 @@ Use this root as the controller. Heavy detail lives in references and templates.
 5. **No false done** — every phase needs real evidence; final completion requires re-reading the original `ROADMAP.md`, re-running aggregate checks, checking deliverables, `RPD_FINAL_REVIEW`, `AUDIT_COMPLETE`, then `SUPERGOAL_RUN_COMPLETE`. For a goal whose finish line is a working production system, a verified rollback is safe failure evidence—not acceptance evidence: keep the activation phase blocked/failed or route it back for repair until the declared live behavior actually passes.
 6. **Risky work gets Senior Gate** — auth, payments, secrets, production, migrations, gateways, cron/model routing, private data, destructive actions, public launches, and recurring bugs require evidence-tiered RPD/Senior review.
 6a. **Mandatory post-draft Senior challenge** — immediately after the first complete plan draft, critically re-evaluate every decision with this pressure test: `Критически оцени все свои решения. Это план на 100 из 100 или его можно усилить? Мне не нужен план внедрения ради внедрения. Senior-план должен допускать: «мы проверили и не внедряем».` Record a justified score, concrete weaknesses, and one verdict: `implement`, `strengthen-and-rereview`, or `do-not-implement`. A `do-not-implement` verdict is a valid successful planning outcome: preserve the evidence and rationale, but do not emit `READY_TO_DISPATCH` or launch `/goal` unless Chip changes the desired outcome.
+6b. **Ponytail scope gate** — before planning lock the smallest `direct-work`/SuperGoal budget; after drafting shrink once inside RPD, never in another review. See `references/ponytail-scope-gate.md`.
 7. **Telegram delivery is blocking, automatic, and exactly three files** — every Chip-facing SuperGoal sends `startup_pack_v4` into the exact current Telegram chat/topic as three separate native documents, in this order: `THINKING.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`. No `RESEARCH.md`, loop/state/protocol files, JSON, phase specs, archives, scripts, or supporting artifacts are sent to chat by default. Those remain inside the disk package.
 8. **The three-file rule is receipt-enforced** — resolve the target, then run `templates/delivery/send-review-md-files.sh`. `startup_pack_v4` is exactly three files: `THINKING.md`, `ROADMAP.md`, `LAUNCH_GOAL.md`; each needs a real `message_id` and readback with `has_media=true` plus `media_type=MessageMediaDocument`. **Never manually call `hermes send --file` / `-f` for SuperGoal delivery**. Resends use the canonical sender with `SUPERGOAL_DELIVERY_RUN_ID=resend-<UTC timestamp>`. Any mismatch is `SUPERGOAL_REVIEW_FILES_BLOCKED`; full contract: `references/telegram-launch-and-delivery.md`.
 9. **Normal speed by default** — generated SuperGoals must not enable Hermes `/fast` or persist `agent.service_tier: priority` unless Chip explicitly opts in for that run. Fast mode and reasoning effort are independent; keep the persistent default `agent.service_tier: normal`.
@@ -34,20 +35,18 @@ Use for:
 - skill/library hardening work that needs phases, review, and final audit
 Do **not** use for tiny edits, one factual answer, pure copywriting, or a task whose safest path is direct execution in the current session. For those, say it is too small for SuperGoal and use the direct workflow.
 **Audit vs implementation correction:** resolve the request from the full Telegram/conversation sequence, not the latest sentence alone. If Chip first directs a concrete SuperGoal change and then asks “у нас так устроен?” or “переделал?”, treat the question as a completion check on that requested implementation, not permission to stop at a conceptual comparison. For safe skill/compiler work, patch the compiler/protocol/tests, compile and strict-validate a real package, initialize the runtime twice to prove no overwrite, run the full suite, and only then answer `ready`. A proposed architecture, audit verdict, emoji, or presence acknowledgement is not completion. If the sequence genuinely asks for read-only analysis, keep it read-only.
-
 ## Human gates
 Only two gates are allowed by default:
 
 1. **Stage 1 clarifying questions** — only for true material gaps that tools cannot answer. Short pointer follow-ups like “вот это”, “это”, “читай сообщение”, “make supergoal”, or a voice/reply after a visible context block are not a reason to loop on clarification or invent a subject: use the current conversation/Telegram context first, and only ask if the subject is still unrecoverable. If Chip corrects that the wrong source was used, immediately recover the pointed message/reply/entities/media via gateway context or `telegram-chip` and regenerate the package around that source; do not defend the prior assumption. A SuperGoal compiled around the wrong class (for example a generic concierge-hook plan when the pointed source is a trading/copy task) is a planner failure. Include a scope check when the user's example could be mistaken for the whole mission: if Chip asks for a class-level system (“all future lessons and meetings”, “the whole publisher”, “make this reliable”), do not compile a narrow SuperGoal around the latest example (`lesson 4`, one bug, one artifact). Treat the example as a regression fixture inside a broader roadmap.
 2. **Stage 6 plan review** — after the first complete draft, run the mandatory post-draft Senior challenge before showing anything as launchable. Show the reviewed package summary and wait for explicit go/no-go only when the verdict is `implement` or `strengthen-and-rereview` has already been resolved. If the verdict is `do-not-implement`, present the evidence-backed recommendation and stop without `READY_TO_DISPATCH`; do not manufacture implementation phases merely to complete the SuperGoal shape. If Chip then says “убери все апрувалы”, “можно сразу в прод”, or equivalent about a launchable visible package, treat it as Stage-6 approval plus standing authorization for rollback-safe beta/prod app rollout; remove redundant environment gates across all package artifacts and keep at most one bounded manifest for concrete high-risk exceptions. See `references/bounded-manifest-no-internal-approvals.md`.
-
 Everything else should be autonomous and evidence-backed.
 ## Generated artifacts
 Write under `$SUPERGOAL_ROOT` (normally `<repo>/.supergoal/`):
 
 - `THINKING.md` — goals, constraints, risks, dependencies, assumptions, memory hits, tools/skills used.
 - `RESEARCH.md` — only when research gates run.
-- `LOOP_DESIGN.md` — pre-launch loop harness: goal, context, host/reviewer/judge roles, verification gates, state, stop conditions, budget, boundaries, egress/redaction, recovery, and ASCII preview.
+- `LOOP_DESIGN.md` — measurable outcome plus the bounded execution/review harness.
 - `ROADMAP.md` — decision package, phase map, measurable acceptance criteria, mandatory commands, evidence requirements.
 - `STATE.md` — immutable compatibility state seed; `runtime-seed/{PLAN,TODO,MEMORY,STATUS,RUN_LOG,CHECKS,REVIEW}.md` seeds the file-first mutable bundle under `out/runtime/` through `scripts/init-runtime.sh` without overwriting live state. Full contract: `references/file-first-runtime-state.md`.
 - `PROTOCOL.md` — self-contained executor loop copied from `templates/PROTOCOL.md`.
@@ -68,17 +67,17 @@ See `references/artifact-schemas.md` for exact schemas and `templates/LAUNCH_GOA
 | 0 | Resolve live skill dir, preload memory, detect tools/skills, detect resume state. | skill path + context notes |
 | 1 | Intake. Brownfield asks 0–2 questions; greenfield batches up to 4 until material gaps close. | assumptions/gaps list |
 | 2 | Recon. Run stack/env/repo scripts and read outputs. | 5-line stack/commands/risk summary |
-| 3 | Research + architecture gates. Use skill-first research when current facts matter. | `THINKING.md`; optional `RESEARCH.md` |
-| 3.5 | **Loop Design Gate.** Design the execution harness before roadmap compilation: host/reviewer/judge, verification gates, state, stop, budget, boundaries, egress/redaction, failure recovery, and ASCII preview. Mutate weak loop specs before launch. | `LOOP_DESIGN.md`; loop health rubric |
+| 2.5 | **Ponytail:** choose direct work vs SuperGoal; lock the smallest budget. | scope verdict |
+| 3 | Define a measurable outcome, then run research + architecture gates. Use skill-first research when current facts matter. | `CONTRACT.json.loop.outcome_definition`; `THINKING.md`; optional `RESEARCH.md` |
+| 3.5 | **Loop Design Gate.** Design the execution harness before roadmap compilation: Sol ownership, per-phase `direct|shawl` routing, bounded Luna review, verification gates, state, stop, budget, boundaries, egress/redaction, failure recovery, and ASCII preview. Mutate weak loop specs before launch. | `LOOP_DESIGN.md`; loop health rubric |
 | 4 | Decompose into as many phases as the task requires. | phase map with dependencies |
 | 5 | Write roadmap, state, protocol, launch goal, and phase specs. | files on disk + phase validation |
-| 6 | Run the mandatory post-draft Senior challenge, then embedded `RPD_PLAN_REVIEW`; score the plan, allow `do-not-implement`, mutate weak artifacts or mark `checked-holds`. Show review summary and wait only for a launchable verdict. | revision ledger + score + `implement` / `strengthen-and-rereview` / `do-not-implement` verdict |
+| 6 | Run Senior/RPD review and the one-pass `PONYTAIL_FINAL_CHECK` in the same seat. Delete unjustified machinery; never launch a separate Ponytail reviewer. | score + scope check + verdict |
 | 6.5 | Preflight smoke: baseline commands, repo state, required files, blockers. | `PREFLIGHT_GREEN` or `PREFLIGHT_RED` |
 | 6.6 | **Blocking semantic-review closure.** If any independent/asynchronous package review was dispatched, receive and apply its final verdict before delivery. A pending reviewer is not approval: do not send files, ask for `/goal`, or call the package ready while it runs. Require P0=0/P1=0 on the exact compiled bytes; any later mutation invalidates the verdict. A post-delivery REJECT is a planner MISS and the delivered revision must be treated as never launchable. | final review artifact bound to package hash |
 | 7 | Send `startup_pack_v4` as exactly three native Telegram documents: `THINKING.md`, `ROADMAP.md`, then `LAUNCH_GOAL.md` last. Verify the exact three-entry file→message-ID receipt/readback. User replies `/goal` to the last file; planner stops. | `READY_TO_DISPATCH` or blocked state |
 
-Detailed planning rules: `references/core-planning-contract.md`, `references/research-and-architecture-gates.md`, `references/phase-design.md`, `references/planning-depth.md`.
-
+Planning rules: `references/core-planning-contract.md` and `references/outcome-definition-and-shawl-luna.md`.
 ## Executor invariants for generated `/goal`
 
 The generated `PROTOCOL.md` must preserve these exact marker families:
@@ -107,6 +106,7 @@ Every phase file must contain:
 SUPERGOAL_PHASE_START
 Phase: N of TOTAL — <name>
 Task: <one-line task>
+Execution route: direct|shawl
 Mandatory commands: <csv>
 Acceptance criteria: <count>
 Evidence required: <csv>
@@ -123,7 +123,7 @@ Run `bash "$SUPERGOAL_DIR/scripts/validate-phase.sh" <phase-number|phase-file>` 
 
 `chip-supergoal` embeds RPD. Do not invoke external `/rpd` to run this workflow.
 
-- `RPD_PLAN_REVIEW` always runs before Stage 6 user review.
+- `RPD_PLAN_REVIEW` includes one bounded `PONYTAIL_FINAL_CHECK`; no second reviewer/model/round.
 - `RPD_PHASE_REVIEW` runs in generated `/goal` for risky phases or `RPD required: yes`.
 - `RPD_FINAL_REVIEW` always runs after `AUDIT_VERIFY` and before `AUDIT_COMPLETE`.
 - Findings must mutate `ROADMAP.md`, `THINKING.md`, phase specs, protocol, code/work, or audit-fix specs. Otherwise mark `checked-holds` with evidence tier.
@@ -141,7 +141,7 @@ Core active references:
 - Execution state, phase closeout, audit, stale/partial continuation: `references/execution-state-machine.md`, `references/phase-completion-ledger-discipline.md`, `references/partial-execution-state-divergence.md`, `references/completed-standing-goal-and-workdir-hygiene.md`. The phase-ledger reference also governs exact shell exit capture, provenance freshness after manifest changes, and honest forced-turn closeout.
 - Multi-stage provider deadline/billing phases: `references/request-wide-deadline-and-ambiguous-billing.md` — one monotonic request deadline and spend envelope, real cancellation under custom transports, no unsafe timeout/429 retries, distinct ambiguous/billable accounting, circuit breaking, and idempotent late reconciliation.
 - Offline agent/tool evaluation phases: `references/offline-agent-eval-integrity.md` — preserve tool-call identity/order through text-only subcalls, simulate raw long-context occupancy independently of production compaction, and enforce helper-free answer provenance without overstating offline traces as live provider proof.
-- Loop and senior review: `references/loop-design-gate.md`, `references/rpd-review-gates.md`, `references/executable-contract-review.md`.
+- Loop, measurable outcome, Shawl/Luna routing, simplicity, and senior review: `references/outcome-definition-and-shawl-luna.md`, `references/ponytail-scope-gate.md`, `references/loop-design-gate.md`, `references/rpd-review-gates.md`, `references/executable-contract-review.md`.
 - Telegram three-file launch delivery: `references/telegram-launch-and-delivery.md`, `references/telegram-supergoal-artifact-delivery-correction.md`.
 - Production, rollout, approval, canary: `references/production-safety.md`, `references/production-deploy-gates.md`, `references/review-gated-rollout-closure.md`, `references/production-canary-observer-and-artifact-integrity.md`. For production trading/payments/migrations or another live-authority cutover, also load `references/high-risk-live-cutover-semantic-review.md` before sealing.
 - Exact release, zero-skip, executable command ABI, and live-path revision gates: `references/release-candidate-zero-skip-and-integrity.md`, `references/executable-contract-interface-and-live-path-revision.md`.

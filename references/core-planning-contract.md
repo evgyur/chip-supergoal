@@ -33,7 +33,19 @@ bash "$SUPERGOAL_DIR/scripts/detect-env.sh" > "$SUPERGOAL_ROOT/context.md"
 
 Print a five-line summary: stack, package manager, build/test/lint commands, notable modules, risky areas.
 
-## Stage 3 — think before writing
+## Stage 2.5 — Ponytail scope gate
+
+Before loop design or roadmap decomposition, load/apply `references/ponytail-scope-gate.md`.
+
+Record one compact verdict: `direct-work` or `supergoal`; one falsifiable outcome; the smallest owner boundary; existing primitive to reuse; phase/helper/reviewer budget; controls that must remain; machinery explicitly omitted; observable upgrade triggers.
+
+If direct work is enough, stop SuperGoal compilation and use the direct workflow. Do not manufacture a package because the workflow was invoked.
+
+For a narrow SuperGoal, start from three phases at most, one implementation boundary, one source writer, one planning-review seat, one evidence location, and no new orchestration layer. Exceed a default only for a concrete requirement or reachable trust boundary.
+
+## Stage 3 — define outcome, then think before writing
+
+Before `THINKING.md`, apply the measurable goal-quality bar from `references/outcome-definition-and-shawl-luna.md`. This is a planning gate, not a second goal manager: write the concrete outcome, exact evidence, threshold, in/out scope, and stop-and-ask condition into `CONTRACT.json.loop.outcome_definition` and later render it into `LOOP_DESIGN.md`.
 
 Write `THINKING.md` before `ROADMAP.md` with:
 
@@ -53,8 +65,9 @@ If current facts shape architecture, write `RESEARCH.md` too.
 Write `LOOP_DESIGN.md` before `ROADMAP.md`. This is the pre-launch harness design, not implementation. It must cover:
 
 - goal, context sources, and canonical truth;
-- host model / executor;
-- reviewer or judge seat and rubric;
+- host model / executor, with Sol/GoalManager as the sole owner/integrator;
+- explicit per-phase execution route: `direct` or canonical `shawl`;
+- bounded Luna worker settings: `gpt-5.6-luna`, read-only scout mode, maximum three parallel scouts and three fresh review rounds;
 - verification gates and evidence tiers;
 - state checkpoints and continuation path;
 - stop conditions, retry limits, and budget;
@@ -91,7 +104,9 @@ Immediately after the first complete plan draft, run the mandatory post-draft Se
 
 > Критически оцени все свои решения. Это план на 100 из 100 или его можно усилить? Мне не нужен план внедрения ради внедрения. Senior-план должен допускать: «мы проверили и не внедряем».
 
-Then run the full `RPD_PLAN_REVIEW`. Record the justified score, exact deductions, implementation-vs-minimal-change-vs-no-implementation comparison, and one verdict: `implement`, `strengthen-and-rereview`, or `do-not-implement`. Every material finding must mutate an artifact or be recorded `checked-holds` with evidence tier.
+Then run the full `RPD_PLAN_REVIEW`. Inside the same review seat, run `PONYTAIL_FINAL_CHECK` against the Stage-2.5 scope verdict: compare phase/helper/reviewer/receipt/service/repository/schema counts, delete every addition not required by the outcome or a reachable trust boundary, and prefer existing primitives. Do not spawn a second model or add another review round for Ponytail. Record one result: `holds`, `shrunk: ...`, `direct-work instead`, or `blocked`.
+
+Record the justified score, exact deductions, implementation-vs-minimal-change-vs-no-implementation comparison, and one verdict: `implement`, `strengthen-and-rereview`, or `do-not-implement`. Every material finding must mutate an artifact or be recorded `checked-holds` with evidence tier.
 
 For `strengthen-and-rereview`, mutate and rerun within the planner stop-loss. For `do-not-implement`, preserve the decision evidence in `THINKING.md` and `ROADMAP.md`, do not emit `READY_TO_DISPATCH`, and stop without manufacturing a `/goal` launch. Otherwise show a compact review summary and wait for explicit go/no-go.
 

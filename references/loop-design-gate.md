@@ -17,6 +17,8 @@ Before `ROADMAP.md` and phase specs become launchable, the planner must design t
 - boundaries, approvals, egress, and redaction;
 - failure recovery path.
 
+Before `LOOP_DESIGN.md`, run the pre-plan `PONYTAIL_SCOPE_GATE` from `references/ponytail-scope-gate.md`. Loop design must stay inside its owner/phase/helper/reviewer budget unless a concrete requirement or reachable trust boundary justifies the exception. Do not make the loop-governance machinery larger than the mission.
+
 Do **not** create a separate `/looper` command by default. For Chip's SuperGoal workflow, the LOOPER idea belongs inside `chip-supergoal` as a pre-roadmap design gate.
 
 ## Required artifact: `LOOP_DESIGN.md`
@@ -24,6 +26,7 @@ Do **not** create a separate `/looper` command by default. For Chip's SuperGoal 
 Every non-trivial SuperGoal package must include `LOOP_DESIGN.md` next to `THINKING.md` and `ROADMAP.md`. Required sections:
 
 - `Goal`
+- `Outcome definition` — outcome, exact evidence, threshold, in/out scope, and stop-and-ask condition
 - `Context sources`
 - `Host model`
 - `Reviewer / judge model`
@@ -35,6 +38,8 @@ Every non-trivial SuperGoal package must include `LOOP_DESIGN.md` next to `THINK
 - `Failure recovery`
 - `Human approvals`
 - `ASCII preview`
+
+For `engineering_mode: shawl`, `Host model` and `Reviewer / judge model` must also name Sol/GoalManager as sole owner/integrator, `gpt-5.6-luna` as a read-only scout reached only through canonical Shawl, per-phase `direct|shawl` routing, maximum three parallel scouts, maximum three fresh review rounds, local reproduction of findings, and new candidate identity after code-affecting fixes.
 
 The file must be human-readable and executor-usable. It is not a decorative diagram.
 
@@ -139,10 +144,11 @@ Insert as Stage 3.5:
 ```text
 Intake
  → Recon / Research
+ → PONYTAIL_SCOPE_GATE
  → LOOP DESIGN
  → LOOP HEALTH REVIEW
  → ROADMAP / PHASES
- → RPD_PLAN_REVIEW
+ → RPD_PLAN_REVIEW + PONYTAIL_FINAL_CHECK
  → PREFLIGHT
  → LAUNCH_GOAL
 ```

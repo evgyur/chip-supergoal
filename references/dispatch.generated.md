@@ -13,9 +13,11 @@ Generated from `spec/reference-catalog.json`.
 - Trigger `file-first-runtime-state, runtime-seed, out/runtime` → load `references/file-first-runtime-state.md`
 - Trigger `follow-on-supergoal, after-completion` → load `references/follow-on-supergoal-after-completion.md`
 - Trigger `loop-design-gate` → load `references/loop-design-gate.md`
+- Trigger `define-goal, shawl, luna, execution-profile` → load `references/outcome-definition-and-shawl-luna.md`
 - Trigger `manifest-complete-portable-archive, mutable-paths` → load `references/manifest-complete-portable-archive.md`
 - Trigger `planner-state-hygiene, pre-execution-state, supergoal-planning` → load `references/planner-executor-state-hygiene.md`
 - Trigger `planner-runaway, review-recursion, meta-fix-scope-creep, tool-budget-overrun` → load `references/planner-runaway-stop-loss.md`
+- Trigger `ponytail, overengineering, scope-budget, minimal-plan` → load `references/ponytail-scope-gate.md`
 - Trigger `production-safety` → load `references/production-safety.md`
 - Trigger `rpd-review-gates` → load `references/rpd-review-gates.md`
 - Trigger `skill-maintenance` → load `references/skill-maintenance.md`

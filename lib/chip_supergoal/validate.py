@@ -15,7 +15,7 @@ from .render import render_launch_goal, render_loop_design, render_phase, render
 from .research import render_research_markdown, research_gate, research_report, research_required, validate_research_gate
 
 REQUIRED_LOOP_SECTIONS = [
-    "Goal", "Context sources", "Host model", "Reviewer / judge model", "Verification gates",
+    "Goal", "Outcome definition", "Context sources", "Host model", "Reviewer / judge model", "Verification gates",
     "State checkpoints", "Stop conditions", "Budget", "Boundaries", "Failure recovery",
     "Human approvals", "ASCII preview",
 ]
@@ -78,6 +78,7 @@ def validate_loop_design(path: str | Path, *, instantiated: bool = False) -> lis
         diagnostics.append(_diag("SGV-LOOP-LAUNCH-BODY", "INV-LAUNCH-001", str(p), "/", "LOOP_DESIGN.md contains a launch body", "Move the launch marker to LAUNCH_GOAL.md only."))
     if instantiated:
         checks = [
+            ("Outcome definition", r"(?i)(outcome|evidence|threshold|scope|stop|acceptance|verification)", "SGV-LOOP-OUTCOME-WEAK", "Outcome definition must bind outcome, evidence, threshold, scope, and stop condition."),
             ("Budget", r"[0-9]", "SGV-LOOP-BUDGET-MISSING-LIMIT", "Budget must include numeric limits."),
             ("Stop conditions", r"(?i)(retry|retries|attempt|iteration|no-progress|попыт|итерац|max|<=|≤)", "SGV-LOOP-STOP-MISSING-LIMIT", "Stop conditions must include retry/iteration/no-progress limits."),
             ("Verification gates", r"(?i)(test|pytest|npm|bash|curl|smoke|verify|validator|programmatic|command)", "SGV-LOOP-GATE-NOT-PROGRAMMATIC", "Verification gates must name concrete programmatic checks."),

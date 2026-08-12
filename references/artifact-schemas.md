@@ -32,6 +32,7 @@ Required pre-launch loop harness. Use this to design how the `/goal` executor wi
 Required sections:
 
 - Goal
+- Outcome definition
 - Context sources
 - Host model
 - Reviewer / judge model

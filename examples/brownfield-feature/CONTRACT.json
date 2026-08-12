@@ -42,7 +42,36 @@
     "workspace_root": "."
   },
   "loop": {
-    "max_iterations": 3
+    "max_iterations": 3,
+    "outcome_definition": {
+      "outcome": "One fixture feature exists and its unit test passes.",
+      "evidence": [
+        "python3 -m unittest exits 0",
+        "fixture.txt matches the compiled deliverable contract"
+      ],
+      "threshold": "All blocking criteria pass with zero unresolved P0/P1 findings.",
+      "in_scope": [
+        "fixture.txt",
+        "fixture unit test"
+      ],
+      "out_of_scope": [
+        "production deployment"
+      ],
+      "stop_and_ask": "Stop if the fixture contract conflicts with a user-owned source or requires a production effect."
+    },
+    "execution_profile": {
+      "owner": "Sol",
+      "planner_effort": "high",
+      "integrator_effort": "max",
+      "engineering_mode": "shawl",
+      "worker_model": "gpt-5.6-luna",
+      "worker_mode": "scout",
+      "max_parallel_scouts": 3,
+      "max_review_rounds": 3,
+      "phase_routes": {
+        "P01": "shawl"
+      }
+    }
   },
   "phases": [
     {

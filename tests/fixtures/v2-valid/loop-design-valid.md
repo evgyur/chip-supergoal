@@ -3,6 +3,14 @@
 ## Goal
 Ship a falsifiable chip-supergoal change with no courtesy stop at phase boundaries.
 
+## Outcome definition
+- Outcome: preserve the requested behavior in one launchable package.
+- Evidence: strict validation and the declared test commands exit 0.
+- Threshold: all blocking criteria pass with zero unresolved P0/P1 findings.
+- In scope: package contract, phase specs, and runtime protocol.
+- Out of scope: unrelated production effects.
+- Stop and ask: stop only for a real approval blocker or irrecoverable missing source.
+
 ## Context sources
 - Skill root: <installed-skill-dir>.
 - Package state: .supergoal/STATE.md.

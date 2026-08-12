@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="${SUPERGOAL_ROOT:-$(pwd)/.supergoal}"
 OUT="$ROOT/out"
 mkdir -p "$OUT"
+chmod 700 "$OUT"
 SEALED_TARGET="$(python3 - <<'PY' "$ROOT/CONTRACT.json"
 import json, sys
 contract = json.load(open(sys.argv[1], encoding='utf-8'))

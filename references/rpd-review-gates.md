@@ -96,6 +96,14 @@ Any new layer, abstraction, fallback, data flow, agent/subagent, compatibility s
 
 If the budget is missing, RPD must either delete/shrink the mechanism or mutate the plan/spec to justify and verify it.
 
+## Ponytail binding
+
+Before the roadmap exists, the planner runs `PONYTAIL_SCOPE_GATE` from `references/ponytail-scope-gate.md`. It decides direct work vs SuperGoal and records the minimum owner boundary plus phase/helper/reviewer budget.
+
+`RPD_PLAN_REVIEW` then runs `PONYTAIL_FINAL_CHECK` inside its existing seat. Compare the draft with that pre-plan budget and delete unjustified growth. Check phases, helpers, reviewers, receipts, manifests, services, repositories, schemas, approval gates, and control planes. A kept addition must serve the stated outcome or a reachable trust boundary; hypothetical future scale is not enough.
+
+This is one shrink pass, not another agent/model, protocol marker family, or review round. Ponytail does not weaken auth, privacy, payment, routing, data-loss, rollback, or public-effect verification.
+
 ## Mandatory post-draft Senior challenge
 
 Run this immediately after the first complete `ROADMAP.md` + phase-spec draft and before treating the package as launchable:
@@ -145,6 +153,7 @@ It must check:
 10. After critically re-evaluating every decision, what exact deductions keep the current draft below `100/100`?
 11. Does `minimal-change` or `do-nothing / do-not-implement` satisfy the objective better than the proposed implementation?
 12. Is the evidence-backed verdict `implement`, `strengthen-and-rereview`, or `do-not-implement`?
+13. Against the pre-plan `PONYTAIL_SCOPE_GATE`, what can be deleted or replaced by an existing primitive, and did the draft stay inside its phase/helper/reviewer budget?
 
 Output marker:
 
@@ -153,6 +162,7 @@ RPD_PLAN_REVIEW
 Senior challenge: Критически оцени все свои решения. Это план на 100 из 100 или его можно усилить? Мне не нужен план внедрения ради внедрения. Senior-план должен допускать: «мы проверили и не внедряем».
 Plan score: <0-100>/100 — <exact deductions; 100 only with no material gap>
 Implementation necessity: <proposed implementation vs minimal-change vs do-not-implement>
+Ponytail final check: <holds | shrunk: ... | direct-work instead | blocked>
 Pattern Hunter: <finding + evidence tier + mutation|checked-holds>
 Gonzo: <assumption + true|false|unverified + evidence tier + mutation|checked-holds>
 Devil's Advocate: <failure mode + evidence tier + mitigation mutation|checked-holds>

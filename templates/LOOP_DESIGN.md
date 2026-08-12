@@ -3,6 +3,16 @@
 ## Goal
 Describe the execution loop's falsifiable goal in one paragraph. Include what will be true when the loop is done.
 
+## Outcome definition
+Bind the measurable outcome before choosing implementation mechanics.
+
+- Outcome:
+- Evidence:
+- Threshold:
+- In scope:
+- Out of scope:
+- Stop and ask:
+
 ## Context sources
 List the source set the executor must trust, inspect, or verify. Separate canonical sources from assumptions.
 
@@ -14,7 +24,7 @@ List the source set the executor must trust, inspect, or verify. Separate canoni
 - Assumptions still needing falsification:
 
 ## Host model
-Name the executor/host model or agent surface that will drive the loop. State whether subagents are allowed and under what condition.
+Name Sol/GoalManager as owner and integrator. State whether canonical Shawl may launch bounded read-only Luna scouts and which phases route direct vs Shawl.
 
 ## Reviewer / judge model
 Define the review seat.
@@ -92,13 +102,13 @@ INTAKE / RECON
   ↓
 THINKING + RESEARCH
   ↓
-LOOP_DESIGN.md
+LOOP_DESIGN.md + measurable OUTCOME
   ↓ gate: loop health rubric + RPD/Senior pressure
 ROADMAP + PHASE SPECS
   ↓ gate: phase validation + launch contract
 /goal EXECUTION
   ↓
-PHASE N
+PHASE N → direct | SHAWL(Luna scout) → Sol reproduce/fix
   ↓ gate: tests + RPD_PHASE_REVIEW where risky
 FINAL AUDIT
   ↓ gate: RPD_FINAL_REVIEW

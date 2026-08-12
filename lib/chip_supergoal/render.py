@@ -63,6 +63,8 @@ def render_thinking(contract: Contract) -> str:
 
 def render_loop_design(contract: Contract) -> str:
     loop = contract.loop.data
+    outcome = loop["outcome_definition"]
+    execution = loop["execution_profile"]
     architecture = contract.architecture.data
     sources = [f"{s.id}: {s.authority}/{s.freshness} — {s.locator}" for s in contract.source_set]
     stop_conditions = loop.get("stop_conditions", [])
@@ -93,17 +95,33 @@ def render_loop_design(contract: Contract) -> str:
 ## Goal
 {contract.goal.objective}
 
+## Outcome definition
+- Outcome: {outcome['outcome']}
+- Evidence:
+{_list_lines(outcome['evidence'])}
+- Threshold: {outcome['threshold']}
+- In scope:
+{_list_lines(outcome['in_scope'])}
+- Out of scope:
+{_list_lines(outcome['out_of_scope'])}
+- Stop and ask: {outcome['stop_and_ask']}
+
 ## Context sources
 - `CONTRACT.json` is the canonical planning contract.
 {_list_lines(sources)}
 
 ## Host model
-- Host: {loop.get('host_model', 'standard Hermes /goal executor')}.
+- Host/owner: {execution['owner']} through the standard Hermes `/goal` executor; only Sol/GoalManager may integrate changes, advance state, perform protected effects, and decide final GO/DONE.
+- Planning effort: {execution['planner_effort']}; integrator effort: {execution['integrator_effort']}.
+- Engineering mode: `{execution['engineering_mode']}`; Luna is opt-in and is invoked only through canonical Shawl.
 - Service tier: normal; fast mode is not enabled by this package.
 
 ## Reviewer / judge model
 - Reviewer: {loop.get('reviewer', 'embedded RPD/Senior gate; findings must mutate artifacts or become checked-holds')}.
 - Judge: {loop.get('judge', 'programmatic pass/fail checks against phase acceptance criteria')}.
+- Worker: `{execution['worker_model']}` in `{execution['worker_mode']}` mode; routes: {', '.join(f'{k}={v}' for k, v in execution['phase_routes'].items())}.
+- Bounds: {execution['max_parallel_scouts']} parallel read-only scouts and {execution['max_review_rounds']} review rounds maximum.
+- Finding rule: Sol reproduces every Luna finding locally; code-affecting fixes create a new candidate identity and require fresh exact-candidate review.
 
 ## Verification gates
 {_list_lines(verification)}
@@ -119,6 +137,7 @@ def render_loop_design(contract: Contract) -> str:
 - phase repair rounds: {loop.get('max_iterations', 3)} maximum per failing phase
 - audit rounds: {loop.get('audit_rounds', 3)}
 - architecture budget: {loop.get('budget', 'no unbounded new orchestration layer')}
+- Luna budget: {execution['max_parallel_scouts']} scouts maximum; {execution['max_review_rounds']} fresh review rounds maximum
 
 ## Boundaries
 {_list_lines(boundaries)}
@@ -135,13 +154,13 @@ INTAKE / RECON
   ↓
 THINKING + RESEARCH
   ↓
-LOOP_DESIGN.md
+LOOP_DESIGN.md + measurable OUTCOME
   ↓ gate: loop health + RPD_PLAN_REVIEW
 ROADMAP + PHASE SPECS
   ↓ gate: strict validation + preflight
 /goal EXECUTION
   ↓
-PHASE N → tests/evidence → RPD_PHASE_REVIEW when risky
+PHASE N → direct | SHAWL(Luna scout) → Sol reproduce/fix → tests/evidence → RPD_PHASE_REVIEW when risky
   ↓
 FINAL AUDIT → RPD_FINAL_REVIEW
   ↓
@@ -304,11 +323,12 @@ def render_launch_goal(contract: Contract) -> str:
 
 def render_phase(contract: Contract, phase_index: int) -> str:
     p = contract.phases[phase_index]
+    route = contract.loop.data["execution_profile"]["phase_routes"][p.id]
     commands = "; ".join(c.command for c in p.commands)
     evidence = ", ".join(sorted({c.evidence_tier for c in p.criteria})) or "direct_artifact"
     deps = ", ".join(p.depends_on) or "none"
     focus = p.rpd.focus[0] if p.rpd.focus else "none"
-    lines = [f"# {p.id} — {p.name}", "", "SUPERGOAL_PHASE_START", f"Phase: {p.ordinal} of {len(contract.phases)} — {p.name}", f"Task: {p.task}", f"Mandatory commands: {commands}", f"Acceptance criteria: {len(p.criteria)}", f"Evidence required: {evidence}", f"Depends on phases: {deps}", f"RPD required: {'yes' if p.rpd.required else 'no'}", f"RPD focus: {focus}", "", "## Work"]
+    lines = [f"# {p.id} — {p.name}", "", "SUPERGOAL_PHASE_START", f"Phase: {p.ordinal} of {len(contract.phases)} — {p.name}", f"Task: {p.task}", f"Execution route: {route}", f"Mandatory commands: {commands}", f"Acceptance criteria: {len(p.criteria)}", f"Evidence required: {evidence}", f"Depends on phases: {deps}", f"RPD required: {'yes' if p.rpd.required else 'no'}", f"RPD focus: {focus}", "", "## Work"]
     lines += [f"- {w.get('text', w)}" for w in p.work_items] or ["- Execute the phase task."]
     lines += ["", "## Deliverables"]
     lines += [f"- {d.id}: `{d.path}` — {d.change_expectation}; verify: {d.verification}" for d in p.deliverables] or ["- none"]

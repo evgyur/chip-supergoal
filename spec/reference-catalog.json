@@ -875,6 +875,28 @@
     },
     {
       "domain": [
+        "goal-definition",
+        "loop",
+        "shawl",
+        "luna"
+      ],
+      "id": "REF-OUTCOME-DEFINITION-SHAWL-LUNA",
+      "last_reviewed": "2026-08-12",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/outcome-definition-and-shawl-luna.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "define-goal",
+        "shawl",
+        "luna",
+        "execution-profile"
+      ]
+    },
+    {
+      "domain": [
         "manifest",
         "portable",
         "archive"
@@ -1219,6 +1241,27 @@
       "supersedes": [],
       "triggers": [
         "planning-depth"
+      ]
+    },
+    {
+      "domain": [
+        "planning",
+        "simplicity",
+        "review"
+      ],
+      "id": "REF-PONYTAIL-SCOPE-GATE",
+      "last_reviewed": "2026-08-09",
+      "load_default": true,
+      "owns_invariants": [],
+      "path": "references/ponytail-scope-gate.md",
+      "status": "canonical",
+      "superseded_by": null,
+      "supersedes": [],
+      "triggers": [
+        "ponytail",
+        "overengineering",
+        "scope-budget",
+        "minimal-plan"
       ]
     },
     {
